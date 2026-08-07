@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { objectToCamelCase, objectToSnakeCase } from "@/lib/caseMapping";
 import type { Company } from "@/components/company/company.schema";
 
 export interface CompanyRecord extends Company {
@@ -10,106 +11,49 @@ export interface CompanyRecord extends Company {
 const TABLE = "company_settings";
 const ASSETS_BUCKET = "company-assets";
 
+/** Optional URL fields are stored as `null` rather than an empty string. */
+const NULLABLE_URL_FIELDS = ["logoUrl", "signatureUrl", "stampUrl"] as const;
+
+/** Falls back to a sensible default if the column hasn't been set yet. */
+const NUMERIC_DEFAULTS: Partial<Record<keyof Company, number>> = {
+  lrPrefixLength: 4,
+  invoicePrefixLength: 4,
+  voucherPrefixLength: 4,
+  defaultGstPercentage: 0,
+};
+
 function toRow(values: Company) {
-  return {
-    company_name: values.companyName,
-    company_short_name: values.companyShortName,
-    gstin: values.gstin,
-    pan: values.pan,
-    cin: values.cin,
+  const row = objectToSnakeCase(values);
 
-    contact_person: values.contactPerson,
-    mobile: values.mobile,
-    alternate_mobile: values.alternateMobile,
-    email: values.email,
-    website: values.website,
+  for (const field of NULLABLE_URL_FIELDS) {
+    const value = values[field];
+    row[field === "logoUrl" ? "logo_url" : field === "signatureUrl" ? "signature_url" : "stamp_url"] =
+      value.trim() === "" ? null : value;
+  }
 
-    address: values.address,
-    city: values.city,
-    state: values.state,
-    pincode: values.pincode,
-
-    account_holder_name: values.accountHolderName,
-    bank_name: values.bankName,
-    bank_branch: values.bankBranch,
-    account_number: values.accountNumber,
-    ifsc: values.ifsc,
-    upi_id: values.upiId,
-
-    logo_url: values.logoUrl || null,
-    signature_url: values.signatureUrl || null,
-    stamp_url: values.stampUrl || null,
-
-    financial_year: values.financialYear,
-    lr_prefix: values.lrPrefix,
-    invoice_prefix: values.invoicePrefix,
-    voucher_prefix: values.voucherPrefix,
-    lr_prefix_length: values.lrPrefixLength,
-    invoice_prefix_length: values.invoicePrefixLength,
-    voucher_prefix_length: values.voucherPrefixLength,
-
-    default_branch: values.defaultBranch,
-    default_currency: values.defaultCurrency,
-    default_freight_type: values.defaultFreightType,
-    default_gst_percentage: values.defaultGstPercentage,
-  };
+  return row;
 }
 
-/**
- * Supabase returns raw snake_case column names — this maps them back onto
- * the camelCase `Company` shape the app works with everywhere else.
- */
+/** Supabase returns raw snake_case columns; `id`/`created_at`/`updated_at`
+ * pass through explicitly since they live outside the `Company` domain type. */
 function fromRow(row: Record<string, unknown>): CompanyRecord {
-  const asString = (value: unknown) => (typeof value === "string" ? value : value == null ? "" : String(value));
-  const asNumber = (value: unknown, fallback = 0) =>
-    typeof value === "number" ? value : value == null || value === "" ? fallback : Number(value);
+  const { id, created_at, updated_at, ...rest } = row;
+
+  const company = objectToCamelCase<Record<string, unknown>>(rest);
+
+  for (const field of NULLABLE_URL_FIELDS) {
+    if (company[field] == null) company[field] = "";
+  }
+
+  for (const [field, fallback] of Object.entries(NUMERIC_DEFAULTS)) {
+    if (company[field] == null || company[field] === "") company[field] = fallback;
+  }
 
   return {
-    id: Number(row.id),
-
-    companyName: asString(row.company_name),
-    companyShortName: asString(row.company_short_name),
-    gstin: asString(row.gstin),
-    pan: asString(row.pan),
-    cin: asString(row.cin),
-
-    contactPerson: asString(row.contact_person),
-    mobile: asString(row.mobile),
-    alternateMobile: asString(row.alternate_mobile),
-    email: asString(row.email),
-    website: asString(row.website),
-
-    address: asString(row.address),
-    city: asString(row.city),
-    state: asString(row.state),
-    pincode: asString(row.pincode),
-
-    accountHolderName: asString(row.account_holder_name),
-    bankName: asString(row.bank_name),
-    bankBranch: asString(row.bank_branch),
-    accountNumber: asString(row.account_number),
-    ifsc: asString(row.ifsc),
-    upiId: asString(row.upi_id),
-
-    logoUrl: asString(row.logo_url),
-    signatureUrl: asString(row.signature_url),
-    stampUrl: asString(row.stamp_url),
-
-    financialYear: asString(row.financial_year),
-    lrPrefix: asString(row.lr_prefix),
-    invoicePrefix: asString(row.invoice_prefix),
-    voucherPrefix: asString(row.voucher_prefix),
-    lrPrefixLength: asNumber(row.lr_prefix_length, 4),
-    invoicePrefixLength: asNumber(row.invoice_prefix_length, 4),
-    voucherPrefixLength: asNumber(row.voucher_prefix_length, 4),
-
-    defaultBranch: asString(row.default_branch),
-    defaultCurrency: (asString(row.default_currency) || "INR") as Company["defaultCurrency"],
-    defaultFreightType: (asString(row.default_freight_type) || "Paid") as Company["defaultFreightType"],
-    defaultGstPercentage: asNumber(row.default_gst_percentage, 0),
-
-    created_at: typeof row.created_at === "string" ? row.created_at : undefined,
-    updated_at: typeof row.updated_at === "string" ? row.updated_at : undefined,
+    ...(company as Company),
+    id: id as number,
+    created_at: created_at as string | undefined,
+    updated_at: updated_at as string | undefined,
   };
 }
 

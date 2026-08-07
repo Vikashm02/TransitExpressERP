@@ -1,11 +1,10 @@
 import { supabase } from "@/lib/supabase";
+import { objectToCamelCase, objectToSnakeCase, toSnakeCase } from "@/lib/caseMapping";
 import type { Vehicle } from "@/components/vehicle/vehicle.schema";
 
-/**
- * A persisted vehicle row. `gpsDeviceId` is reserved for future GPS
+/** A persisted vehicle row. `gpsDeviceId` is reserved for future GPS
  * integration — it has no UI and is never written by this service, but is
- * surfaced here so reads stay forward-compatible once the column exists.
- */
+ * surfaced here so reads stay forward-compatible once the column exists. */
 export interface VehicleRecord extends Vehicle {
   id: number;
   gpsDeviceId?: string | null;
@@ -14,41 +13,48 @@ export interface VehicleRecord extends Vehicle {
 
 const TABLE = "vehicles";
 
+/** Compliance expiry columns are nullable in the database; the app's `Vehicle`
+ * type models them as plain (possibly empty) strings. */
+const EXPIRY_FIELDS = [
+  "insuranceExpiry",
+  "permitExpiry",
+  "fitnessExpiry",
+  "pucExpiry",
+] as const;
+
 function emptyToNull(value: string): string | null {
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
 }
 
 function toRow(values: Vehicle) {
+  const row = objectToSnakeCase(values);
+
+  for (const field of EXPIRY_FIELDS) {
+    row[toSnakeCase(field)] = emptyToNull(values[field]);
+  }
+
+  return row;
+}
+
+/** Supabase returns raw snake_case columns; `id`/`created_at`/`gps_device_id`
+ * pass through explicitly since they live outside the `Vehicle` domain type. */
+function fromRow(row: Record<string, unknown>): VehicleRecord {
+  const { id, created_at, gps_device_id, ...rest } = row;
+
+  const vehicle = objectToCamelCase<Vehicle>(rest);
+
+  for (const field of EXPIRY_FIELDS) {
+    if (vehicle[field] == null) {
+      (vehicle as Record<string, unknown>)[field] = "";
+    }
+  }
+
   return {
-    vehicle_number: values.vehicleNumber,
-    rc_number: values.rcNumber,
-    vehicle_type: values.vehicleType,
-    owner_name: values.ownerName,
-    owner_type: values.ownerType,
-    mobile: values.mobile,
-
-    capacity: values.capacity,
-    capacity_unit: values.capacityUnit,
-
-    hire_rate: values.hireRate,
-    hire_type: values.hireType,
-
-    chassis_number: values.chassisNumber,
-    engine_number: values.engineNumber,
-
-    insurance_number: values.insuranceNumber,
-    insurance_expiry: emptyToNull(values.insuranceExpiry),
-    permit_number: values.permitNumber,
-    permit_expiry: emptyToNull(values.permitExpiry),
-    fitness_number: values.fitnessNumber,
-    fitness_expiry: emptyToNull(values.fitnessExpiry),
-    puc_number: values.pucNumber,
-    puc_expiry: emptyToNull(values.pucExpiry),
-
-    remarks: values.remarks,
-
-    status: values.status,
+    ...vehicle,
+    id: id as number,
+    created_at: created_at as string | undefined,
+    gpsDeviceId: gps_device_id as string | null | undefined,
   };
 }
 
@@ -64,7 +70,7 @@ export async function getVehicles(): Promise<VehicleRecord[]> {
 
   if (error) throw error;
 
-  return (data ?? []) as VehicleRecord[];
+  return (data ?? []).map(fromRow);
 }
 
 /* ==========================================================
@@ -80,7 +86,7 @@ export async function getVehicle(id: number): Promise<VehicleRecord> {
 
   if (error) throw error;
 
-  return data as VehicleRecord;
+  return fromRow(data);
 }
 
 /* ==========================================================
@@ -96,7 +102,7 @@ export async function createVehicle(values: Vehicle): Promise<VehicleRecord> {
 
   if (error) throw error;
 
-  return data as VehicleRecord;
+  return fromRow(data);
 }
 
 /* ==========================================================
@@ -116,7 +122,7 @@ export async function updateVehicle(
 
   if (error) throw error;
 
-  return data as VehicleRecord;
+  return fromRow(data);
 }
 
 /* ==========================================================

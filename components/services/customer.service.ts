@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { objectToCamelCase, objectToSnakeCase } from "@/lib/caseMapping";
 import type { Customer } from "@/components/customer/customer.schema";
 
 /** A persisted customer row, as returned by Supabase (adds server-owned columns). */
@@ -8,6 +9,17 @@ export interface CustomerRecord extends Customer {
 }
 
 const TABLE = "customers";
+
+/** Supabase returns raw snake_case columns; `id`/`created_at` pass through unchanged. */
+function fromRow(row: Record<string, unknown>): CustomerRecord {
+  const { id, created_at, ...rest } = row;
+
+  return {
+    id: id as number,
+    created_at: created_at as string | undefined,
+    ...objectToCamelCase<Customer>(rest),
+  };
+}
 
 /**
  * Business codes follow the same "C001", "C002", ... convention the module
@@ -37,7 +49,7 @@ export async function getCustomers(): Promise<CustomerRecord[]> {
 
   if (error) throw error;
 
-  return (data ?? []) as CustomerRecord[];
+  return (data ?? []).map(fromRow);
 }
 
 /* ==========================================================
@@ -53,7 +65,7 @@ export async function getCustomer(id: number): Promise<CustomerRecord> {
 
   if (error) throw error;
 
-  return data as CustomerRecord;
+  return fromRow(data);
 }
 
 /* ==========================================================
@@ -65,22 +77,13 @@ export async function createCustomer(values: Customer): Promise<CustomerRecord> 
 
   const { data, error } = await supabase
     .from(TABLE)
-    .insert({
-      code,
-      name: values.name,
-      gst: values.gst,
-      mobile: values.mobile,
-      email: values.email,
-      city: values.city,
-      address: values.address,
-      status: values.status,
-    })
+    .insert(objectToSnakeCase({ ...values, code }))
     .select()
     .single();
 
   if (error) throw error;
 
-  return data as CustomerRecord;
+  return fromRow(data);
 }
 
 /* ==========================================================
@@ -91,24 +94,19 @@ export async function updateCustomer(
   id: number,
   values: Customer
 ): Promise<CustomerRecord> {
+  // `code` is immutable after creation — never part of the update payload.
+  const { code: _code, ...updatable } = values;
+
   const { data, error } = await supabase
     .from(TABLE)
-    .update({
-      name: values.name,
-      gst: values.gst,
-      mobile: values.mobile,
-      email: values.email,
-      city: values.city,
-      address: values.address,
-      status: values.status,
-    })
+    .update(objectToSnakeCase(updatable))
     .eq("id", id)
     .select()
     .single();
 
   if (error) throw error;
 
-  return data as CustomerRecord;
+  return fromRow(data);
 }
 
 /* ==========================================================
