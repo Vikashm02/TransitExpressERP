@@ -5,12 +5,14 @@ interface PageHeaderProps {
   title: string;
   buttonText: string;
   onAdd?: () => void;
+  disabled?: boolean;
 }
 
 export default function PageHeader({
   title,
   buttonText,
   onAdd,
+  disabled,
 }: PageHeaderProps) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -23,7 +25,10 @@ export default function PageHeader({
         </p>
       </div>
 
-      <Button onClick={onAdd}>
+      <Button
+        onClick={onAdd}
+        disabled={disabled}
+      >
         <Plus className="mr-2 h-4 w-4" />
         {buttonText}
       </Button>
