@@ -13,21 +13,18 @@ export default function PageHeader({
   onAdd,
 }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between mb-6">
+    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {title}
         </h1>
-        <p className="text-sm text-slate-500 mt-1">
+        <p className="mt-1 text-sm text-muted-foreground">
           Manage your {title.toLowerCase()} efficiently.
         </p>
       </div>
 
-      <Button
-        onClick={onAdd}
-        className="bg-[#0B3A67] hover:bg-[#0F4A87]"
-      >
-        <Plus className="w-4 h-4 mr-2" />
+      <Button onClick={onAdd}>
+        <Plus className="mr-2 h-4 w-4" />
         {buttonText}
       </Button>
     </div>

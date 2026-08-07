@@ -10,29 +10,13 @@ export default function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        backgroundColor: "#F5F7FA",
-      }}
-    >
+    <div className="flex min-h-screen bg-muted/30">
       <Sidebar />
 
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header />
 
-        <main
-          style={{
-            padding: "30px",
-          }}
-        >
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>

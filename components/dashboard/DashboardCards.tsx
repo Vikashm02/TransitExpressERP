@@ -1,59 +1,45 @@
+import {
+  FileText,
+  ClipboardCheck,
+  ReceiptIndianRupee,
+  Wallet,
+} from "lucide-react";
+
+import StatCard from "@/components/ui/StatCard";
+
 const cards = [
   {
     title: "Total LRs",
     value: "0",
+    icon: FileText,
   },
   {
     title: "Pending POD",
     value: "0",
+    icon: ClipboardCheck,
   },
   {
     title: "Pending Billing",
     value: "₹0",
+    icon: ReceiptIndianRupee,
   },
   {
     title: "Outstanding",
     value: "₹0",
+    icon: Wallet,
   },
 ];
 
 export default function DashboardCards() {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: "20px",
-      }}
-    >
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
-        <div
+        <StatCard
           key={card.title}
-          style={{
-            background: "#ffffff",
-            padding: "25px",
-            borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-          }}
-        >
-          <h4
-            style={{
-              margin: 0,
-              color: "#666",
-            }}
-          >
-            {card.title}
-          </h4>
-
-          <h1
-            style={{
-              color: "#0B3A67",
-              marginTop: "15px",
-            }}
-          >
-            {card.value}
-          </h1>
-        </div>
+          title={card.title}
+          value={card.value}
+          icon={card.icon}
+        />
       ))}
     </div>
   );
