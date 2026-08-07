@@ -44,6 +44,14 @@ const STATUS_STYLES: Record<string, string> = {
   rejected: "bg-destructive/10 text-destructive",
   approved: "bg-success/10 text-success",
   completed: "bg-success/10 text-success",
+
+  // Vehicle master lifecycle / compliance aliases
+  "under maintenance": "bg-warning/10 text-warning",
+  sold: "bg-muted text-muted-foreground",
+  valid: "bg-success/10 text-success",
+  expiring: "bg-warning/10 text-warning",
+  expired: "bg-destructive/10 text-destructive",
+  missing: "bg-muted text-muted-foreground",
 };
 
 const DEFAULT_STYLE = "bg-muted text-muted-foreground";

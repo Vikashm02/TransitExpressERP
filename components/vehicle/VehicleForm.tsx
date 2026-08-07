@@ -1,108 +1,305 @@
 "use client";
 
-import { Vehicle } from "./types";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import FormField from "@/components/ui/FormField";
+import FormSelect from "@/components/ui/FormSelect";
+import FormDatePicker from "@/components/ui/FormDatePicker";
+import FormSection from "@/components/ui/FormSection";
+import {
+  CAPACITY_UNIT_OPTIONS,
+  HIRE_TYPE_OPTIONS,
+  OWNER_TYPE_OPTIONS,
+  VEHICLE_STATUS_OPTIONS,
+  VEHICLE_TYPE_OPTIONS,
+  type Vehicle,
+} from "./vehicle.schema";
+import type { FieldErrors } from "@/lib/validation";
 
 interface VehicleFormProps {
   vehicle: Vehicle;
+  errors?: FieldErrors<Vehicle>;
   onChange: (vehicle: Vehicle) => void;
-  onSave: () => void;
-  onCancel: () => void;
+}
+
+function toOptions(values: readonly string[]) {
+  return values.map((value) => ({ label: value, value }));
 }
 
 export default function VehicleForm({
   vehicle,
+  errors = {},
   onChange,
-  onSave,
-  onCancel,
 }: VehicleFormProps) {
+  function update<K extends keyof Vehicle>(key: K, value: Vehicle[K]) {
+    onChange({ ...vehicle, [key]: value });
+  }
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      <FormSection title="Vehicle Identity">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormField
+            label="Vehicle Number"
+            htmlFor="vehicle-number"
+            required
+            error={errors.vehicleNumber}
+          >
+            <Input
+              id="vehicle-number"
+              placeholder="MH12AB1234"
+              value={vehicle.vehicleNumber}
+              onChange={(e) => update("vehicleNumber", e.target.value.toUpperCase())}
+            />
+          </FormField>
 
-      <Input
-        placeholder="Vehicle Number"
-        value={vehicle.vehicleNumber}
-        onChange={(e) =>
-          onChange({
-            ...vehicle,
-            vehicleNumber: e.target.value,
-          })
-        }
-      />
+          <FormField
+            label="RC Number"
+            htmlFor="vehicle-rc-number"
+            error={errors.rcNumber}
+          >
+            <Input
+              id="vehicle-rc-number"
+              placeholder="RC Number"
+              value={vehicle.rcNumber}
+              onChange={(e) => update("rcNumber", e.target.value)}
+            />
+          </FormField>
 
-      <Input
-        placeholder="Vehicle Type"
-        value={vehicle.vehicleType}
-        onChange={(e) =>
-          onChange({
-            ...vehicle,
-            vehicleType: e.target.value,
-          })
-        }
-      />
+          <FormSelect
+            label="Vehicle Type"
+            id="vehicle-type"
+            required
+            error={errors.vehicleType}
+            value={vehicle.vehicleType}
+            onValueChange={(value) => update("vehicleType", value)}
+            options={toOptions(VEHICLE_TYPE_OPTIONS)}
+          />
 
-      <Input
-        placeholder="Owner Name"
-        value={vehicle.ownerName}
-        onChange={(e) =>
-          onChange({
-            ...vehicle,
-            ownerName: e.target.value,
-          })
-        }
-      />
+          <FormSelect
+            label="Owner Type"
+            id="vehicle-owner-type"
+            required
+            value={vehicle.ownerType}
+            onValueChange={(value) => update("ownerType", value as Vehicle["ownerType"])}
+            options={toOptions(OWNER_TYPE_OPTIONS)}
+          />
 
-      <Input
-        placeholder="Mobile Number"
-        value={vehicle.mobile}
-        onChange={(e) =>
-          onChange({
-            ...vehicle,
-            mobile: e.target.value,
-          })
-        }
-      />
+          <FormField
+            label="Owner Name"
+            htmlFor="vehicle-owner-name"
+            required
+            error={errors.ownerName}
+          >
+            <Input
+              id="vehicle-owner-name"
+              placeholder="Owner Name"
+              value={vehicle.ownerName}
+              onChange={(e) => update("ownerName", e.target.value)}
+            />
+          </FormField>
 
-      <Input
-        placeholder="RC Number"
-        value={vehicle.rcNumber}
-        onChange={(e) =>
-          onChange({
-            ...vehicle,
-            rcNumber: e.target.value,
-          })
-        }
-      />
+          <FormField
+            label="Mobile Number"
+            htmlFor="vehicle-mobile"
+            error={errors.mobile}
+          >
+            <Input
+              id="vehicle-mobile"
+              placeholder="Mobile Number"
+              value={vehicle.mobile}
+              onChange={(e) => update("mobile", e.target.value)}
+            />
+          </FormField>
+        </div>
+      </FormSection>
 
-      <Input
-        placeholder="Insurance Number"
-        value={vehicle.insuranceNumber}
-        onChange={(e) =>
-          onChange({
-            ...vehicle,
-            insuranceNumber: e.target.value,
-          })
-        }
-      />
+      <FormSection title="Capacity">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormField
+            label="Capacity"
+            htmlFor="vehicle-capacity"
+            error={errors.capacity}
+          >
+            <Input
+              id="vehicle-capacity"
+              type="number"
+              min={0}
+              placeholder="0"
+              value={vehicle.capacity}
+              onChange={(e) => update("capacity", Number(e.target.value))}
+            />
+          </FormField>
 
-      <div className="flex justify-end gap-3 pt-4">
+          <FormSelect
+            label="Capacity Unit"
+            id="vehicle-capacity-unit"
+            value={vehicle.capacityUnit}
+            onValueChange={(value) => update("capacityUnit", value as Vehicle["capacityUnit"])}
+            options={toOptions(CAPACITY_UNIT_OPTIONS)}
+          />
+        </div>
+      </FormSection>
 
-        <Button
-          variant="outline"
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
+      <FormSection title="Financial Information">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormField
+            label="Hire Rate"
+            htmlFor="vehicle-hire-rate"
+            error={errors.hireRate}
+          >
+            <Input
+              id="vehicle-hire-rate"
+              type="number"
+              min={0}
+              placeholder="0"
+              value={vehicle.hireRate}
+              onChange={(e) => update("hireRate", Number(e.target.value))}
+            />
+          </FormField>
 
-        <Button
-          onClick={onSave}
-        >
-          Save Vehicle
-        </Button>
+          <FormSelect
+            label="Hire Type"
+            id="vehicle-hire-type"
+            value={vehicle.hireType}
+            onValueChange={(value) => update("hireType", value as Vehicle["hireType"])}
+            options={toOptions(HIRE_TYPE_OPTIONS)}
+          />
+        </div>
+      </FormSection>
 
-      </div>
+      <FormSection title="Technical Information">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormField
+            label="Chassis Number"
+            htmlFor="vehicle-chassis-number"
+          >
+            <Input
+              id="vehicle-chassis-number"
+              placeholder="Chassis Number"
+              value={vehicle.chassisNumber}
+              onChange={(e) => update("chassisNumber", e.target.value)}
+            />
+          </FormField>
 
+          <FormField
+            label="Engine Number"
+            htmlFor="vehicle-engine-number"
+          >
+            <Input
+              id="vehicle-engine-number"
+              placeholder="Engine Number"
+              value={vehicle.engineNumber}
+              onChange={(e) => update("engineNumber", e.target.value)}
+            />
+          </FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Compliance & Documents">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormField
+            label="Insurance Number"
+            htmlFor="vehicle-insurance-number"
+          >
+            <Input
+              id="vehicle-insurance-number"
+              placeholder="Insurance Number"
+              value={vehicle.insuranceNumber}
+              onChange={(e) => update("insuranceNumber", e.target.value)}
+            />
+          </FormField>
+
+          <FormDatePicker
+            label="Insurance Expiry"
+            id="vehicle-insurance-expiry"
+            value={vehicle.insuranceExpiry}
+            onChange={(value) => update("insuranceExpiry", value)}
+          />
+
+          <FormField
+            label="Permit Number"
+            htmlFor="vehicle-permit-number"
+          >
+            <Input
+              id="vehicle-permit-number"
+              placeholder="Permit Number"
+              value={vehicle.permitNumber}
+              onChange={(e) => update("permitNumber", e.target.value)}
+            />
+          </FormField>
+
+          <FormDatePicker
+            label="Permit Expiry"
+            id="vehicle-permit-expiry"
+            value={vehicle.permitExpiry}
+            onChange={(value) => update("permitExpiry", value)}
+          />
+
+          <FormField
+            label="Fitness Number"
+            htmlFor="vehicle-fitness-number"
+          >
+            <Input
+              id="vehicle-fitness-number"
+              placeholder="Fitness Number"
+              value={vehicle.fitnessNumber}
+              onChange={(e) => update("fitnessNumber", e.target.value)}
+            />
+          </FormField>
+
+          <FormDatePicker
+            label="Fitness Expiry"
+            id="vehicle-fitness-expiry"
+            value={vehicle.fitnessExpiry}
+            onChange={(value) => update("fitnessExpiry", value)}
+          />
+
+          <FormField
+            label="PUC Number"
+            htmlFor="vehicle-puc-number"
+          >
+            <Input
+              id="vehicle-puc-number"
+              placeholder="PUC Number"
+              value={vehicle.pucNumber}
+              onChange={(e) => update("pucNumber", e.target.value)}
+            />
+          </FormField>
+
+          <FormDatePicker
+            label="PUC Expiry"
+            id="vehicle-puc-expiry"
+            value={vehicle.pucExpiry}
+            onChange={(value) => update("pucExpiry", value)}
+          />
+        </div>
+      </FormSection>
+
+      <FormSection title="Additional Information">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <FormSelect
+            label="Status"
+            id="vehicle-status"
+            value={vehicle.status}
+            onValueChange={(value) => update("status", value as Vehicle["status"])}
+            options={toOptions(VEHICLE_STATUS_OPTIONS)}
+          />
+
+          <FormField
+            label="Remarks"
+            htmlFor="vehicle-remarks"
+            className="sm:col-span-2"
+          >
+            <Textarea
+              id="vehicle-remarks"
+              placeholder="Remarks"
+              value={vehicle.remarks}
+              onChange={(e) => update("remarks", e.target.value)}
+            />
+          </FormField>
+        </div>
+      </FormSection>
     </div>
   );
 }
