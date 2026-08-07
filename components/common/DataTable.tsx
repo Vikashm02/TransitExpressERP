@@ -1,5 +1,15 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Inbox,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
+
 import {
   Table,
   TableBody,
@@ -8,72 +18,355 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button, type buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { cn } from "@/lib/utils";
+import type { VariantProps } from "class-variance-authority";
 
-interface Column {
+export type DataTableSortDirection = "asc" | "desc";
+type ButtonVariant = VariantProps<typeof buttonVariants>["variant"];
+
+export interface DataTableColumn<T> {
   key: string;
+  header: React.ReactNode;
+  /** Full control over how the cell renders. Takes priority over `type`. */
+  render?: (row: T, index: number) => React.ReactNode;
+  /** Shorthand for rendering the raw value through StatusBadge. */
+  type?: "text" | "status";
+  sortable?: boolean;
+  /** Custom value extractor used for sorting, when the raw cell value isn't sortable as-is. */
+  sortAccessor?: (row: T) => string | number | Date;
+  align?: "left" | "center" | "right";
+  width?: string;
+  className?: string;
+  headerClassName?: string;
+}
+
+export interface DataTableAction<T> {
   label: string;
-  render?: (row: any) => React.ReactNode;
+  icon?: LucideIcon;
+  onClick: (row: T) => void;
+  variant?: ButtonVariant;
+  hidden?: (row: T) => boolean;
 }
 
-interface DataTableProps {
-  columns: Column[];
-  data: any[];
+interface DataTableProps<T> {
+  columns: DataTableColumn<T>[];
+  data: T[];
+  rowKey?: (row: T, index: number) => string | number;
+
+  loading?: boolean;
+  loadingRows?: number;
+
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyIcon?: LucideIcon;
+
+  /** Right-aligned per-row action buttons (Edit / Delete / etc). */
+  actions?: DataTableAction<T>[];
+
+  /** Optional built-in search box, for standalone usage (e.g. lookup dialogs)
+   *  that don't already sit below a `SearchToolbar`. */
+  searchable?: boolean;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
+
+  /** Enables header-click sorting. */
+  sortable?: boolean;
+  defaultSort?: { key: string; direction: DataTableSortDirection };
+  /** Controlled sorting (e.g. server-side) — provide together with `onSortChange`. */
+  sortKey?: string;
+  sortDirection?: DataTableSortDirection;
+  onSortChange?: (key: string, direction: DataTableSortDirection) => void;
+
+  /** Uncontrolled client-side pagination — DataTable slices `data` itself. */
+  pageSize?: number;
+  /** Controlled/server-driven pagination — `data` is assumed to already be the current page. */
+  page?: number;
+  onPageChange?: (page: number) => void;
+  totalItems?: number;
+
+  stickyHeader?: boolean;
+  /** Enables an internally scrollable body (pairs well with `stickyHeader`). */
+  maxHeight?: string;
+  className?: string;
 }
 
-export default function DataTable({
+const DEFAULT_LOADING_ROWS = 5;
+
+export default function DataTable<T extends Record<string, any>>({
   columns,
   data,
-}: DataTableProps) {
+  rowKey,
+  loading = false,
+  loadingRows = DEFAULT_LOADING_ROWS,
+  emptyTitle = "No records found",
+  emptyDescription,
+  emptyIcon: EmptyIcon = Inbox,
+  actions,
+  searchable = false,
+  searchValue = "",
+  onSearchChange,
+  searchPlaceholder = "Search...",
+  sortable = false,
+  defaultSort,
+  sortKey: controlledSortKey,
+  sortDirection: controlledSortDirection,
+  onSortChange,
+  pageSize,
+  page: controlledPage,
+  onPageChange,
+  totalItems,
+  stickyHeader = true,
+  maxHeight,
+  className,
+}: DataTableProps<T>) {
+  const [internalSort, setInternalSort] = useState<
+    { key: string; direction: DataTableSortDirection } | undefined
+  >(defaultSort);
+  const [internalPage, setInternalPage] = useState(1);
+
+  const isSortControlled = controlledSortKey !== undefined && onSortChange !== undefined;
+  const activeSort = isSortControlled
+    ? controlledSortKey
+      ? { key: controlledSortKey, direction: controlledSortDirection ?? "asc" }
+      : undefined
+    : internalSort;
+
+  const isPageControlled = controlledPage !== undefined && onPageChange !== undefined;
+  const activePage = isPageControlled ? (controlledPage as number) : internalPage;
+
+  function handleSortClick(column: DataTableColumn<T>) {
+    if (!column.sortable) return;
+
+    const nextDirection: DataTableSortDirection =
+      activeSort?.key === column.key && activeSort.direction === "asc" ? "desc" : "asc";
+
+    if (isSortControlled) {
+      onSortChange!(column.key, nextDirection);
+    } else {
+      setInternalSort({ key: column.key, direction: nextDirection });
+    }
+  }
+
+  const sortedData = useMemo(() => {
+    if (isSortControlled || !activeSort) return data;
+
+    const column = columns.find((c) => c.key === activeSort.key);
+    const accessor = column?.sortAccessor ?? ((row: T) => row[activeSort.key]);
+
+    return [...data].sort((a, b) => {
+      const valueA = accessor(a);
+      const valueB = accessor(b);
+
+      if (valueA == null) return 1;
+      if (valueB == null) return -1;
+
+      if (valueA > valueB) return activeSort.direction === "asc" ? 1 : -1;
+      if (valueA < valueB) return activeSort.direction === "asc" ? -1 : 1;
+      return 0;
+    });
+  }, [data, activeSort, isSortControlled, columns]);
+
+  const totalCount = totalItems ?? sortedData.length;
+  const totalPages = pageSize ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1;
+
+  const pagedData = useMemo(() => {
+    if (isPageControlled || !pageSize) return sortedData;
+
+    const start = (activePage - 1) * pageSize;
+    return sortedData.slice(start, start + pageSize);
+  }, [sortedData, activePage, pageSize, isPageControlled]);
+
+  function goToPage(next: number) {
+    const clamped = Math.min(Math.max(next, 1), totalPages);
+
+    if (isPageControlled) {
+      onPageChange!(clamped);
+    } else {
+      setInternalPage(clamped);
+    }
+  }
+
+  const showPagination = Boolean(pageSize || (isPageControlled && totalItems));
+  const hasActions = Boolean(actions && actions.length > 0);
+  const columnCount = columns.length + (hasActions ? 1 : 0);
+
   return (
-    <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-      <Table>
+    <div className={cn("overflow-hidden rounded-xl border bg-card shadow-sm", className)}>
+      {searchable && (
+        <div className="border-b p-3">
+          <div className="relative max-w-sm">
+            <Search className="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 
-        <TableHeader>
+            <Input
+              className="pl-8"
+              value={searchValue}
+              placeholder={searchPlaceholder}
+              onChange={(e) => onSearchChange?.(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
 
-          <TableRow>
+      <div
+        className="overflow-auto"
+        style={maxHeight ? { maxHeight } : undefined}
+      >
+        <Table>
+          <TableHeader>
+            <TableRow className={stickyHeader ? "sticky top-0 z-10 bg-card" : undefined}>
+              {columns.map((column) => {
+                const isActive = activeSort?.key === column.key;
+                const canSort = sortable && column.sortable;
 
-            {columns.map((column) => (
-              <TableHead key={column.key}>
-                {column.label}
-              </TableHead>
-            ))}
+                return (
+                  <TableHead
+                    key={column.key}
+                    style={column.width ? { width: column.width } : undefined}
+                    className={cn(
+                      column.align === "right" && "text-right",
+                      column.align === "center" && "text-center",
+                      canSort && "cursor-pointer select-none hover:text-foreground",
+                      column.headerClassName
+                    )}
+                    onClick={() => canSort && handleSortClick(column)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {column.header}
 
-          </TableRow>
+                      {canSort &&
+                        (isActive ? (
+                          activeSort!.direction === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                        ))}
+                    </span>
+                  </TableHead>
+                );
+              })}
 
-        </TableHeader>
-
-        <TableBody>
-
-          {data.length === 0 ? (
-            <TableRow>
-
-              <TableCell
-                colSpan={columns.length}
-                className="py-10 text-center text-slate-500"
-              >
-                No records found.
-              </TableCell>
-
+              {hasActions && (
+                <TableHead className="text-right">
+                  Actions
+                </TableHead>
+              )}
             </TableRow>
-          ) : (
-            data.map((row, index) => (
-              <TableRow key={index}>
+          </TableHeader>
 
-                {columns.map((column) => (
-                  <TableCell key={column.key}>
-                    {column.render
-                      ? column.render(row)
-                      : row[column.key]}
-                  </TableCell>
-                ))}
-
+          <TableBody>
+            {loading ? (
+              Array.from({ length: loadingRows }).map((_, rowIndex) => (
+                <TableRow key={`skeleton-${rowIndex}`}>
+                  {Array.from({ length: Math.max(columnCount, 1) }).map((__, cellIndex) => (
+                    <TableCell key={cellIndex}>
+                      <div className="h-4 w-full max-w-32 animate-pulse rounded bg-muted" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : pagedData.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={Math.max(columnCount, 1)}
+                  className="py-14"
+                >
+                  <div className="flex flex-col items-center justify-center gap-2 text-center">
+                    <EmptyIcon className="h-8 w-8 text-muted-foreground/50" />
+                    <p className="text-sm font-medium text-foreground">
+                      {emptyTitle}
+                    </p>
+                    {emptyDescription && (
+                      <p className="text-sm text-muted-foreground">
+                        {emptyDescription}
+                      </p>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
-            ))
-          )}
+            ) : (
+              pagedData.map((row, index) => (
+                <TableRow key={rowKey ? rowKey(row, index) : index}>
+                  {columns.map((column) => (
+                    <TableCell
+                      key={column.key}
+                      className={cn(
+                        column.align === "right" && "text-right",
+                        column.align === "center" && "text-center",
+                        column.className
+                      )}
+                    >
+                      {column.render
+                        ? column.render(row, index)
+                        : column.type === "status"
+                        ? <StatusBadge status={String(row[column.key] ?? "")} />
+                        : row[column.key]}
+                    </TableCell>
+                  ))}
 
-        </TableBody>
+                  {hasActions && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        {actions!.map((action) => {
+                          if (action.hidden?.(row)) return null;
 
-      </Table>
+                          const ActionIcon = action.icon;
+
+                          return (
+                            <Button
+                              key={action.label}
+                              size="sm"
+                              variant={action.variant ?? "outline"}
+                              onClick={() => action.onClick(row)}
+                            >
+                              {ActionIcon && <ActionIcon className="h-3.5 w-3.5" />}
+                              {action.label}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {showPagination && !loading && pagedData.length > 0 && (
+        <div className="flex flex-col items-center justify-between gap-3 border-t px-4 py-3 sm:flex-row">
+          <p className="text-sm text-muted-foreground">
+            Page {activePage} of {totalPages} &middot; {totalCount} total
+          </p>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={activePage <= 1}
+              onClick={() => goToPage(activePage - 1)}
+            >
+              Previous
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={activePage >= totalPages}
+              onClick={() => goToPage(activePage + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
