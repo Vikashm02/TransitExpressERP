@@ -1,10 +1,10 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import CustomerTable from "@/components/customer/CustomerTable";
+import CustomerListPage from "@/components/customer/CustomerListPage";
 
 export default function CustomersPage() {
   return (
     <DashboardLayout>
-      <CustomerTable />
+      <CustomerListPage />
     </DashboardLayout>
   );
 }

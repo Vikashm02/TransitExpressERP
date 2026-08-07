@@ -1,20 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-
+import FormDialog from "@/components/ui/FormDialog";
+import { Button } from "@/components/ui/button";
 import CustomerForm from "./CustomerForm";
-import { Customer } from "./types";
+import { validateCustomer, type Customer } from "./customer.schema";
+import type { FieldErrors } from "@/lib/validation";
+import type { CustomerRecord } from "@/components/services/customer.service";
 
 interface CustomerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Pass a record to edit; omit/null to add a new customer. */
+  customer?: CustomerRecord | null;
+  /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
+  loading?: boolean;
+  onSubmit: (values: Customer) => void | Promise<void>;
 }
 
 const emptyCustomer: Customer = {
@@ -31,43 +33,74 @@ const emptyCustomer: Customer = {
 export default function CustomerDialog({
   open,
   onOpenChange,
+  customer,
+  loading = false,
+  onSubmit,
 }: CustomerDialogProps) {
-  const [customer, setCustomer] =
-    useState<Customer>(emptyCustomer);
+  const [values, setValues] = useState<Customer>(emptyCustomer);
+  const [errors, setErrors] = useState<FieldErrors<Customer>>({});
+
+  const isEditing = Boolean(customer);
+
+  useEffect(() => {
+    if (open) {
+      setValues(customer ? { ...emptyCustomer, ...customer } : emptyCustomer);
+      setErrors({});
+    }
+  }, [open, customer]);
 
   function handleSave() {
-    console.log(customer);
+    const fieldErrors = validateCustomer(values);
 
-    onOpenChange(false);
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors(fieldErrors);
+      return;
+    }
 
-    setCustomer(emptyCustomer);
+    setErrors({});
+    onSubmit(values);
   }
 
   function handleCancel() {
     onOpenChange(false);
-
-    setCustomer(emptyCustomer);
   }
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-    >
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>
-            Add Customer
-          </DialogTitle>
-        </DialogHeader>
+      title={isEditing ? "Edit Customer" : "Add Customer"}
+      description={
+        isEditing
+          ? "Update the customer details below."
+          : "Enter the customer details below."
+      }
+      loading={loading}
+      loadingText="Saving customer..."
+      footer={
+        <>
+          <Button
+            variant="outline"
+            onClick={handleCancel}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
 
-        <CustomerForm
-          customer={customer}
-          onChange={setCustomer}
-          onSave={handleSave}
-          onCancel={handleCancel}
-        />
-      </DialogContent>
-    </Dialog>
+          <Button
+            onClick={handleSave}
+            disabled={loading}
+          >
+            {loading ? "Saving..." : "Save Customer"}
+          </Button>
+        </>
+      }
+    >
+      <CustomerForm
+        customer={values}
+        errors={errors}
+        onChange={setValues}
+      />
+    </FormDialog>
   );
 }
