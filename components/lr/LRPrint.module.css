@@ -1,0 +1,493 @@
+/* ==========================================================
+   LR Print — replicates the approved LR book format (see
+   /tmp/lr-print-ref/LR-19126.pdf.png used as the design reference).
+   Colors/borders are close visual approximations of the printed
+   stationery (exact brand hex values were not available).
+========================================================== */
+
+.page {
+  --lr-red: #c0392b;
+  --lr-blue: #1f3864;
+  --lr-border-salmon: #d38b6d;
+  --lr-border-blue: #4a6fa5;
+
+  width: 297mm;
+  min-height: 200mm;
+  margin: 0 auto;
+  padding: 6mm 8mm;
+  background: #fff;
+  color: #111;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8.5px;
+  line-height: 1.25;
+  box-sizing: border-box;
+}
+
+.page * {
+  box-sizing: border-box;
+}
+
+/* ---------------- HEADER (3-column grid) ---------------- */
+
+.headerGrid {
+  display: grid;
+  grid-template-columns: 25% 42% 33%;
+  gap: 0 10px;
+  align-items: start;
+}
+
+.headerLeft,
+.headerCenter,
+.headerRight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gstinLine {
+  color: var(--lr-red);
+  font-weight: 700;
+  font-size: 9px;
+}
+
+.boxed {
+  border: 1px solid var(--lr-border-salmon);
+  padding: 4px 6px;
+}
+
+.boxedBlue {
+  border: 1px solid var(--lr-border-blue);
+  padding: 4px 6px;
+}
+
+.sectionHeading {
+  text-align: center;
+  font-weight: 700;
+  text-decoration: underline;
+  margin-bottom: 2px;
+}
+
+.redHeading {
+  composes: sectionHeading;
+  color: var(--lr-red);
+}
+
+.blueHeading {
+  composes: sectionHeading;
+  color: var(--lr-blue);
+}
+
+.blueText {
+  color: var(--lr-blue);
+}
+
+.deliveryOfficeLabel {
+  color: var(--lr-blue);
+  font-weight: 700;
+}
+
+.deliveryOfficeBox {
+  border: 1px solid var(--lr-border-salmon);
+  min-height: 30px;
+}
+
+.consignmentNoteBlock {
+  border-top: 1px solid var(--lr-red);
+  border-bottom: 1px solid var(--lr-red);
+  padding: 2px 0;
+  text-align: center;
+}
+
+.consignmentNoteTitle {
+  color: var(--lr-red);
+  font-weight: 700;
+  font-style: italic;
+  font-size: 10px;
+}
+
+.lrNoLine {
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.lrDateLine {
+  margin-top: 2px;
+}
+
+/* Header center */
+
+.jurisdictionLine {
+  text-align: center;
+  color: var(--lr-blue);
+  font-weight: 700;
+  font-size: 8px;
+}
+
+.companyBrand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.logoImg {
+  height: 34px;
+  width: auto;
+  object-fit: contain;
+}
+
+.logoPlaceholder {
+  height: 34px;
+  width: 34px;
+  border: 1px dashed #999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 6px;
+  color: #999;
+  text-align: center;
+}
+
+.companyName {
+  color: var(--lr-red);
+  font-weight: 800;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.companyTagline {
+  text-align: center;
+  color: var(--lr-blue);
+  font-style: italic;
+  font-size: 8px;
+}
+
+.companySubtitle {
+  text-align: center;
+  color: var(--lr-blue);
+  font-weight: 700;
+  font-size: 8.5px;
+}
+
+.companyAddressLine {
+  text-align: center;
+  color: var(--lr-blue);
+  font-size: 7.5px;
+}
+
+.companyCellLine {
+  text-align: center;
+  color: var(--lr-red);
+  font-weight: 700;
+  font-size: 8px;
+}
+
+.ownerRiskHeading {
+  text-align: center;
+  color: var(--lr-blue);
+  font-weight: 700;
+  border-bottom: 1px solid var(--lr-blue);
+  padding-bottom: 2px;
+  margin-top: 4px;
+}
+
+.insuranceHeading {
+  text-align: center;
+  color: var(--lr-blue);
+  font-weight: 700;
+}
+
+.insuranceBox {
+  border: 1px solid var(--lr-border-blue);
+  padding: 4px 6px;
+  color: var(--lr-blue);
+}
+
+.insuranceStatement {
+  text-align: center;
+  margin-bottom: 3px;
+}
+
+.insuranceFieldRow {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px dotted var(--lr-border-blue);
+  padding-top: 2px;
+  margin-top: 2px;
+}
+
+/* Header right */
+
+.demurrageText {
+  color: var(--lr-blue);
+  text-align: right;
+  font-size: 7.5px;
+}
+
+.noticeBox {
+  border: 1px solid var(--lr-border-blue);
+  padding: 4px 6px;
+  color: var(--lr-blue);
+}
+
+.noticeHeading {
+  text-align: center;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.noticeBody {
+  font-size: 7px;
+}
+
+.gstPayableHeading {
+  text-align: center;
+  color: var(--lr-blue);
+  font-weight: 700;
+}
+
+.gstPayableValue {
+  text-align: center;
+  color: var(--lr-blue);
+}
+
+.driverBox {
+  border: 1px solid var(--lr-border-blue);
+  color: var(--lr-blue);
+}
+
+.driverRow {
+  display: flex;
+  border-bottom: 1px solid var(--lr-border-blue);
+  padding: 2px 6px;
+}
+
+.driverRow:last-child {
+  border-bottom: none;
+}
+
+.driverRowLabel {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* ---------------- CONSIGNOR / CONSIGNEE ---------------- */
+
+.partiesSection {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: auto minmax(200px, 400px) auto 1fr;
+  column-gap: 6px;
+  row-gap: 2px;
+}
+
+.partyLabel {
+  color: var(--lr-red);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.partyValue {
+  font-weight: 700;
+}
+
+.partyGstLabel {
+  color: #111;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.partyGstValue {
+  min-width: 90px;
+  border-bottom: 1px solid #999;
+}
+
+.addressLabel {
+  color: #111;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.addressValue {
+  grid-column: 2 / span 3;
+}
+
+/* ---------------- MAIN TABLE ---------------- */
+
+.mainTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  table-layout: fixed;
+}
+
+.mainTable th,
+.mainTable td {
+  border: 1px solid var(--lr-border-salmon);
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.mainTable th {
+  color: var(--lr-blue);
+  font-weight: 700;
+  text-align: center;
+}
+
+.colPackages {
+  width: 9%;
+}
+
+.colDescription {
+  width: 32%;
+}
+
+.colWeight {
+  width: 12%;
+}
+
+.colRate {
+  width: 9%;
+}
+
+.colFreight {
+  width: 38%;
+}
+
+.referenceBlock {
+  margin-top: 10px;
+  font-size: 8px;
+}
+
+.referenceBlock div {
+  margin-top: 2px;
+}
+
+.freightCell {
+  text-align: center;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* ---------------- FOOTER ---------------- */
+
+.footerRow {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: stretch;
+  min-height: 75px;
+  gap: 10px;
+}
+
+.footerRow > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.valueLabel {
+  color: var(--lr-red);
+  font-weight: 700;
+}
+
+.signatureBlock {
+  text-align: center;
+  align-items: center;
+}
+
+.signatureLabel {
+  color: var(--lr-red);
+  font-weight: 700;
+}
+
+.signatureLine {
+  border-top: 1px solid #444;
+  margin-top: 4px;
+}
+
+.transporterSignatureBlock {
+  align-items: center;
+}
+
+/* Positioned so the signature/stamp images float just above the line
+ * without adding flow height — keeps the "Signature of the..." label at
+ * the same baseline across all three footer columns, matching the
+ * reference where the images overlay the line rather than push it down. */
+.signatureImagesWrap {
+  position: relative;
+  width: 100%;
+}
+
+.signatureImagesRow {
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+}
+
+.signatureImg {
+  height: 30px;
+  width: auto;
+  object-fit: contain;
+}
+
+.stampImg {
+  height: 36px;
+  width: 36px;
+  object-fit: contain;
+}
+
+.stampPlaceholder {
+  height: 36px;
+  width: 36px;
+  border: 1px dashed #999;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 5.5px;
+  color: #999;
+  text-align: center;
+}
+
+/* ---------------- TOOLBAR (screen only) ---------------- */
+
+.toolbar {
+  max-width: 297mm;
+  margin: 0 auto 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------------- PRINT ---------------- */
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 6mm;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  .toolbar {
+    display: none !important;
+  }
+
+  .page {
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    page-break-after: avoid;
+  }
+}

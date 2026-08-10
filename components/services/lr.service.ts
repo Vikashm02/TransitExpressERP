@@ -1,168 +1,219 @@
 import { supabase } from "@/lib/supabase";
-import { LR } from "@/components/lr/types";
+import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
+import { calculateLR } from "@/lib/calculations/lrCalculations";
+import type { LR } from "@/components/lr/lr.schema";
 
-/* ==========================================================
-   CREATE LR
-========================================================== */
+/** A persisted LR row. `billAmount`/`lorryHireAmount`/`profitAmount` are
+ * intentionally NOT part of the editable `LR` schema — they are always
+ * (re)computed from `calculateLR()` at save time so the persisted values
+ * can never drift from the source formulas (see lrCalculations.ts).
+ *
+ * `createdBy`/`assignedTo` are likewise NOT part of the editable `LR`
+ * schema — they are entirely controlled server-side by the
+ * `lrs_enforce_ownership()` trigger (migration 017), never sent by the
+ * client on create/update. `null` on either means "created before the
+ * ownership migration" (visible to admins only — see the matching RLS
+ * policy) rather than an invented owner. Reassigning `assignedTo` for
+ * an existing LR goes through the dedicated `reassignLR()` below, not
+ * `updateLR()`. */
+export interface LRRecord extends LR {
+  id: number;
+  billAmount: number;
+  lorryHireAmount: number;
+  profitAmount: number;
+  createdBy: string | null;
+  assignedTo: string | null;
+  created_at?: string;
+}
 
-export async function saveLR(lr: LR) {
-  const { data, error } = await supabase
-    .from("lrs")
-    .insert({
-      lr_number: lr.lrNumber,
-      lr_date: lr.lrDate,
+const TABLE = "lrs";
 
-      booking_branch: lr.bookingBranch,
+/** `dcDate`/`invoiceDate` are nullable in the database; `lrDate` is always
+ * required by `lrSchema`, so it never needs null-coalescing here. */
+const OPTIONAL_DATE_FIELDS = ["dcDate", "invoiceDate"] as const;
 
-      customer: lr.customer,
+/** Fields whose DB column name the generic `toSnakeCase()`/`toCamelCase()`
+ * in `caseMapping.ts` cannot derive correctly, so they're remapped
+ * explicitly here instead:
+ *   - `from`/`to` have no camelCase boundary, so `toSnakeCase` leaves them
+ *     as `from`/`to` — but the column names are `from_station`/`to_station`.
+ *   - `consignorGST`/`consigneeGST` contain a multi-letter acronym, so
+ *     `toSnakeCase` inserts an underscore before every capital
+ *     (`consignor_g_s_t`) instead of treating `GST` as one unit — but the
+ *     column names are `consignor_gst`/`consignee_gst`.
+ * Keyed by the (incorrect) key `objectToSnakeCase` actually produces, so
+ * `toRow` can look each one up and rename it in place. */
+const COLUMN_RENAMES: Record<string, string> = {
+  from: "from_station",
+  to: "to_station",
+  consignor_g_s_t: "consignor_gst",
+  consignee_g_s_t: "consignee_gst",
+};
 
-      billing_party: lr.billingParty,
+/** Inverse of `COLUMN_RENAMES`, keyed by the real DB column name, so
+ * `fromRow` can rename each one back to the key `objectToCamelCase` needs
+ * to see in order to reconstruct `from`/`to`/`consignorGST`/`consigneeGST`. */
+const REVERSE_COLUMN_RENAMES: Record<string, string> = Object.fromEntries(
+  Object.entries(COLUMN_RENAMES).map(([alias, dbColumn]) => [dbColumn, alias])
+);
 
-      consignor: lr.consignor,
-      consignor_gst: lr.consignorGST,
-      consignor_address: lr.consignorAddress,
+function emptyToNull(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
 
-      consignee: lr.consignee,
-      consignee_gst: lr.consigneeGST,
-      consignee_address: lr.consigneeAddress,
+function toRow(values: LR) {
+  const row = objectToSnakeCase(values);
 
-      vehicle_number: lr.vehicleNumber,
-      vehicle_type: lr.vehicleType,
+  for (const [wrongKey, dbColumn] of Object.entries(COLUMN_RENAMES)) {
+    if (wrongKey in row) {
+      row[dbColumn] = row[wrongKey];
+      delete row[wrongKey];
+    }
+  }
 
-      transporter: lr.transporter,
+  for (const field of OPTIONAL_DATE_FIELDS) {
+    row[toSnakeCase(field)] = emptyToNull(values[field]);
+  }
 
-      driver_name: lr.driverName,
-      driver_mobile: lr.driverMobile,
+  const calc = calculateLR(values);
+  row.bill_amount = calc.billAmount;
+  row.lorry_hire_amount = calc.lorryHireAmount;
+  row.profit_amount = calc.profit;
 
-      from_station: lr.from,
-      to_station: lr.to,
+  return row;
+}
 
-      material: lr.material,
-      package_type: lr.packageType,
-      packages: lr.packages,
+/** Supabase returns raw snake_case columns; `id`/`created_at` and the three
+ * computed commercial columns pass through explicitly since they live
+ * outside the `LR` domain type. */
+function fromRow(row: Record<string, unknown>): LRRecord {
+  const { id, created_at, bill_amount, lorry_hire_amount, profit_amount, created_by, assigned_to, ...rest } = row;
 
-      loading_weight: lr.loadingWeight,
-      unloading_weight: lr.unloadingWeight,
-      charged_weight: lr.chargedWeight,
+  for (const [dbColumn, correctKey] of Object.entries(REVERSE_COLUMN_RENAMES)) {
+    if (dbColumn in rest) {
+      rest[correctKey] = rest[dbColumn];
+      delete rest[dbColumn];
+    }
+  }
 
-      po_number: lr.poNumber,
-      vendor_code: lr.vendorCode,
+  const lr = objectToCamelCase<LR>(rest);
 
-      dc_number: lr.dcNumber,
-      dc_date: lr.dcDate,
+  for (const field of OPTIONAL_DATE_FIELDS) {
+    if (lr[field] == null) {
+      (lr as Record<string, unknown>)[field] = "";
+    }
+  }
 
-      invoice_number: lr.invoiceNumber,
-      invoice_date: lr.invoiceDate,
-      invoice_value: lr.invoiceValue,
-
-      eway_bill_number: lr.ewayBillNumber,
-
-      bill_rate: lr.billRate,
-      bill_rate_type: lr.billRateType,
-
-      guaranteed_weight: lr.guaranteedWeight,
-
-      lorry_hire_rate: lr.lorryHireRate,
-      lorry_hire_type: lr.lorryHireType,
-
-      freight_type: lr.freightType,
-
-      driver_advance: lr.driverAdvance,
-      diesel_advance: lr.dieselAdvance,
-      st_challan: lr.stChallan,
-
-      loading_charges: lr.loadingCharges,
-      unloading_charges: lr.unloadingCharges,
-
-      hamali: lr.hamali,
-      commission: lr.commission,
-      other_expense: lr.otherExpense,
-
-      bill_amount: lr.billAmount,
-      lorry_hire_amount: lr.lorryHireAmount,
-      profit_amount: lr.profitAmount,
-
-      remarks: lr.remarks,
-      internal_remarks: lr.internalRemarks,
-
-      status: lr.status,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return data;
+  return {
+    ...lr,
+    id: id as number,
+    billAmount: (bill_amount as number | null) ?? 0,
+    lorryHireAmount: (lorry_hire_amount as number | null) ?? 0,
+    profitAmount: (profit_amount as number | null) ?? 0,
+    createdBy: (created_by as string | null) ?? null,
+    assignedTo: (assigned_to as string | null) ?? null,
+    created_at: created_at as string | undefined,
+  };
 }
 
 /* ==========================================================
-   GET ALL LR
+   GET ALL LRs
 ========================================================== */
 
-export async function getLRs() {
+export async function getLRs(): Promise<LRRecord[]> {
   const { data, error } = await supabase
-    .from("lrs")
+    .from(TABLE)
     .select("*")
-    .order("created_at", {
-      ascending: false,
-    });
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
 
-  return data ?? [];
+  return (data ?? []).map(fromRow);
 }
 
 /* ==========================================================
    GET ONE LR
 ========================================================== */
 
-export async function getLR(id: number) {
+export async function getLR(id: number): Promise<LRRecord> {
   const { data, error } = await supabase
-    .from("lrs")
+    .from(TABLE)
     .select("*")
     .eq("id", id)
     .single();
 
   if (error) throw error;
 
-  return data;
+  return fromRow(data);
+}
+
+/* ==========================================================
+   CREATE LR
+========================================================== */
+
+export async function createLR(values: LR): Promise<LRRecord> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .insert(toRow(values))
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return fromRow(data);
 }
 
 /* ==========================================================
    UPDATE LR
 ========================================================== */
 
-export async function updateLR(
-  id: number,
-  values: Partial<LR>
-) {
+export async function updateLR(id: number, values: LR): Promise<LRRecord> {
+  // `id`/`created_at` are server-owned and must never reach the update
+  // payload. (The edit dialog seeds its state from the full DB record, so
+  // the caller can't be trusted to have already excluded them.)
+  const sanitized = omitServerFields(values as unknown as Record<string, unknown>) as LR;
+
   const { data, error } = await supabase
-    .from("lrs")
-    .update(values)
+    .from(TABLE)
+    .update(toRow(sanitized))
     .eq("id", id)
     .select()
     .single();
 
   if (error) throw error;
 
-  return data;
+  return fromRow(data);
 }
 
 /* ==========================================================
-   CANCEL LR
+   REASSIGN LR (admin-only)
+   A dedicated, minimal update — touches ONLY `assigned_to`, never the
+   rest of the LR — so it can't accidentally overwrite any other field.
+   The `lrs_update_own_or_admin` RLS policy (migration 017) additionally
+   guarantees a non-admin caller's request is rejected by the database
+   itself, not just hidden in the UI.
 ========================================================== */
 
-export async function cancelLR(id: number) {
+export async function reassignLR(id: number, assignedTo: string): Promise<LRRecord> {
   const { data, error } = await supabase
-    .from("lrs")
-    .update({
-      status: "Cancelled",
-    })
+    .from(TABLE)
+    .update({ assigned_to: assignedTo })
     .eq("id", id)
     .select()
     .single();
 
   if (error) throw error;
 
-  return data;
+  return fromRow(data);
+}
+
+/* ==========================================================
+   DELETE LR
+========================================================== */
+
+export async function deleteLR(id: number): Promise<void> {
+  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+
+  if (error) throw error;
 }

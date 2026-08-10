@@ -2,6 +2,7 @@
 -- Migration: 002_create_vehicles
 -- Module:    Vehicle Master
 -- Created:   Phase 7 (Vehicle Master reference implementation)
+-- Updated:   Phase 11.1 (Migration Hardening — added UNIQUE(vehicle_number))
 --
 -- Reference: components/vehicle/vehicle.schema.ts
 --            components/services/vehicle.service.ts
@@ -28,7 +29,7 @@ create table if not exists public.vehicles (
   id bigint generated always as identity primary key,
 
   -- Identity
-  vehicle_number text not null,
+  vehicle_number text not null unique,
   rc_number text not null default '',
   vehicle_type text not null,
   owner_name text not null,

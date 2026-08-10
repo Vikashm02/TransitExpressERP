@@ -8,6 +8,7 @@ import CustomerForm from "./CustomerForm";
 import { validateCustomer, type Customer } from "./customer.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { CustomerRecord } from "@/components/services/customer.service";
+import { pickFields } from "@/lib/utils";
 
 interface CustomerDialogProps {
   open: boolean;
@@ -30,6 +31,13 @@ const emptyCustomer: Customer = {
   status: "Active",
 };
 
+/** Picks only the `Customer` schema fields off a `CustomerRecord`, dropping
+ * server-owned columns (`id`, `created_at`) so they never enter editable
+ * form state — and therefore never reach `updateCustomer()`'s payload. */
+function toEditableCustomer(record: CustomerRecord): Customer {
+  return pickFields(record, Object.keys(emptyCustomer) as (keyof Customer)[]);
+}
+
 export default function CustomerDialog({
   open,
   onOpenChange,
@@ -44,7 +52,12 @@ export default function CustomerDialog({
 
   useEffect(() => {
     if (open) {
-      setValues(customer ? { ...emptyCustomer, ...customer } : emptyCustomer);
+      // Deliberately does NOT spread `customer` wholesale: it's a
+      // `CustomerRecord`, which carries server-owned `id`/`created_at`
+      // alongside the editable fields. Picking only the known `Customer`
+      // keys keeps those server columns out of `values` — and therefore
+      // out of the eventual `updateCustomer()` payload — at the source.
+      setValues(customer ? { ...emptyCustomer, ...toEditableCustomer(customer) } : emptyCustomer);
       setErrors({});
     }
   }, [open, customer]);

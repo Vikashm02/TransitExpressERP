@@ -1,0 +1,96 @@
+import { supabase } from "@/lib/supabase";
+import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
+import type { LorryExpense } from "@/components/lorryExpense/lorryExpense.schema";
+
+/** A persisted Lorry Expense row — one per LR (`lr_id` is UNIQUE, see
+ * migration 017). Visibility/writes are additionally enforced by RLS
+ * (via the linked LR's `assigned_to`), so `getLorryExpenses()` already
+ * returns only the current user's own records (or all, for admin). */
+export interface LorryExpenseRecord extends LorryExpense {
+  id: number;
+  created_at?: string;
+}
+
+const TABLE = "lorry_expenses";
+
+function toRow(values: LorryExpense) {
+  return objectToSnakeCase(values);
+}
+
+function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
+  const { id, created_at, updated_at: _updated_at, ...rest } = row;
+
+  const expense = objectToCamelCase<LorryExpense>(rest);
+
+  return {
+    ...expense,
+    id: id as number,
+    created_at: created_at as string | undefined,
+  };
+}
+
+/* ==========================================================
+   GET ALL LORRY EXPENSES
+========================================================== */
+
+export async function getLorryExpenses(): Promise<LorryExpenseRecord[]> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map(fromRow);
+}
+
+/* ==========================================================
+   GET ONE LORRY EXPENSE BY LR
+========================================================== */
+
+export async function getLorryExpenseByLrId(lrId: number): Promise<LorryExpenseRecord | null> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("*")
+    .eq("lr_id", lrId)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data ? fromRow(data) : null;
+}
+
+/* ==========================================================
+   CREATE LORRY EXPENSE
+========================================================== */
+
+export async function createLorryExpense(values: LorryExpense): Promise<LorryExpenseRecord> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .insert(toRow(values))
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return fromRow(data);
+}
+
+/* ==========================================================
+   UPDATE LORRY EXPENSE
+========================================================== */
+
+export async function updateLorryExpense(id: number, values: LorryExpense): Promise<LorryExpenseRecord> {
+  const sanitized = omitServerFields(values as unknown as Record<string, unknown>) as LorryExpense;
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(toRow(sanitized))
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return fromRow(data);
+}

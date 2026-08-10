@@ -55,7 +55,15 @@ export default function FormSelect({
       className={className}
     >
       <Select
-        value={value === "" ? undefined : value}
+        // Base UI's Select treats a `value` of `undefined` as "uncontrolled"
+        // (distinct from "controlled, currently empty") and warns/locks up
+        // if a prop later switches between the two — which happened on every
+        // field that starts at `""` (uninitialized) and later gets set
+        // programmatically (e.g. a lookup auto-fill), not through the
+        // Select's own onValueChange. `null` is Base UI's explicit
+        // "controlled, no selection" value, so the field stays controlled
+        // for its entire lifetime.
+        value={value === "" ? null : value}
         onValueChange={(next) => onValueChange((next as string) ?? "")}
         disabled={disabled}
       >

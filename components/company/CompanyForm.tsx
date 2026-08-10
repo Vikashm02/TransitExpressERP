@@ -63,6 +63,8 @@ const emptyCompany: Company = {
   lrPrefixLength: 4,
   invoicePrefixLength: 4,
   voucherPrefixLength: 4,
+  lrRunningNumber: 0,
+  invoiceRunningNumber: 0,
 
   defaultBranch: DEFAULT_BRANCH_OPTIONS[0],
   defaultCurrency: DEFAULT_CURRENCY_OPTIONS[0],
@@ -582,6 +584,21 @@ export default function CompanyForm() {
             </FormField>
 
             <FormField
+              label="Current LR Running Number"
+              htmlFor="company-lr-running-number"
+              error={errors.lrRunningNumber}
+              hint="Last used sequence number. The next LR uses this + 1."
+            >
+              <Input
+                id="company-lr-running-number"
+                type="number"
+                min={0}
+                value={company.lrRunningNumber}
+                onChange={(e) => update("lrRunningNumber", Number(e.target.value))}
+              />
+            </FormField>
+
+            <FormField
               label="Invoice Prefix"
               htmlFor="company-invoice-prefix"
               error={errors.invoicePrefix}
@@ -607,6 +624,21 @@ export default function CompanyForm() {
                 max={10}
                 value={company.invoicePrefixLength}
                 onChange={(e) => update("invoicePrefixLength", Number(e.target.value))}
+              />
+            </FormField>
+
+            <FormField
+              label="Current Invoice Running Number"
+              htmlFor="company-invoice-running-number"
+              error={errors.invoiceRunningNumber}
+              hint="Last used sequence number. The next invoice uses this + 1."
+            >
+              <Input
+                id="company-invoice-running-number"
+                type="number"
+                min={0}
+                value={company.invoiceRunningNumber}
+                onChange={(e) => update("invoiceRunningNumber", Number(e.target.value))}
               />
             </FormField>
 

@@ -36,7 +36,12 @@ const SIZE_CLASSES: Record<FormDialogSize, string> = {
   default: "sm:max-w-3xl",
   lg: "sm:max-w-4xl",
   xl: "sm:max-w-6xl",
-  fullscreen: "w-[98vw] max-w-none h-[96vh] max-h-none rounded-2xl overflow-hidden p-0",
+  // `sm:max-w-none` is required, not just `max-w-none`: the base DialogContent
+  // sets `sm:max-w-sm` (a `sm:`-modified utility). tailwind-merge only cancels
+  // classes that share the same modifier, so an unprefixed `max-w-none` alone
+  // never overrides `sm:max-w-sm` — at >=640px the dialog would silently stay
+  // capped at 384px regardless of `w-[98vw]`.
+  fullscreen: "w-[98vw] max-w-none sm:max-w-none h-[96vh] max-h-none rounded-2xl overflow-hidden p-0",
 };
 
 export default function FormDialog({
@@ -58,8 +63,39 @@ export default function FormDialog({
       open={open}
       onOpenChange={onOpenChange}
     >
-      <DialogContent className={cn(SIZE_CLASSES[size], "relative", className)}>
-        <DialogHeader className={isFullscreen ? "border-b bg-card px-8 py-6" : undefined}>
+      {/*
+        Root cause (confirmed via computed styles in DevTools): the base
+        DialogContent relies on `fixed top-1/2 left-1/2
+        -translate-x-1/2 -translate-y-1/2` to center against the viewport.
+        This override previously appended a `relative` class (meant only to
+        anchor the absolute-positioned loading overlay below). Because
+        `fixed` and `relative` are the same `position` utility group,
+        tailwind-merge silently dropped the base `fixed` in favor of this
+        `relative`, so the dialog was positioned relative to its own
+        static-flow containing block (the portal, deep in normal document
+        flow) instead of the viewport — landing it far below the fold.
+        `fixed` already establishes a containing block for the
+        `absolute inset-0` loading overlay, so `relative` was both
+        redundant and the actual cause of the bug; it must not be
+        reintroduced here.
+
+        Separately, the base centering math never clamps height to the
+        viewport, so a dialog taller than the visible area would still push
+        its header off-screen with no way to scroll to it. `max-h-[90vh]`
+        plus a scrollable body (`flex-1 overflow-y-auto` below) fixes that
+        without affecting short dialogs, which simply size to their content
+        as before.
+      */}
+      <DialogContent
+        className={cn(
+          "flex max-h-[90vh] flex-col overflow-hidden",
+          SIZE_CLASSES[size],
+          className
+        )}
+      >
+        <DialogHeader
+          className={cn("shrink-0", isFullscreen && "border-b bg-card px-8 py-6")}
+        >
           <DialogTitle className={isFullscreen ? "text-2xl font-semibold" : undefined}>
             {title}
           </DialogTitle>
@@ -72,17 +108,20 @@ export default function FormDialog({
         </DialogHeader>
 
         <div
-          className={
+          className={cn(
+            "min-h-0",
             isFullscreen
               ? "h-[calc(96vh-89px)] overflow-y-auto bg-muted/30 px-8 py-8"
-              : "overflow-y-auto"
-          }
+              : "flex-1 overflow-y-auto"
+          )}
         >
           {children}
         </div>
 
         {footer && (
-          <DialogFooter className={isFullscreen ? "border-t bg-card px-8 py-4" : undefined}>
+          <DialogFooter
+            className={cn("shrink-0", isFullscreen && "border-t bg-card px-8 py-4")}
+          >
             {footer}
           </DialogFooter>
         )}

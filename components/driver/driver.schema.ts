@@ -22,6 +22,7 @@ const MOBILE_PATTERN = /^\d{10}$/;
 const AADHAAR_PATTERN = /^\d{12}$/;
 const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
 const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const ACCOUNT_NUMBER_PATTERN = /^\d{9,18}$/;
 
 function optionalPattern(pattern: RegExp, message: string) {
   return z
@@ -80,7 +81,7 @@ export const driverSchema = z.object({
 
   // Banking
   bankName: z.string().trim(),
-  accountNumber: z.string().trim(),
+  accountNumber: optionalPattern(ACCOUNT_NUMBER_PATTERN, "Enter a valid account number."),
   ifsc: optionalPattern(IFSC_PATTERN, "Enter a valid IFSC code."),
 
   // Driver Photo — populated via Supabase Storage upload, not typed directly.

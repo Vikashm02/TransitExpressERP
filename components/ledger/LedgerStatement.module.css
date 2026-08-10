@@ -1,0 +1,193 @@
+/* ==========================================================
+   Ledger Statement — a plain, professional accounting-statement
+   layout. Deliberately NOT a copy of the Billing Tax Invoice design
+   (components/billing/BillPrint.module.css) — no brand color accents,
+   no invoice-style boxed header, just a clean statement.
+========================================================== */
+
+.page {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 14mm 12mm;
+  background: #fff;
+  color: #1a1a1a;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10px;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.page * {
+  box-sizing: border-box;
+}
+
+.companyName {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.companyLine {
+  text-align: center;
+  font-size: 9px;
+  color: #444;
+  margin-top: 2px;
+}
+
+.statementHeading {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 10px;
+  border-top: 1px solid #1a1a1a;
+  border-bottom: 1px solid #1a1a1a;
+  padding: 4px 0;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 0 16px;
+  margin-top: 10px;
+}
+
+.metaGrid > div + div {
+  margin-top: 2px;
+}
+
+.label {
+  font-weight: 700;
+  display: inline-block;
+  min-width: 90px;
+}
+
+.accountOf {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.periodBlock {
+  text-align: right;
+}
+
+.openingBalanceRow {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-top: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid #ccc;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.table th,
+.table td {
+  border: 1px solid #999;
+  padding: 4px 6px;
+  font-size: 9.5px;
+  vertical-align: top;
+}
+
+.table th {
+  background: #f2f2f2;
+  font-weight: 700;
+  text-align: center;
+}
+
+.right {
+  text-align: right;
+}
+
+.center {
+  text-align: center;
+}
+
+.emptyRow td {
+  text-align: center;
+  color: #777;
+  padding: 12px;
+}
+
+.totalsBlock {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.totalsTable {
+  min-width: 260px;
+  border-collapse: collapse;
+}
+
+.totalsTable td {
+  padding: 3px 6px;
+  font-size: 10px;
+}
+
+.totalsTable .totalsLabel {
+  font-weight: 700;
+}
+
+.totalsTable .closingRow td {
+  border-top: 1px solid #1a1a1a;
+  font-weight: 700;
+  padding-top: 5px;
+}
+
+.footerNote {
+  margin-top: 16px;
+  font-size: 8.5px;
+  color: #555;
+}
+
+/* ---------------- SCREEN-ONLY CONTROLS ---------------- */
+
+.toolbar {
+  max-width: 210mm;
+  margin: 0 auto 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------------- PRINT ---------------- */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  .toolbar {
+    display: none !important;
+  }
+
+  .page {
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  .table {
+    page-break-inside: auto;
+  }
+
+  .table tr {
+    page-break-inside: avoid;
+  }
+}

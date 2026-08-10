@@ -1,18 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import LookupDialog from "./LookupDialog";
-
-import {
-  vehicles,
-  VehicleData,
-} from "@/components/data";
+import { getVehicles, type VehicleRecord } from "@/components/services/vehicle.service";
 
 interface VehicleLookupProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (vehicle: VehicleData) => void;
+  onSelect: (vehicle: VehicleRecord) => void;
 }
 
 export default function VehicleLookup({
@@ -21,14 +17,43 @@ export default function VehicleLookup({
   onSelect,
 }: VehicleLookupProps) {
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    setLoading(true);
+
+    getVehicles()
+      .then((data) => {
+        if (!cancelled) setVehicles(data);
+      })
+      .catch((error) => {
+        console.error(error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const filteredVehicles = useMemo(() => {
-    return vehicles.filter((vehicle) =>
-      vehicle.vehicleNumber
-        .toLowerCase()
-        .includes(search.toLowerCase())
+    const query = search.trim().toLowerCase();
+
+    return vehicles.filter(
+      (vehicle) =>
+        !query ||
+        vehicle.vehicleNumber.toLowerCase().includes(query) ||
+        vehicle.ownerName.toLowerCase().includes(query) ||
+        vehicle.mobile.toLowerCase().includes(query)
     );
-  }, [search]);
+  }, [vehicles, search]);
 
   return (
     <LookupDialog
@@ -37,23 +62,13 @@ export default function VehicleLookup({
       search={search}
       onSearchChange={setSearch}
       data={filteredVehicles}
+      loading={loading}
       columns={[
-        {
-          key: "vehicleNumber",
-          label: "Vehicle Number",
-        },
-        {
-          key: "vehicleType",
-          label: "Vehicle Type",
-        },
-        {
-          key: "transporter",
-          label: "Transporter",
-        },
-        {
-          key: "driverName",
-          label: "Driver",
-        },
+        { key: "vehicleNumber", label: "Vehicle Number" },
+        { key: "vehicleType", label: "Vehicle Type" },
+        { key: "ownerName", label: "Owner" },
+        { key: "ownerType", label: "Owner Type" },
+        { key: "mobile", label: "Mobile" },
       ]}
       onSelect={(vehicle) => {
         onSelect(vehicle);

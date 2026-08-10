@@ -1,85 +1,65 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { LR } from "../types";
+import FormField from "@/components/ui/FormField";
+import FormDatePicker from "@/components/ui/FormDatePicker";
+import FormSection from "@/components/ui/FormSection";
+
+import LRNumericInput from "../LRNumericInput";
+import type { LR } from "../lr.schema";
+import type { FieldErrors } from "@/lib/validation";
 
 interface DispatchDocumentsSectionProps {
   lr: LR;
+  errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
 }
 
 export default function DispatchDocumentsSection({
   lr,
+  errors = {},
   onChange,
 }: DispatchDocumentsSectionProps) {
+  function update<K extends keyof LR>(key: K, value: LR[K]) {
+    onChange({ ...lr, [key]: value });
+  }
+
   return (
-    <div className="rounded-xl border bg-white shadow-sm p-6 space-y-6">
-
-      <div className="border-b pb-3">
-
-        <h2 className="text-xl font-semibold">
-          Dispatch Documents
-        </h2>
-
-        <p className="text-sm text-slate-500 mt-1">
-          Customer reference documents
-        </p>
-
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-
-        {/* PO Number */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            PO Number
-          </label>
-
+    <FormSection
+      title="Dispatch Documents"
+      subtitle="Customer reference documents"
+    >
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <FormField
+          label="PO Number"
+          htmlFor="lr-po-number"
+        >
           <Input
+            id="lr-po-number"
             placeholder="PO Number"
             value={lr.poNumber}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                poNumber: e.target.value,
-              })
-            }
+            onChange={(e) => update("poNumber", e.target.value)}
           />
+        </FormField>
 
-        </div>
-
-        {/* Vendor Code */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            Vendor Code
-          </label>
-
+        <FormField
+          label="Vendor Code"
+          htmlFor="lr-vendor-code"
+        >
           <Input
+            id="lr-vendor-code"
             placeholder="Vendor Code"
             value={lr.vendorCode}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                vendorCode: e.target.value,
-              })
-            }
+            onChange={(e) => update("vendorCode", e.target.value)}
           />
+        </FormField>
 
-        </div>
-
-        {/* DC / Invoice Number */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            DC Number / Invoice Number
-          </label>
-
+        <FormField
+          label="DC Number / Invoice Number"
+          htmlFor="lr-dc-number"
+        >
           <Input
+            id="lr-dc-number"
             placeholder="DC Number or Invoice Number"
             value={lr.dcNumber}
             onChange={(e) =>
@@ -90,54 +70,45 @@ export default function DispatchDocumentsSection({
               })
             }
           />
+        </FormField>
 
-        </div>
+        <FormDatePicker
+          label="DC Date / Invoice Date"
+          id="lr-dc-date"
+          value={lr.dcDate}
+          onChange={(value) =>
+            onChange({
+              ...lr,
+              dcDate: value,
+              invoiceDate: value,
+            })
+          }
+        />
 
-        {/* DC / Invoice Date */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            DC Date / Invoice Date
-          </label>
-
-          <Input
-            type="date"
-            value={lr.dcDate}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                dcDate: e.target.value,
-                invoiceDate: e.target.value,
-              })
-            }
+        <FormField
+          label="Invoice Value"
+          htmlFor="lr-invoice-value"
+          error={errors.invoiceValue}
+        >
+          <LRNumericInput
+            id="lr-invoice-value"
+            value={lr.invoiceValue}
+            onChange={(value) => update("invoiceValue", value)}
           />
+        </FormField>
 
-        </div>
-
-        {/* E-Way Bill */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            E-Way Bill Number
-          </label>
-
+        <FormField
+          label="E-Way Bill Number"
+          htmlFor="lr-eway-bill-number"
+        >
           <Input
+            id="lr-eway-bill-number"
             placeholder="E-Way Bill Number"
             value={lr.ewayBillNumber}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                ewayBillNumber: e.target.value,
-              })
-            }
+            onChange={(e) => update("ewayBillNumber", e.target.value)}
           />
-
-        </div>
-
+        </FormField>
       </div>
-
-    </div>
+    </FormSection>
   );
 }

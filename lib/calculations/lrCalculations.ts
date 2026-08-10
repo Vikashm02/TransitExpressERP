@@ -1,4 +1,4 @@
-import { LR } from "@/components/lr/types";
+import { LR } from "@/components/lr/lr.schema";
 
 export interface LRCalculationResult {
   billAmount: number;
@@ -19,6 +19,9 @@ function calculateBillAmount(lr: LR): number {
     case "Per Ton (Loading)":
       return lr.billRate * lr.loadingWeight;
 
+    case "Per Ton (Unloading)":
+      return lr.billRate * lr.unloadingWeight;
+
     case "Guaranteed Weight":
       return lr.billRate * lr.guaranteedWeight;
 
@@ -29,6 +32,9 @@ function calculateBillAmount(lr: LR): number {
 
 /* ===========================================
    LORRY HIRE
+   "Guaranteed Weight" uses its own `lorryHireGuaranteedWeight` field —
+   Bill Rate and Lorry Hire are separate commercial terms and are entered
+   independently, even when both are "Guaranteed Weight".
 =========================================== */
 
 function calculateLorryHireAmount(lr: LR): number {
@@ -40,10 +46,7 @@ function calculateLorryHireAmount(lr: LR): number {
       return lr.lorryHireRate * lr.chargedWeight;
 
     case "Guaranteed Weight":
-      return (
-        lr.lorryHireRate *
-        lr.vehicleGuaranteedWeight
-      );
+      return lr.lorryHireRate * lr.lorryHireGuaranteedWeight;
 
     default:
       return 0;
@@ -52,6 +55,15 @@ function calculateLorryHireAmount(lr: LR): number {
 
 /* ===========================================
    EXPENSES
+   Kept purely for backward compatibility with any historical LR that
+   still carries values in these fields (the LR Entry form no longer
+   collects them — see components/lr/sections/CommercialSection.tsx and
+   the new Lorry Expenses module). `totalExpense` is still returned by
+   `calculateLR()` for callers that want to display it, but per the
+   approved decision it is NEVER subtracted from `profit` below, so a
+   pre-existing LR's leftover expense values can't silently change its
+   stored profit figure, and Lorry Expenses (tracked separately) are
+   never double-counted here.
 =========================================== */
 
 function calculateTotalExpense(lr: LR): number {
@@ -83,10 +95,12 @@ export function calculateLR(
   const totalExpense =
     calculateTotalExpense(lr);
 
+  // Profit = Bill Amount - Lorry Hire Amount (approved decision — Lorry
+  // Expenses are a separate, non-double-counted tracking/settlement
+  // module and must not reduce LR profit).
   const profit =
     billAmount -
-    lorryHireAmount -
-    totalExpense;
+    lorryHireAmount;
 
   return {
     billAmount,

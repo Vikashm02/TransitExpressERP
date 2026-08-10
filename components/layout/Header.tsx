@@ -1,4 +1,10 @@
+"use client";
+
+import { useAuth } from "@/lib/auth/AuthProvider";
+
 export default function Header() {
+  const { profile, isAdmin } = useAuth();
+
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b bg-card px-4 sm:px-6 lg:px-8">
       <div className="min-w-0">
@@ -9,11 +15,11 @@ export default function Header() {
 
       <div className="flex shrink-0 items-center gap-3">
         <span className="hidden text-sm font-medium text-foreground sm:inline">
-          Admin
+          {profile?.displayName || "..."} {isAdmin && "(Admin)"}
         </span>
 
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-          A
+          {(profile?.displayName || "?").charAt(0).toUpperCase()}
         </div>
       </div>
     </header>

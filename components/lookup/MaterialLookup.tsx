@@ -1,18 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import LookupDialog from "./LookupDialog";
-
-import {
-  materials,
-  MaterialData,
-} from "@/components/data/materials";
+import { getMaterials, type MaterialRecord } from "@/components/services/material.service";
 
 interface MaterialLookupProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (material: MaterialData) => void;
+  onSelect: (material: MaterialRecord) => void;
 }
 
 export default function MaterialLookup({
@@ -21,14 +17,43 @@ export default function MaterialLookup({
   onSelect,
 }: MaterialLookupProps) {
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [materials, setMaterials] = useState<MaterialRecord[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    setLoading(true);
+
+    getMaterials()
+      .then((data) => {
+        if (!cancelled) setMaterials(data);
+      })
+      .catch((error) => {
+        console.error(error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const filteredMaterials = useMemo(() => {
-    return materials.filter((material) =>
-      material.material
-        .toLowerCase()
-        .includes(search.toLowerCase())
+    const query = search.trim().toLowerCase();
+
+    return materials.filter(
+      (material) =>
+        !query ||
+        material.materialName.toLowerCase().includes(query) ||
+        material.code.toLowerCase().includes(query) ||
+        material.category.toLowerCase().includes(query)
     );
-  }, [search]);
+  }, [materials, search]);
 
   return (
     <LookupDialog
@@ -37,15 +62,12 @@ export default function MaterialLookup({
       search={search}
       onSearchChange={setSearch}
       data={filteredMaterials}
+      loading={loading}
       columns={[
-        {
-          key: "material",
-          label: "Material",
-        },
-        {
-          key: "packageType",
-          label: "Package Type",
-        },
+        { key: "code", label: "Code" },
+        { key: "materialName", label: "Material" },
+        { key: "category", label: "Category" },
+        { key: "unit", label: "Unit" },
       ]}
       onSelect={(material) => {
         onSelect(material);

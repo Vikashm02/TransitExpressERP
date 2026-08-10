@@ -8,6 +8,7 @@ import MaterialForm from "./MaterialForm";
 import { validateMaterial, type Material } from "./material.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { MaterialRecord } from "@/components/services/material.service";
+import { pickFields } from "@/lib/utils";
 
 interface MaterialDialogProps {
   open: boolean;
@@ -30,6 +31,13 @@ const emptyMaterial: Material = {
   status: "Active",
 };
 
+/** Picks only the `Material` schema fields off a `MaterialRecord`, dropping
+ * server-owned columns (`id`, `created_at`) so they never enter editable
+ * form state — and therefore never reach `updateMaterial()`'s payload. */
+function toEditableMaterial(record: MaterialRecord): Material {
+  return pickFields(record, Object.keys(emptyMaterial) as (keyof Material)[]);
+}
+
 export default function MaterialDialog({
   open,
   onOpenChange,
@@ -44,7 +52,7 @@ export default function MaterialDialog({
 
   useEffect(() => {
     if (open) {
-      setValues(material ? { ...emptyMaterial, ...material } : emptyMaterial);
+      setValues(material ? { ...emptyMaterial, ...toEditableMaterial(material) } : emptyMaterial);
       setErrors({});
     }
   }, [open, material]);

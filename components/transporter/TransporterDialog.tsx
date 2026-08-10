@@ -12,6 +12,7 @@ import {
 } from "./transporter.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { TransporterRecord } from "@/components/services/transporter.service";
+import { pickFields } from "@/lib/utils";
 
 interface TransporterDialogProps {
   open: boolean;
@@ -56,6 +57,14 @@ const emptyTransporter: Transporter = {
   status: "Active",
 };
 
+/** Picks only the `Transporter` schema fields off a `TransporterRecord`,
+ * dropping server-owned columns (`id`, `created_at`) so they never enter
+ * editable form state — and therefore never reach `updateTransporter()`'s
+ * payload. */
+function toEditableTransporter(record: TransporterRecord): Transporter {
+  return pickFields(record, Object.keys(emptyTransporter) as (keyof Transporter)[]);
+}
+
 export default function TransporterDialog({
   open,
   onOpenChange,
@@ -70,7 +79,9 @@ export default function TransporterDialog({
 
   useEffect(() => {
     if (open) {
-      setValues(transporter ? { ...emptyTransporter, ...transporter } : emptyTransporter);
+      setValues(
+        transporter ? { ...emptyTransporter, ...toEditableTransporter(transporter) } : emptyTransporter
+      );
       setErrors({});
     }
   }, [open, transporter]);

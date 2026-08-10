@@ -1,14 +1,7 @@
 "use client";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import FormDialog from "@/components/ui/FormDialog";
+import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 
 interface LookupDialogProps<T> {
   open: boolean;
@@ -18,6 +11,7 @@ interface LookupDialogProps<T> {
   onSearchChange: (value: string) => void;
 
   data: T[];
+  loading?: boolean;
 
   columns: {
     key: keyof T;
@@ -29,101 +23,55 @@ interface LookupDialogProps<T> {
   onClose: () => void;
 }
 
+/**
+ * Generic master-data lookup, built on the shared `FormDialog` + `DataTable`
+ * framework instead of a bespoke `Dialog` + raw `<table>`. Carries no
+ * domain-specific logic — callers (CustomerLookup, VehicleLookup, etc.)
+ * own the data source, search filtering, and column definitions.
+ */
 export default function LookupDialog<T extends Record<string, any>>({
   open,
   title,
   search,
   onSearchChange,
   data,
+  loading = false,
   columns,
   onSelect,
   onClose,
 }: LookupDialogProps<T>) {
+  const tableColumns: DataTableColumn<T>[] = columns.map((column) => ({
+    key: String(column.key),
+    header: column.label,
+    render: (row) => String(row[column.key] ?? ""),
+  }));
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-
-      <DialogContent className="max-w-4xl">
-
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-
-        <Input
-          placeholder="Search..."
-          value={search}
-          onChange={(e) =>
-            onSearchChange(e.target.value)
-          }
-        />
-
-        <div className="border rounded-lg overflow-hidden mt-4">
-
-          <table className="w-full">
-
-            <thead className="bg-slate-100">
-
-              <tr>
-
-                {columns.map((column) => (
-
-                  <th
-                    key={String(column.key)}
-                    className="text-left px-4 py-3"
-                  >
-                    {column.label}
-                  </th>
-
-                ))}
-
-                <th className="w-28"></th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {data.map((item, index) => (
-
-                <tr
-                  key={index}
-                  className="border-t"
-                >
-
-                  {columns.map((column) => (
-
-                    <td
-                      key={String(column.key)}
-                      className="px-4 py-3"
-                    >
-                      {String(item[column.key])}
-                    </td>
-
-                  ))}
-
-                  <td className="px-4 py-3 text-right">
-
-                    <Button
-                      size="sm"
-                      onClick={() => onSelect(item)}
-                    >
-                      Select
-                    </Button>
-
-                  </td>
-
-                </tr>
-
-              ))}
-
-            </tbody>
-
-          </table>
-
-        </div>
-
-      </DialogContent>
-
-    </Dialog>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={title}
+      size="lg"
+    >
+      <DataTable
+        columns={tableColumns}
+        data={data}
+        loading={loading}
+        rowKey={(row, index) => (row.id as string | number | undefined) ?? index}
+        searchable
+        searchValue={search}
+        onSearchChange={onSearchChange}
+        searchPlaceholder="Search..."
+        emptyTitle="No records found"
+        actions={[
+          {
+            label: "Select",
+            onClick: onSelect,
+          },
+        ]}
+      />
+    </FormDialog>
   );
 }

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { objectToCamelCase, objectToSnakeCase, toSnakeCase } from "@/lib/caseMapping";
+import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
 import type { Vehicle } from "@/components/vehicle/vehicle.schema";
 
 /** A persisted vehicle row. `gpsDeviceId` is reserved for future GPS
@@ -113,9 +113,14 @@ export async function updateVehicle(
   id: number,
   values: Vehicle
 ): Promise<VehicleRecord> {
+  // `id`/`created_at` are server-owned and must never reach the update
+  // payload. (The edit dialog seeds its state from the full DB record, so
+  // the caller can't be trusted to have already excluded them.)
+  const sanitized = omitServerFields(values as unknown as Record<string, unknown>) as Vehicle;
+
   const { data, error } = await supabase
     .from(TABLE)
-    .update(toRow(values))
+    .update(toRow(sanitized))
     .eq("id", id)
     .select()
     .single();

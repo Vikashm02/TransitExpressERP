@@ -52,6 +52,11 @@ const STATUS_STYLES: Record<string, string> = {
   expiring: "bg-warning/10 text-warning",
   expired: "bg-destructive/10 text-destructive",
   missing: "bg-muted text-muted-foreground",
+
+  // Reports — Outstanding Payment aging report's Payment Status
+  overdue: "bg-destructive/10 text-destructive",
+  "within cycle": "bg-success/10 text-success",
+  "no outstanding": "bg-muted text-muted-foreground",
 };
 
 const DEFAULT_STYLE = "bg-muted text-muted-foreground";

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { objectToCamelCase, objectToSnakeCase } from "@/lib/caseMapping";
+import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { Customer } from "@/components/customer/customer.schema";
 
 /** A persisted customer row, as returned by Supabase (adds server-owned columns). */
@@ -94,8 +94,13 @@ export async function updateCustomer(
   id: number,
   values: Customer
 ): Promise<CustomerRecord> {
-  // `code` is immutable after creation — never part of the update payload.
-  const { code: _code, ...updatable } = values;
+  // `code` is immutable after creation, and `id`/`created_at` are
+  // server-owned — none of the three may ever reach the update payload.
+  // (Edit dialogs seed their state from the full DB record, so callers
+  // can't be trusted to have already excluded the server-owned fields.)
+  const { code: _code, ...updatable } = omitServerFields(
+    values as unknown as Record<string, unknown>
+  );
 
   const { data, error } = await supabase
     .from(TABLE)

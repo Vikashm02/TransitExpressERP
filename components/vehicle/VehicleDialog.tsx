@@ -8,6 +8,7 @@ import VehicleForm from "./VehicleForm";
 import { validateVehicle, type Vehicle } from "./vehicle.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { VehicleRecord } from "@/components/services/vehicle.service";
+import { pickFields } from "@/lib/utils";
 
 interface VehicleDialogProps {
   open: boolean;
@@ -50,6 +51,14 @@ const emptyVehicle: Vehicle = {
   status: "Active",
 };
 
+/** Picks only the `Vehicle` schema fields off a `VehicleRecord`, dropping
+ * server-owned columns (`id`, `created_at`, `gpsDeviceId`) so they never
+ * enter editable form state — and therefore never reach `updateVehicle()`'s
+ * payload. */
+function toEditableVehicle(record: VehicleRecord): Vehicle {
+  return pickFields(record, Object.keys(emptyVehicle) as (keyof Vehicle)[]);
+}
+
 export default function VehicleDialog({
   open,
   onOpenChange,
@@ -64,7 +73,7 @@ export default function VehicleDialog({
 
   useEffect(() => {
     if (open) {
-      setValues(vehicle ? { ...emptyVehicle, ...vehicle } : emptyVehicle);
+      setValues(vehicle ? { ...emptyVehicle, ...toEditableVehicle(vehicle) } : emptyVehicle);
       setErrors({});
     }
   }, [open, vehicle]);

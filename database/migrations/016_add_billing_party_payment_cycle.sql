@@ -1,0 +1,34 @@
+-- ==========================================================
+-- Migration: 016_add_billing_party_payment_cycle
+-- Modules:   Billing Party Master (new Payment Cycle field)
+--
+-- Reference: components/billingParty/billingParty.schema.ts
+--            components/services/billingParty.service.ts
+--            components/services/reports.service.ts (Outstanding
+--            Payment / Overdue report)
+--
+-- This file is a record of the schema change required by the
+-- application. It is NOT executed automatically — run it manually
+-- against the target Supabase project before the Payment Cycle field
+-- and the Outstanding Payment report's Overdue calculation are used.
+-- Migration 012, 014, and 015 (and every prior migration) are untouched.
+--
+-- Notes:
+--   - Purely additive: ADD COLUMN IF NOT EXISTS only. No existing
+--     column, table, or row is altered, renamed, or dropped.
+--   - `payment_cycle_days` is the agreed/default number of days this
+--     Billing Party normally takes to pay after a Bill is submitted
+--     (e.g. 15, 30). It is unrelated to Bill Date, Credit Note Date, LR
+--     Date, or POD Date — those remain untouched elsewhere.
+--   - Defaults to 0 for every existing row (no payment cycle assumed
+--     until an admin sets one per party in Billing Party Master).
+--   - Used by the Outstanding Payment report to compute each Bill's due
+--     date (`bill_date + payment_cycle_days`) for the Overdue-amount
+--     calculation — see components/services/reports.service.ts. That
+--     report performs its own FIFO allocation of Credit Note payments
+--     against Bills entirely at read time; no new table or
+--     relationship is introduced by this migration for that purpose.
+-- ==========================================================
+
+alter table public.billing_parties
+  add column if not exists payment_cycle_days integer not null default 0;

@@ -12,6 +12,7 @@ import {
   uploadDriverAsset,
   type DriverRecord,
 } from "@/components/services/driver.service";
+import { pickFields } from "@/lib/utils";
 
 interface DriverDialogProps {
   open: boolean;
@@ -57,6 +58,13 @@ const emptyDriver: Driver = {
   status: "Active",
 };
 
+/** Picks only the `Driver` schema fields off a `DriverRecord`, dropping
+ * server-owned columns (`id`, `created_at`) so they never enter editable
+ * form state — and therefore never reach `updateDriver()`'s payload. */
+function toEditableDriver(record: DriverRecord): Driver {
+  return pickFields(record, Object.keys(emptyDriver) as (keyof Driver)[]);
+}
+
 export default function DriverDialog({
   open,
   onOpenChange,
@@ -72,7 +80,7 @@ export default function DriverDialog({
 
   useEffect(() => {
     if (open) {
-      setValues(driver ? { ...emptyDriver, ...driver } : emptyDriver);
+      setValues(driver ? { ...emptyDriver, ...toEditableDriver(driver) } : emptyDriver);
       setErrors({});
     }
   }, [open, driver]);

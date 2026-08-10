@@ -1,146 +1,217 @@
 "use client";
 
-import { LR } from "../types";
+import { useState } from "react";
+
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import FormField from "@/components/ui/FormField";
+import FormSelect from "@/components/ui/FormSelect";
+import FormSection from "@/components/ui/FormSection";
+
+import VehicleLookup from "@/components/lookup/VehicleLookup";
+import TransporterLookup from "@/components/lookup/TransporterLookup";
+import DriverLookup from "@/components/lookup/DriverLookup";
+import type { VehicleRecord } from "@/components/services/vehicle.service";
+import type { TransporterRecord } from "@/components/services/transporter.service";
+import type { DriverRecord } from "@/components/services/driver.service";
+import { VEHICLE_TYPE_OPTIONS } from "@/components/vehicle/vehicle.schema";
+
+import type { LR } from "../lr.schema";
+import type { FieldErrors } from "@/lib/validation";
 
 interface VehicleSectionProps {
   lr: LR;
+  errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
+}
+
+function toOptions(values: readonly string[]) {
+  return values.map((value) => ({ label: value, value }));
 }
 
 export default function VehicleSection({
   lr,
+  errors = {},
   onChange,
 }: VehicleSectionProps) {
+  const [vehicleLookupOpen, setVehicleLookupOpen] = useState(false);
+  const [transporterLookupOpen, setTransporterLookupOpen] = useState(false);
+  const [driverLookupOpen, setDriverLookupOpen] = useState(false);
+
+  function update<K extends keyof LR>(key: K, value: LR[K]) {
+    onChange({ ...lr, [key]: value });
+  }
+
+  function handleVehicleSelect(vehicle: VehicleRecord) {
+    onChange({
+      ...lr,
+      vehicleNumber: vehicle.vehicleNumber,
+      vehicleType: vehicle.vehicleType,
+      lorryHireRate: vehicle.hireRate,
+      lorryHireType: vehicle.hireType,
+    });
+  }
+
+  function handleTransporterSelect(transporter: TransporterRecord) {
+    update("transporter", transporter.transporterName);
+  }
+
+  function handleDriverSelect(driver: DriverRecord) {
+    onChange({
+      ...lr,
+      driverName: driver.driverName,
+      driverMobile: driver.mobile,
+    });
+  }
+
   return (
-    <div className="rounded-xl border bg-white p-6 space-y-6 shadow-sm">
+    <>
+      <FormSection
+        title="Vehicle & Route Details"
+        subtitle="Vehicle, transporter and driver assigned to this shipment"
+      >
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <FormField
+            label="Vehicle Number"
+            htmlFor="lr-vehicle-number"
+            required
+            error={errors.vehicleNumber}
+          >
+            <div className="flex gap-3">
+              <Input
+                id="lr-vehicle-number"
+                placeholder="MH12AB1234"
+                value={lr.vehicleNumber}
+                onChange={(e) => update("vehicleNumber", e.target.value.toUpperCase())}
+              />
 
-      <h2 className="text-xl font-semibold border-b pb-3">
-        Vehicle & Route Details
-      </h2>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setVehicleLookupOpen(true)}
+              >
+                Search
+              </Button>
+            </div>
+          </FormField>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Vehicle Number *
-          </label>
-
-          <Input
-            placeholder="MH12AB1234"
-            value={lr.vehicleNumber}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                vehicleNumber: e.target.value.toUpperCase(),
-              })
-            }
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Vehicle Type
-          </label>
-
-          <Input
-            placeholder="Truck / Trailer / Container"
+          <FormSelect
+            label="Vehicle Type"
+            id="lr-vehicle-type"
+            error={errors.vehicleType}
             value={lr.vehicleType}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                vehicleType: e.target.value,
-              })
-            }
+            onValueChange={(value) => update("vehicleType", value)}
+            options={toOptions(VEHICLE_TYPE_OPTIONS)}
+            placeholder="Select Vehicle Type"
           />
+
+          <FormField
+            label="Transporter"
+            htmlFor="lr-transporter"
+          >
+            <div className="flex gap-3">
+              <Input
+                id="lr-transporter"
+                placeholder="Transporter Name"
+                value={lr.transporter}
+                onChange={(e) => update("transporter", e.target.value)}
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setTransporterLookupOpen(true)}
+              >
+                Search
+              </Button>
+            </div>
+          </FormField>
+
+          <FormField
+            label="Driver Name"
+            htmlFor="lr-driver-name"
+            required
+            error={errors.driverName}
+          >
+            <div className="flex gap-3">
+              <Input
+                id="lr-driver-name"
+                placeholder="Driver Name"
+                value={lr.driverName}
+                onChange={(e) => update("driverName", e.target.value)}
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDriverLookupOpen(true)}
+              >
+                Search
+              </Button>
+            </div>
+          </FormField>
+
+          <FormField
+            label="Driver Mobile"
+            htmlFor="lr-driver-mobile"
+            required
+            error={errors.driverMobile}
+          >
+            <Input
+              id="lr-driver-mobile"
+              placeholder="9876543210"
+              value={lr.driverMobile}
+              onChange={(e) => update("driverMobile", e.target.value)}
+            />
+          </FormField>
+
+          <FormField
+            label="From"
+            htmlFor="lr-from"
+            required
+            error={errors.from}
+          >
+            <Input
+              id="lr-from"
+              placeholder="Loading Station"
+              value={lr.from}
+              onChange={(e) => update("from", e.target.value)}
+            />
+          </FormField>
+
+          <FormField
+            label="To"
+            htmlFor="lr-to"
+            required
+            error={errors.to}
+          >
+            <Input
+              id="lr-to"
+              placeholder="Destination"
+              value={lr.to}
+              onChange={(e) => update("to", e.target.value)}
+            />
+          </FormField>
         </div>
+      </FormSection>
 
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Transporter
-          </label>
+      <VehicleLookup
+        open={vehicleLookupOpen}
+        onClose={() => setVehicleLookupOpen(false)}
+        onSelect={handleVehicleSelect}
+      />
 
-          <Input
-            placeholder="Transporter Name"
-            value={lr.transporter}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                transporter: e.target.value,
-              })
-            }
-          />
-        </div>
+      <TransporterLookup
+        open={transporterLookupOpen}
+        onClose={() => setTransporterLookupOpen(false)}
+        onSelect={handleTransporterSelect}
+      />
 
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Driver Name
-          </label>
-
-          <Input
-            placeholder="Driver Name"
-            value={lr.driverName}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                driverName: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Driver Mobile
-          </label>
-
-          <Input
-            placeholder="9876543210"
-            value={lr.driverMobile}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                driverMobile: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            From
-          </label>
-
-          <Input
-            placeholder="Loading Station"
-            value={lr.from}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                from: e.target.value,
-              })
-            }
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            To
-          </label>
-
-          <Input
-            placeholder="Destination"
-            value={lr.to}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                to: e.target.value,
-              })
-            }
-          />
-        </div>
-
-      </div>
-    </div>
+      <DriverLookup
+        open={driverLookupOpen}
+        onClose={() => setDriverLookupOpen(false)}
+        onSelect={handleDriverSelect}
+      />
+    </>
   );
 }

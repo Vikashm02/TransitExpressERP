@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { objectToCamelCase, objectToSnakeCase } from "@/lib/caseMapping";
+import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { Material } from "@/components/material/material.schema";
 
 /** A persisted material row, as returned by Supabase (adds server-owned columns). */
@@ -10,14 +10,21 @@ export interface MaterialRecord extends Material {
 
 const TABLE = "materials";
 
-/** Supabase returns raw snake_case columns; `id`/`created_at` pass through unchanged. */
+/**
+ * Supabase returns raw snake_case columns; `id`/`created_at` pass through
+ * unchanged. The DB column is `material_code` (not `code`) — the generic
+ * camelCase mapper would otherwise surface it as `materialCode`, leaving
+ * `Material.code` (and the table's "Material Code" column) permanently
+ * `undefined`. Renamed explicitly here, at the one boundary that needs it.
+ */
 function fromRow(row: Record<string, unknown>): MaterialRecord {
-  const { id, created_at, ...rest } = row;
+  const { id, created_at, material_code, ...rest } = row;
 
   return {
     id: id as number,
     created_at: created_at as string | undefined,
-    ...objectToCamelCase<Material>(rest),
+    code: material_code as string,
+    ...objectToCamelCase<Omit<Material, "code">>(rest),
   };
 }
 
@@ -75,10 +82,13 @@ export async function getMaterial(id: number): Promise<MaterialRecord> {
 
 export async function createMaterial(values: Material): Promise<MaterialRecord> {
   const code = values.code.trim() || (await generateMaterialCode());
+  // `code` must land in the `material_code` column, not a nonexistent
+  // `code` column — rename before the generic camelCase->snake_case pass.
+  const { code: _code, ...withoutCode } = values;
 
   const { data, error } = await supabase
     .from(TABLE)
-    .insert(objectToSnakeCase({ ...values, code }))
+    .insert(objectToSnakeCase({ ...withoutCode, materialCode: code }))
     .select()
     .single();
 
@@ -95,8 +105,13 @@ export async function updateMaterial(
   id: number,
   values: Material
 ): Promise<MaterialRecord> {
-  // `code` is immutable after creation — never part of the update payload.
-  const { code: _code, ...updatable } = values;
+  // `code` is immutable after creation, and `id`/`created_at` are
+  // server-owned — none of the three may ever reach the update payload.
+  // (Edit dialogs seed their state from the full DB record, so callers
+  // can't be trusted to have already excluded the server-owned fields.)
+  const { code: _code, ...updatable } = omitServerFields(
+    values as unknown as Record<string, unknown>
+  );
 
   const { data, error } = await supabase
     .from(TABLE)

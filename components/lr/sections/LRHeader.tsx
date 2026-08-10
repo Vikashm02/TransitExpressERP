@@ -1,133 +1,133 @@
 "use client";
 
-import { LR } from "../types";
+import { useState } from "react";
+
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import FormField from "@/components/ui/FormField";
+import FormSelect from "@/components/ui/FormSelect";
+import FormDatePicker from "@/components/ui/FormDatePicker";
+import FormSection from "@/components/ui/FormSection";
+
+import BillingPartyLookup from "@/components/lookup/BillingPartyLookup";
+import type { BillingPartyRecord } from "@/components/services/billingParty.service";
+
+import { BILLING_PARTY_OPTIONS, BOOKING_BRANCH_OPTIONS, type LR } from "../lr.schema";
+import type { FieldErrors } from "@/lib/validation";
 
 interface LRHeaderProps {
   lr: LR;
+  errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
+}
+
+function toOptions(values: readonly string[]) {
+  return values.map((value) => ({ label: value, value }));
 }
 
 export default function LRHeader({
   lr,
+  errors = {},
   onChange,
 }: LRHeaderProps) {
+  const [lookupOpen, setLookupOpen] = useState(false);
+
+  function update<K extends keyof LR>(key: K, value: LR[K]) {
+    onChange({ ...lr, [key]: value });
+  }
+
+  function handleBillingPartySelect(billingParty: BillingPartyRecord) {
+    update("customer", billingParty.name);
+  }
+
   return (
-    <div className="rounded-xl border bg-white shadow-sm p-6 space-y-6">
-
-      <div className="border-b pb-3">
-
-        <h2 className="text-xl font-semibold">
-          LR Information
-        </h2>
-
-        <p className="text-sm text-slate-500 mt-1">
-          Basic booking information
-        </p>
-
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-
-        {/* LR Number */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            LR Number *
-          </label>
-
-          <Input
-            placeholder="LR Number"
-            value={lr.lrNumber}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                lrNumber: e.target.value,
-              })
-            }
-          />
-
-        </div>
-
-        {/* LR Date */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            LR Date
-          </label>
-
-          <Input
-            type="date"
-            value={lr.lrDate}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                lrDate: e.target.value,
-              })
-            }
-          />
-
-        </div>
-
-        {/* Booking Branch */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            Booking Branch *
-          </label>
-
-          <select
-            className="w-full h-10 rounded-md border px-3 bg-white"
-            value={lr.bookingBranch}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                bookingBranch: e.target.value,
-              })
-            }
+    <>
+      <FormSection
+        title="LR Information"
+        subtitle="Basic booking information"
+      >
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <FormField
+            label="LR Number"
+            htmlFor="lr-number"
+            hint="Auto-generated from Company Master Document Settings on save."
           >
-            <option value="">
-              Select Branch
-            </option>
+            <Input
+              id="lr-number"
+              readOnly
+              placeholder="Auto-generated on save"
+              value={lr.lrNumber}
+            />
+          </FormField>
 
-            <option value="Visakhapatnam">
-              Visakhapatnam
-            </option>
-
-            <option value="Shahabad">
-              Shahabad
-            </option>
-
-          </select>
-
-        </div>
-
-        {/* Customer */}
-
-        <div>
-
-          <label className="block text-sm font-medium mb-2">
-            Customer
-          </label>
-
-          <Input
-            placeholder="Customer Name"
-            value={lr.customer}
-            onChange={(e) =>
-              onChange({
-                ...lr,
-                customer: e.target.value,
-              })
-            }
+          <FormDatePicker
+            label="LR Date"
+            id="lr-date"
+            required
+            error={errors.lrDate}
+            value={lr.lrDate}
+            onChange={(value) => update("lrDate", value)}
           />
 
+          <FormSelect
+            label="Booking Branch"
+            id="lr-booking-branch"
+            required
+            error={errors.bookingBranch}
+            value={lr.bookingBranch}
+            onValueChange={(value) => update("bookingBranch", value)}
+            options={toOptions(BOOKING_BRANCH_OPTIONS)}
+            placeholder="Select Branch"
+          />
+
+          {/* Billing Party — a distinct financial entity from the Billing
+              Party Master, independent of Consignor/Consignee. Selection
+              only; never free-typed into the master (see BillingPartyLookup). */}
+          <FormField
+            label="Billing Party"
+            htmlFor="lr-billing-party-name"
+            required
+            error={errors.customer}
+          >
+            <div className="flex gap-3">
+              <Input
+                id="lr-billing-party-name"
+                readOnly
+                placeholder="Select billing party"
+                value={lr.customer}
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLookupOpen(true)}
+              >
+                Search
+              </Button>
+            </div>
+          </FormField>
+
+          {/* Pre-existing "GST Payable By" toggle (Consignor/Consignee) —
+              printed on the LR as "GST Payable By". Unrelated to the
+              Billing Party Master above; not renamed to avoid colliding
+              with it. */}
+          <FormSelect
+            label="GST Payable By"
+            id="lr-gst-payable-by"
+            required
+            error={errors.billingParty}
+            value={lr.billingParty}
+            onValueChange={(value) => update("billingParty", value as LR["billingParty"])}
+            options={toOptions(BILLING_PARTY_OPTIONS)}
+          />
         </div>
+      </FormSection>
 
-      </div>
-
-    </div>
+      <BillingPartyLookup
+        open={lookupOpen}
+        onClose={() => setLookupOpen(false)}
+        onSelect={handleBillingPartySelect}
+      />
+    </>
   );
 }

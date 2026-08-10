@@ -2,6 +2,7 @@
 -- Migration: 004_create_drivers
 -- Module:    Driver Master
 -- Created:   Phase 9 (Driver Master reference implementation)
+-- Updated:   Phase 11.1 (Migration Hardening — added UNIQUE(license_number))
 --
 -- Reference: components/driver/driver.schema.ts
 --            components/services/driver.service.ts
@@ -44,7 +45,7 @@ create table if not exists public.drivers (
   emergency_contact_number text not null default '',
 
   -- License & Compliance
-  license_number text not null,
+  license_number text not null unique,
   license_type text not null default 'LMV',
   license_issuing_state text not null default '',
   license_expiry date,

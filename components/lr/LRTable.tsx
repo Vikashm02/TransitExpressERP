@@ -1,205 +1,112 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FileText, Pencil, Printer, Share2, UserCog } from "lucide-react";
 
-import PageHeader from "@/components/ui/PageHeader";
-import SearchToolbar from "@/components/common/SearchToolbar";
-
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import type { LRRecord } from "@/components/services/lr.service";
 
 interface LRTableProps {
-  lrs: any[];
-  onCreate: () => void;
-  onRefresh: () => void;
+  lrs: LRRecord[];
+  loading?: boolean;
+  pageSize?: number;
+  onEdit: (lr: LRRecord) => void;
+  onDelete: (lr: LRRecord) => void;
+  onPrint: (lr: LRRecord) => void;
+  onShare: (lr: LRRecord) => void;
+  /** Admin-only — shows the "Assigned To" column and Reassign action.
+   * Staff never see either, matching the read-side RLS restriction
+   * (they can only ever see their own LRs anyway). */
+  isAdmin?: boolean;
+  onReassign?: (lr: LRRecord) => void;
+  /** Resolves an `assignedTo` uuid to a display name for the column. */
+  resolveAssignedName?: (assignedTo: string | null) => string;
 }
 
 export default function LRTable({
   lrs,
-  onCreate,
-  onRefresh,
+  loading,
+  pageSize,
+  onEdit,
+  onDelete,
+  onPrint,
+  onShare,
+  isAdmin = false,
+  onReassign,
+  resolveAssignedName,
 }: LRTableProps) {
-  const [search, setSearch] = useState("");
+  const columns: DataTableColumn<LRRecord>[] = [
+    { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
+    { key: "lrDate", header: "Date", sortable: true },
+    { key: "consignor", header: "Consignor" },
+    { key: "consignee", header: "Consignee" },
+    { key: "vehicleNumber", header: "Vehicle" },
+    {
+      key: "route",
+      header: "Route",
+      sortAccessor: (row) => `${row.from} - ${row.to}`,
+      render: (row) => `${row.from || "—"} → ${row.to || "—"}`,
+    },
+    { key: "freightType", header: "Freight Type" },
+    {
+      key: "billAmount",
+      header: "Bill Amount",
+      align: "right",
+      sortable: true,
+      render: (row) => `₹ ${row.billAmount.toFixed(2)}`,
+    },
+    { key: "status", header: "Status", type: "status", sortable: true },
+  ];
 
-  const filteredLR = useMemo(() => {
-    return lrs.filter((lr) => {
-      const text = search.toLowerCase();
-
-      return (
-        (lr.lr_number ?? "")
-          .toLowerCase()
-          .includes(text) ||
-        (lr.consignor ?? "")
-          .toLowerCase()
-          .includes(text) ||
-        (lr.consignee ?? "")
-          .toLowerCase()
-          .includes(text)
-      );
+  if (isAdmin) {
+    columns.push({
+      key: "assignedTo",
+      header: "Assigned To",
+      render: (row) => resolveAssignedName?.(row.assignedTo) ?? "Unassigned",
     });
-  }, [lrs, search]);
+  }
 
   return (
-    <div className="space-y-6">
-
-      <PageHeader
-        title="LR Entry"
-        buttonText="Create LR"
-        onAdd={onCreate}
-      />
-
-      <SearchToolbar
-        search={search}
-        onSearchChange={setSearch}
-        placeholder="Search LR..."
-        onExport={() => console.log("Export")}
-        onRefresh={onRefresh}
-      />
-
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
-
-          <Table>
-
-            <TableHeader>
-
-              <TableRow>
-
-                <TableHead>LR No.</TableHead>
-
-                <TableHead>Date</TableHead>
-
-                <TableHead>Consignor</TableHead>
-
-                <TableHead>Consignee</TableHead>
-
-                <TableHead>Vehicle</TableHead>
-
-                <TableHead>From</TableHead>
-
-                <TableHead>To</TableHead>
-
-                <TableHead>Status</TableHead>
-
-                <TableHead className="text-right">
-                  Actions
-                </TableHead>
-
-              </TableRow>
-
-            </TableHeader>
-
-            <TableBody>
-
-              {filteredLR.length > 0 ? (
-
-                filteredLR.map((lr: any) => (
-
-                  <TableRow key={lr.id}>
-
-                    <TableCell className="font-medium">
-                      {lr.lr_number}
-                    </TableCell>
-
-                    <TableCell>
-                      {lr.lr_date}
-                    </TableCell>
-
-                    <TableCell>
-                      {lr.consignor}
-                    </TableCell>
-
-                    <TableCell>
-                      {lr.consignee}
-                    </TableCell>
-
-                    <TableCell>
-                      {lr.vehicle_number}
-                    </TableCell>
-
-                    <TableCell>
-                      {lr.from_station}
-                    </TableCell>
-
-                    <TableCell>
-                      {lr.to_station}
-                    </TableCell>
-
-                    <TableCell>
-
-                      <Badge
-                        className={
-                          lr.status === "Delivered"
-                            ? "bg-blue-600"
-                            : lr.status === "Billed"
-                            ? "bg-purple-600"
-                            : "bg-green-600"
-                        }
-                      >
-                        {lr.status}
-                      </Badge>
-
-                    </TableCell>
-
-                    <TableCell>
-
-                      <div className="flex justify-end gap-2">
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                        >
-                          Edit
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                        >
-                          Delete
-                        </Button>
-
-                      </div>
-
-                    </TableCell>
-
-                  </TableRow>
-
-                ))
-
-              ) : (
-
-                <TableRow>
-
-                  <TableCell
-                    colSpan={9}
-                    className="text-center py-10 text-slate-500"
-                  >
-                    No LR found.
-                  </TableCell>
-
-                </TableRow>
-
-              )}
-
-            </TableBody>
-
-          </Table>
-
-        </CardContent>
-
-      </Card>
-
-    </div>
+    <DataTable
+      columns={columns}
+      data={lrs}
+      rowKey={(row) => row.id}
+      loading={loading}
+      emptyTitle="No LRs found"
+      emptyDescription="Create your first Lorry Receipt to get started."
+      emptyIcon={FileText}
+      sortable
+      defaultSort={{ key: "lrDate", direction: "desc" }}
+      pageSize={pageSize}
+      actions={[
+        {
+          label: "Print",
+          icon: Printer,
+          variant: "outline",
+          onClick: onPrint,
+        },
+        {
+          label: "Share",
+          icon: Share2,
+          variant: "outline",
+          onClick: onShare,
+        },
+        {
+          label: "Edit",
+          icon: Pencil,
+          variant: "outline",
+          onClick: onEdit,
+        },
+        ...(isAdmin && onReassign
+          ? [
+              {
+                label: "Reassign",
+                icon: UserCog,
+                variant: "outline" as const,
+                onClick: onReassign,
+              },
+            ]
+          : []),
+      ]}
+    />
   );
 }

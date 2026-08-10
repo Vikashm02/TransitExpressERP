@@ -1,242 +1,199 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-
+import FormDialog from "@/components/ui/FormDialog";
+import { Button } from "@/components/ui/button";
 import LRForm from "./LRForm";
-import { LR } from "./types";
-
-import { saveLR } from "@/components/services/lr.service";
+import { validateLR, type LR } from "./lr.schema";
+import type { FieldErrors } from "@/lib/validation";
+import type { LRRecord } from "@/components/services/lr.service";
+import { getCompany } from "@/components/services/company.service";
+import { pickFields } from "@/lib/utils";
 
 interface LRDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Pass a record to edit; omit/null to add a new LR. */
+  lr?: LRRecord | null;
+  /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
+  loading?: boolean;
+  onSubmit: (values: LR) => void | Promise<void>;
 }
 
 const emptyLR: LR = {
-  // ===========================
   // LR Information
-  // ===========================
-
   lrNumber: "",
   lrDate: "",
   bookingBranch: "",
-
   customer: "",
-
   billingParty: "Consignor",
 
-  // ===========================
   // Consignor
-
   consignor: "",
   consignorGST: "",
   consignorAddress: "",
 
-  // ===========================
   // Consignee
-
   consignee: "",
   consigneeGST: "",
   consigneeAddress: "",
 
-  // ===========================
-  // Vehicle
-
+  // Vehicle & Route
   vehicleNumber: "",
   vehicleType: "",
-
   transporter: "",
-
   driverName: "",
   driverMobile: "",
-
   from: "",
   to: "",
 
-  // ===========================
   // Material
-
   material: "",
-
   packageType: "",
-
   packages: 0,
-
   loadingWeight: 0,
-
+  unloadingWeight: 0,
   chargedWeight: 0,
 
-  // ===========================
-  // Dispatch
-
+  // Dispatch Documents
   poNumber: "",
-
   vendorCode: "",
-
   dcNumber: "",
-
   dcDate: "",
-
   invoiceNumber: "",
-
   invoiceDate: "",
-
+  invoiceValue: 0,
   ewayBillNumber: "",
 
-  // ===========================
   // Commercial
-
   billRate: 0,
-
   billRateType: "Fixed",
-
   guaranteedWeight: 0,
-
-  vehicleGuaranteedWeight: 0,
-
   lorryHireRate: 0,
-
   lorryHireType: "Fixed",
-
+  lorryHireGuaranteedWeight: 0,
   freightType: "To Be Billed",
 
   driverAdvance: 0,
-
   dieselAdvance: 0,
-
   stChallan: 0,
-
   loadingCharges: 0,
-
   unloadingCharges: 0,
-
   hamali: 0,
-
   commission: 0,
-
   otherExpense: 0,
 
-  // ===========================
-  // Calculated
-
-  billAmount: 0,
-
-  lorryHireAmount: 0,
-
-  profitAmount: 0,
-
-  // ===========================
   // Remarks
-
   remarks: "",
-
   internalRemarks: "",
 
-  // ===========================
   // Status
-
   status: "Open",
-
-  createdAt: "",
-
-  updatedAt: "",
 };
+
+/** Picks only the `LR` schema fields off an `LRRecord`, dropping
+ * server-owned columns (`id`, `created_at`) and the computed commercial
+ * columns (`billAmount`, `lorryHireAmount`, `profitAmount` — always
+ * recomputed from `calculateLR()` at save time, never edited directly) so
+ * none of them enter editable form state or `updateLR()`'s payload. */
+function toEditableLR(record: LRRecord): LR {
+  return pickFields(record, Object.keys(emptyLR) as (keyof LR)[]);
+}
 
 export default function LRDialog({
   open,
   onOpenChange,
+  lr,
+  loading = false,
+  onSubmit,
 }: LRDialogProps) {
-  const [lr, setLR] = useState<LR>(emptyLR);
+  const [values, setValues] = useState<LR>(emptyLR);
+  const [errors, setErrors] = useState<FieldErrors<LR>>({});
 
-  const [saving, setSaving] = useState(false);
+  const isEditing = Boolean(lr);
 
-  async function handleSave() {
-    try {
-      setSaving(true);
+  useEffect(() => {
+    if (!open) return;
 
-      await saveLR(lr);
+    setErrors({});
 
-      alert("LR saved successfully.");
-
-      setLR(emptyLR);
-
-      onOpenChange(false);
-    } catch (err) {
-      console.error(err);
-
-      alert("Unable to save LR.");
-    } finally {
-      setSaving(false);
+    if (lr) {
+      setValues({ ...emptyLR, ...toEditableLR(lr) });
+      return;
     }
+
+    // New LR: default Freight Type from Company Settings, falling back to
+    // the module's historical default when Company Master isn't configured
+    // yet. The user can still change it before saving.
+    setValues(emptyLR);
+
+    let cancelled = false;
+
+    getCompany()
+      .then((company) => {
+        if (!cancelled && company?.defaultFreightType) {
+          setValues((current) => ({ ...current, freightType: company.defaultFreightType }));
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, lr]);
+
+  function handleSave() {
+    const fieldErrors = validateLR(values);
+
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors(fieldErrors);
+      return;
+    }
+
+    setErrors({});
+    onSubmit(values);
   }
 
   function handleCancel() {
-    setLR(emptyLR);
-
     onOpenChange(false);
   }
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={onOpenChange}
+      title={isEditing ? "Edit Lorry Receipt" : "Create Lorry Receipt"}
+      description="Enter shipment, vehicle and commercial details."
+      size="fullscreen"
+      loading={loading}
+      loadingText="Saving Lorry Receipt..."
+      footer={
+        <>
+          <Button
+            variant="outline"
+            onClick={handleCancel}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            onClick={handleSave}
+            disabled={loading}
+          >
+            {loading ? "Saving..." : "Save LR"}
+          </Button>
+        </>
+      }
     >
-      <DialogContent
-        className="
-          w-[98vw]
-          max-w-none
-          h-[96vh]
-          max-h-none
-          rounded-2xl
-          overflow-hidden
-          p-0
-        "
-      >
-        <DialogHeader className="border-b bg-white px-8 py-6">
-
-          <DialogTitle className="text-3xl font-bold">
-            Create Lorry Receipt
-          </DialogTitle>
-
-          <p className="text-sm text-slate-500">
-            Enter shipment, vehicle and commercial details.
-          </p>
-
-        </DialogHeader>
-
-        <div className="h-[calc(96vh-95px)] overflow-y-auto bg-slate-50 px-8 py-8">
-
-          <LRForm
-            lr={lr}
-            onChange={setLR}
-            onSave={handleSave}
-            onCancel={handleCancel}
-          />
-
-        </div>
-
-        {saving && (
-          <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center">
-
-            <div className="rounded-xl bg-white border shadow-lg px-8 py-5">
-
-              <p className="font-semibold">
-                Saving Lorry Receipt...
-              </p>
-
-            </div>
-
-          </div>
-        )}
-
-      </DialogContent>
-    </Dialog>
+      <LRForm
+        lr={values}
+        errors={errors}
+        onChange={setValues}
+      />
+    </FormDialog>
   );
 }

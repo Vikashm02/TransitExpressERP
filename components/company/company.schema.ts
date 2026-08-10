@@ -90,6 +90,11 @@ export const companySchema = z.object({
   lrPrefixLength: z.number().int().min(1).max(10),
   invoicePrefixLength: z.number().int().min(1).max(10),
   voucherPrefixLength: z.number().int().min(1).max(10),
+  /** Separate running counters, distinct from the *Length fields above
+   * (which only control zero-padding width). Advanced by the app after a
+   * successful LR/Invoice creation — never edited by prefix-length logic. */
+  lrRunningNumber: z.number().int().min(0),
+  invoiceRunningNumber: z.number().int().min(0),
 
   // System Defaults
   defaultBranch: z.string().trim(),

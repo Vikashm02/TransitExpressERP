@@ -19,6 +19,8 @@ const NUMERIC_DEFAULTS: Partial<Record<keyof Company, number>> = {
   lrPrefixLength: 4,
   invoicePrefixLength: 4,
   voucherPrefixLength: 4,
+  lrRunningNumber: 0,
+  invoiceRunningNumber: 0,
   defaultGstPercentage: 0,
 };
 

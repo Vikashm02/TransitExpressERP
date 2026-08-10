@@ -1,12 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-
-import { LR } from "./types";
+import type { LR } from "./lr.schema";
+import type { FieldErrors } from "@/lib/validation";
 
 import LRHeader from "./sections/LRHeader";
-import ConsignorSection from "./sections/ConsignorSection";
-import ConsigneeSection from "./sections/ConsigneeSection";
+import PartySection from "./sections/PartySection";
 import VehicleSection from "./sections/VehicleSection";
 import MaterialSection from "./sections/MaterialSection";
 import DispatchDocumentsSection from "./sections/DispatchDocumentsSection";
@@ -15,115 +13,68 @@ import RemarksSection from "./sections/RemarksSection";
 
 interface LRFormProps {
   lr: LR;
+  errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
-  onSave: () => void;
-  onCancel: () => void;
 }
 
 export default function LRForm({
   lr,
+  errors = {},
   onChange,
-  onSave,
-  onCancel,
 }: LRFormProps) {
   return (
-    <div className="space-y-6 pb-32">
-
-      {/* ==========================
-          LR HEADER
-      ========================== */}
-
+    <div className="space-y-6">
       <LRHeader
         lr={lr}
+        errors={errors}
         onChange={onChange}
       />
 
-      {/* ==========================
-          CONSIGNOR / CONSIGNEE
-      ========================== */}
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-        <ConsignorSection
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <PartySection
+          role="consignor"
           lr={lr}
+          errors={errors}
           onChange={onChange}
         />
 
-        <ConsigneeSection
+        <PartySection
+          role="consignee"
           lr={lr}
+          errors={errors}
           onChange={onChange}
         />
-
       </div>
 
-      {/* ==========================
-          VEHICLE / MATERIAL
-      ========================== */}
+      <VehicleSection
+        lr={lr}
+        errors={errors}
+        onChange={onChange}
+      />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-        <VehicleSection
-          lr={lr}
-          onChange={onChange}
-        />
-
-        <MaterialSection
-          lr={lr}
-          onChange={onChange}
-        />
-
-      </div>
-
-      {/* ==========================
-          DOCUMENTS
-      ========================== */}
+      <MaterialSection
+        lr={lr}
+        errors={errors}
+        onChange={onChange}
+      />
 
       <DispatchDocumentsSection
         lr={lr}
+        errors={errors}
         onChange={onChange}
       />
-
-      {/* ==========================
-          COMMERCIAL
-      ========================== */}
 
       <CommercialSection
         lr={lr}
+        errors={errors}
         onChange={onChange}
       />
-
-      {/* ==========================
-          REMARKS
-      ========================== */}
 
       <RemarksSection
         lr={lr}
+        errors={errors}
         onChange={onChange}
       />
-
-      {/* ==========================
-          STICKY FOOTER
-      ========================== */}
-
-      <div className="sticky bottom-0 left-0 bg-white border-t p-4 flex justify-end gap-3 shadow-lg">
-
-        <Button
-          variant="outline"
-          size="lg"
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
-
-        <Button
-          size="lg"
-          onClick={onSave}
-        >
-          Save LR
-        </Button>
-
-      </div>
-
     </div>
   );
 }

@@ -45,3 +45,30 @@ export function objectToCamelCase<T = Record<string, unknown>>(
 
   return result as T;
 }
+
+/**
+ * Server-owned columns that must never appear in an UPDATE payload. `id` is
+ * a Postgres `GENERATED ALWAYS AS IDENTITY` column on every table in this
+ * app — Supabase rejects (HTTP 400, code 428C9) *any* update payload that
+ * includes it, regardless of value. `created_at`/`updated_at` are likewise
+ * set by the database, never the client.
+ *
+ * Edit dialogs across the app seed their form state from the full DB
+ * record (`{ ...emptyX, ...record }`), which means `id`/`created_at`
+ * silently ride along into `onSubmit`. Services must strip them here,
+ * at the last mile before hitting Supabase, rather than trust every
+ * caller to have already excluded them.
+ */
+const SERVER_OWNED_FIELDS = ["id", "created_at", "updated_at"] as const;
+
+export function omitServerFields<T extends Record<string, unknown>>(
+  input: T
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...input };
+
+  for (const field of SERVER_OWNED_FIELDS) {
+    delete result[field];
+  }
+
+  return result;
+}
