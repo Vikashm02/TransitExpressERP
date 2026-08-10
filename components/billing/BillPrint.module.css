@@ -1,6 +1,6 @@
 /* ==========================================================
-   Bill Print — replicates the approved Tax Invoice format (see
-   "ZIGMA BILL NO 2394.pdf" used as the design reference).
+   Bill Print — replicates the approved Tax Invoice format
+   (see "ZIGMA BILL NO 2394.pdf" used as the design reference).
    Colors/borders are close visual approximations of the reference
    (exact brand hex values were not available).
 ========================================================== */
@@ -305,11 +305,9 @@
     margin: 8mm;
   }
 
-  html,
-  body {
-    margin: 0;
-    padding: 0;
-  }
+  /* html/body print reset now lives in app/globals.css — see the
+     note there (Next's webpack CSS-Modules loader runs in `pure`
+     mode, which rejects module rules with no local class/id). */
 
   .toolbar {
     display: none !important;

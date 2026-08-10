@@ -163,3 +163,21 @@
     @apply font-sans;
   }
 }
+
+/* ==========================================================
+   Print reset (shared by all print views: Bill, LR, Ledger,
+   Reports). Lives here — not in a .module.css file — because
+   Next.js's webpack CSS-Modules loader runs in `pure` mode,
+   which rejects any module rule with no local class/id, even
+   when wrapped in :global(). See BillPrint.module.css,
+   LedgerStatement.module.css, LRPrint.module.css, and
+   Report.module.css's own print sections for the rest of each
+   view's print rules.
+========================================================== */
+@media print {
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+}

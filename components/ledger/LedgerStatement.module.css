@@ -166,11 +166,9 @@
     margin: 8mm;
   }
 
-  html,
-  body {
-    margin: 0;
-    padding: 0;
-  }
+  /* html/body print reset now lives in app/globals.css — see the
+     note there (Next's webpack CSS-Modules loader runs in `pure`
+     mode, which rejects module rules with no local class/id). */
 
   .toolbar {
     display: none !important;
