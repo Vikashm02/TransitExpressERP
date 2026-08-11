@@ -21,10 +21,15 @@ import {
 } from "@/components/services/billing.service";
 import { getCompany, saveCompany } from "@/components/services/company.service";
 import { getLRs, updateLR } from "@/components/services/lr.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function BillingListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("billing", "create_view");
+  const canEdit = hasPermission("billing", "edit");
+
   const [bills, setBills] = useState<BillRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -185,6 +190,7 @@ export default function BillingListPage() {
         title="Billing"
         buttonText="Create Bill"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -221,6 +227,7 @@ export default function BillingListPage() {
         onEdit={handleEdit}
         onPrint={handlePrint}
         onShare={handleShare}
+        canEdit={canEdit}
       />
 
       <BillDialog

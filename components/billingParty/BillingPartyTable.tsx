@@ -11,6 +11,11 @@ interface BillingPartyTableProps {
   pageSize?: number;
   onEdit: (billingParty: BillingPartyRecord) => void;
   onDelete: (billingParty: BillingPartyRecord) => void;
+  /** Staff / Sub-User Access Control — hides both Edit and Delete when
+   * the caller lacks "billing_parties" edit permission (Delete rides
+   * on "edit" — no separate Delete level). Defaults to `true` for
+   * existing call sites. */
+  canEdit?: boolean;
 }
 
 export default function BillingPartyTable({
@@ -19,6 +24,7 @@ export default function BillingPartyTable({
   pageSize,
   onEdit,
   onDelete,
+  canEdit = true,
 }: BillingPartyTableProps) {
   const columns: DataTableColumn<BillingPartyRecord>[] = [
     { key: "code", header: "Code", sortable: true, width: "10%" },
@@ -47,12 +53,14 @@ export default function BillingPartyTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
         {
           label: "Delete",
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
+          hidden: () => !canEdit,
         },
       ]}
     />

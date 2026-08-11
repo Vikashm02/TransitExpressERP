@@ -26,6 +26,7 @@ import {
   saveCompany,
   uploadCompanyAsset,
 } from "@/components/services/company.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const emptyCompany: Company = {
   companyName: "",
@@ -147,6 +148,9 @@ function AssetUploadField({
 }
 
 export default function CompanyForm() {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission("company", "edit");
+
   const [company, setCompany] = useState<Company>(emptyCompany);
   const [companyId, setCompanyId] = useState<number | undefined>(undefined);
   const [errors, setErrors] = useState<FieldErrors<Company>>({});
@@ -230,6 +234,7 @@ export default function CompanyForm() {
         buttonText={saving ? "Saving..." : "Save Company"}
         onAdd={handleSave}
         disabled={loading || saving}
+        showAddButton={canEdit}
       />
 
       <div className="space-y-6">

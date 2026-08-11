@@ -20,6 +20,10 @@ interface LRTableProps {
   onReassign?: (lr: LRRecord) => void;
   /** Resolves an `assignedTo` uuid to a display name for the column. */
   resolveAssignedName?: (assignedTo: string | null) => string;
+  /** Staff / Sub-User Access Control — hides Edit (and Reassign) when
+   * the caller lacks "lr" edit permission. Defaults to `true` so every
+   * existing call site keeps its current behavior. */
+  canEdit?: boolean;
 }
 
 export default function LRTable({
@@ -33,6 +37,7 @@ export default function LRTable({
   isAdmin = false,
   onReassign,
   resolveAssignedName,
+  canEdit = true,
 }: LRTableProps) {
   const columns: DataTableColumn<LRRecord>[] = [
     { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
@@ -95,6 +100,7 @@ export default function LRTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
         ...(isAdmin && onReassign
           ? [
@@ -103,6 +109,7 @@ export default function LRTable({
                 icon: UserCog,
                 variant: "outline" as const,
                 onClick: onReassign,
+                hidden: () => !canEdit,
               },
             ]
           : []),

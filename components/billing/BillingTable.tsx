@@ -13,6 +13,11 @@ interface BillingTableProps {
   onEdit: (bill: BillRecord) => void;
   onPrint: (bill: BillRecord) => void;
   onShare: (bill: BillRecord) => void;
+  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
+   * "billing" edit permission. Defaults to `true` for existing call
+   * sites. Print/Share are read-only/export actions and stay available
+   * to anyone who can already view this page. */
+  canEdit?: boolean;
 }
 
 export default function BillingTable({
@@ -23,6 +28,7 @@ export default function BillingTable({
   onEdit,
   onPrint,
   onShare,
+  canEdit = true,
 }: BillingTableProps) {
   const columns: DataTableColumn<BillRecord>[] = [
     { key: "billNumber", header: "Bill No.", sortable: true, className: "font-medium" },
@@ -62,6 +68,7 @@ export default function BillingTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
         {
           label: "Print",

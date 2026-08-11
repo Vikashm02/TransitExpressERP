@@ -6,6 +6,12 @@ interface PageHeaderProps {
   buttonText: string;
   onAdd?: () => void;
   disabled?: boolean;
+  /** Set to `false` to hide the action button entirely — used by pages
+   * to enforce "create_view"/"edit" permission (Staff / Sub-User Access
+   * Control) by hiding the button rather than merely disabling it,
+   * matching the Sidebar's hide-not-disable convention. Defaults to
+   * `true` so every existing call site keeps rendering the button. */
+  showAddButton?: boolean;
 }
 
 export default function PageHeader({
@@ -13,6 +19,7 @@ export default function PageHeader({
   buttonText,
   onAdd,
   disabled,
+  showAddButton = true,
 }: PageHeaderProps) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -25,13 +32,15 @@ export default function PageHeader({
         </p>
       </div>
 
-      <Button
-        onClick={onAdd}
-        disabled={disabled}
-      >
-        <Plus className="mr-2 h-4 w-4" />
-        {buttonText}
-      </Button>
+      {showAddButton && (
+        <Button
+          onClick={onAdd}
+          disabled={disabled}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          {buttonText}
+        </Button>
+      )}
     </div>
   );
 }

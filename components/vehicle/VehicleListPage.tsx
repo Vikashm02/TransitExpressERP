@@ -17,10 +17,15 @@ import {
   updateVehicle,
   type VehicleRecord,
 } from "@/components/services/vehicle.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function VehicleListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("vehicle", "create_view");
+  const canEdit = hasPermission("vehicle", "edit");
+
   const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -198,6 +203,7 @@ export default function VehicleListPage() {
         title="Vehicle Master"
         buttonText="Add Vehicle"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <SearchToolbar
@@ -227,6 +233,7 @@ export default function VehicleListPage() {
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
+        canEdit={canEdit}
       />
 
       <VehicleDialog

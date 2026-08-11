@@ -16,6 +16,9 @@ interface PodTableProps {
   pageSize?: number;
   onView: (pod: PodRecord) => void;
   onEdit: (pod: PodRecord) => void;
+  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
+   * "pod" edit permission. Defaults to `true` for existing call sites. */
+  canEdit?: boolean;
 }
 
 export default function PodTable({
@@ -24,6 +27,7 @@ export default function PodTable({
   pageSize,
   onView,
   onEdit,
+  canEdit = true,
 }: PodTableProps) {
   const columns: DataTableColumn<PodListRow>[] = [
     { key: "lrNumber", header: "LR Number", sortable: true, className: "font-medium" },
@@ -68,6 +72,7 @@ export default function PodTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
       ]}
     />

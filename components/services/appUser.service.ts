@@ -11,6 +11,14 @@ import { supabase } from "@/lib/supabase";
  * `approvalStatus` (migration 018) gates whether a signed-in user may
  * use the app at all — see `DashboardLayout.tsx`, which blocks anyone
  * whose status isn't "approved". It is independent of `role`.
+ *
+ * `fullAccess` / `isLocked` (migration 019) are the Staff / Sub-User
+ * Access Control master switches: `fullAccess` makes a staff account
+ * behave as if every module permission were set to Edit, without a
+ * row per module; `isLocked` blocks the account outright regardless
+ * of `fullAccess` or any individual permission. Both are Admin-only
+ * to change (see `app_users_update_admin_only` RLS policy) and are
+ * independent of `role`/`approvalStatus`.
  */
 export interface AppUserProfile {
   id: string;
@@ -18,6 +26,8 @@ export interface AppUserProfile {
   displayName: string;
   role: "admin" | "staff";
   approvalStatus: "pending" | "approved" | "rejected";
+  fullAccess: boolean;
+  isLocked: boolean;
 }
 
 const TABLE = "app_users";
@@ -28,6 +38,8 @@ interface AppUserRow {
   display_name: string | null;
   role: string | null;
   approval_status: string | null;
+  full_access: boolean | null;
+  is_locked: boolean | null;
 }
 
 function fromRow(row: AppUserRow): AppUserProfile {
@@ -39,6 +51,8 @@ function fromRow(row: AppUserRow): AppUserProfile {
     approvalStatus: row.approval_status === "approved" || row.approval_status === "rejected"
       ? row.approval_status
       : "pending",
+    fullAccess: Boolean(row.full_access),
+    isLocked: Boolean(row.is_locked),
   };
 }
 
@@ -103,5 +117,27 @@ export async function updateAppUserApprovalStatus(
   approvalStatus: "pending" | "approved" | "rejected"
 ): Promise<void> {
   const { error } = await supabase.from(TABLE).update({ approval_status: approvalStatus }).eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Admin-only: toggle the "Full Access" master switch for a staff
+ * account (migration 019). Same RLS protection as the functions
+ * above — a staff account cannot grant this to themselves.
+ */
+export async function updateAppUserFullAccess(id: string, fullAccess: boolean): Promise<void> {
+  const { error } = await supabase.from(TABLE).update({ full_access: fullAccess }).eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Admin-only: lock/unlock a staff account (migration 019). A locked
+ * account is blocked by `DashboardLayout` regardless of role,
+ * approval status, or any permission, and — for `lrs`/`pods`
+ * specifically — by `public.has_permission()` at the database layer
+ * too (see that migration's Part C).
+ */
+export async function updateAppUserLocked(id: string, isLocked: boolean): Promise<void> {
+  const { error } = await supabase.from(TABLE).update({ is_locked: isLocked }).eq("id", id);
   if (error) throw error;
 }

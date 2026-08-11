@@ -11,6 +11,11 @@ interface CustomerTableProps {
   pageSize?: number;
   onEdit: (customer: CustomerRecord) => void;
   onDelete: (customer: CustomerRecord) => void;
+  /** Staff / Sub-User Access Control — hides both Edit and Delete when
+   * the caller lacks "customers" edit permission (there is no separate
+   * Delete level in the four-level model, so Delete rides on "edit").
+   * Defaults to `true` for existing call sites. */
+  canEdit?: boolean;
 }
 
 export default function CustomerTable({
@@ -19,6 +24,7 @@ export default function CustomerTable({
   pageSize,
   onEdit,
   onDelete,
+  canEdit = true,
 }: CustomerTableProps) {
   const columns: DataTableColumn<CustomerRecord>[] = [
     { key: "code", header: "Code", sortable: true, width: "10%" },
@@ -47,12 +53,14 @@ export default function CustomerTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
         {
           label: "Delete",
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
+          hidden: () => !canEdit,
         },
       ]}
     />

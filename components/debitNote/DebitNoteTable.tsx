@@ -12,6 +12,10 @@ interface DebitNoteTableProps {
   pageSize?: number;
   onView: (debitNote: DebitNoteRecord) => void;
   onEdit: (debitNote: DebitNoteRecord) => void;
+  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
+   * "debit_notes" edit permission. Defaults to `true` for existing
+   * call sites. */
+  canEdit?: boolean;
 }
 
 export default function DebitNoteTable({
@@ -20,6 +24,7 @@ export default function DebitNoteTable({
   pageSize,
   onView,
   onEdit,
+  canEdit = true,
 }: DebitNoteTableProps) {
   const columns: DataTableColumn<DebitNoteRecord>[] = [
     { key: "debitNoteNumber", header: "Debit Note No.", sortable: true, className: "font-medium" },
@@ -71,6 +76,7 @@ export default function DebitNoteTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
       ]}
     />

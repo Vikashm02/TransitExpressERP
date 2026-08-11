@@ -11,8 +11,10 @@ import {
   getStaffUsers,
   updateAppUserRole,
   updateAppUserApprovalStatus,
+  updateAppUserLocked,
   type AppUserProfile,
 } from "@/components/services/appUser.service";
+import StaffPermissionsDialog from "@/components/staff/StaffPermissionsDialog";
 
 /**
  * Admin-only staff roster. Lets an admin:
@@ -31,14 +33,21 @@ import {
  * from an already-authenticated Admin, so both are enforced at the
  * database layer, not just by the client-side `hidden` rules below.
  * Reassigning an individual LR to a staff member happens from the LR
- * table itself (see LRTable.tsx's "Reassign" action), not here — this
- * page only manages roles and approval.
+ * table itself (see LRTable.tsx's "Reassign" action), not here.
+ *
+ * Also manages the Staff / Sub-User Access Control system (migration
+ * 019): "Edit Permissions" opens `StaffPermissionsDialog` (Full
+ * Access toggle + per-module View/Create & View/Edit), and Lock/
+ * Unlock blocks a staff account outright regardless of role or
+ * approval — same admin-only RLS protection as role/approval above.
  */
 export default function StaffListPage() {
   const { isAdmin, profile } = useAuth();
   const [staff, setStaff] = useState<AppUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [permissionsUser, setPermissionsUser] = useState<AppUserProfile | null>(null);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
 
   const loadStaff = useCallback(async () => {
     try {
@@ -91,6 +100,27 @@ export default function StaffListPage() {
     }
   }
 
+  async function handleToggleLock(user: AppUserProfile) {
+    const nextLocked = !user.isLocked;
+
+    try {
+      setUpdatingId(user.id);
+      await updateAppUserLocked(user.id, nextLocked);
+      toast.success(`${user.displayName} has been ${nextLocked ? "locked" : "unlocked"}.`);
+      await loadStaff();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to update lock status.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function handleEditPermissions(user: AppUserProfile) {
+    setPermissionsUser(user);
+    setPermissionsOpen(true);
+  }
+
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border bg-card p-14 text-center shadow-sm">
@@ -118,6 +148,26 @@ export default function StaffListPage() {
           status={row.approvalStatus}
           label={row.approvalStatus.charAt(0).toUpperCase() + row.approvalStatus.slice(1)}
         />
+      ),
+    },
+    {
+      key: "access",
+      header: "Access",
+      render: (row) =>
+        row.role === "admin" ? (
+          <StatusBadge status="Active" label="All Modules" />
+        ) : row.fullAccess ? (
+          <StatusBadge status="Active" label="Full Access" />
+        ) : (
+          <StatusBadge status="Pending" label="Restricted" />
+        ),
+    },
+    {
+      key: "isLocked",
+      header: "Locked",
+      sortable: true,
+      render: (row) => (
+        <StatusBadge status={row.isLocked ? "Error" : "Active"} label={row.isLocked ? "Locked" : "Active"} />
       ),
     },
   ];
@@ -155,17 +205,40 @@ export default function StaffListPage() {
             onClick: handleToggleRole,
             hidden: (row) => Boolean(profile && row.id === profile.id),
           },
+          {
+            label: "Edit Permissions",
+            onClick: handleEditPermissions,
+            hidden: (row) => row.role === "admin",
+          },
+          {
+            label: "Unlock",
+            onClick: (row) => handleToggleLock(row),
+            hidden: (row) => Boolean((profile && row.id === profile.id) || !row.isLocked),
+          },
+          {
+            label: "Lock",
+            variant: "destructive",
+            onClick: (row) => handleToggleLock(row),
+            hidden: (row) => Boolean((profile && row.id === profile.id) || row.isLocked || row.role === "admin"),
+          },
         ]}
       />
 
       <p className="text-xs text-muted-foreground">
-        You cannot change your own role or approval status from here — ask another Administrator if you need to
-        step down.
+        You cannot change your own role, approval status, or lock status from here — ask another Administrator if
+        you need to step down.
       </p>
 
       {updatingId && (
         <p className="text-xs text-muted-foreground">Updating...</p>
       )}
+
+      <StaffPermissionsDialog
+        user={permissionsUser}
+        open={permissionsOpen}
+        onOpenChange={setPermissionsOpen}
+        onSaved={loadStaff}
+      />
     </div>
   );
 }

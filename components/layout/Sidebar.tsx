@@ -23,8 +23,15 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import type { PermissionKey } from "@/lib/permissions";
 
-const menus = [
+const menus: {
+  label: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+  /** No key = always visible to any approved user (e.g. Dashboard). */
+  permissionKey?: PermissionKey;
+}[] = [
   {
     label: "Dashboard",
     href: "/",
@@ -34,61 +41,73 @@ const menus = [
     label: "Company Master",
     href: "/company",
     icon: Building2,
+    permissionKey: "company",
   },
   {
     label: "Customer Master",
     href: "/customers",
     icon: Users,
+    permissionKey: "customers",
   },
   {
     label: "Billing Party Master",
     href: "/billing-parties",
     icon: Banknote,
+    permissionKey: "billing_parties",
   },
   {
     label: "Vehicle Master",
     href: "/vehicle",
     icon: Truck,
+    permissionKey: "vehicle",
   },
   {
     label: "LR Entry",
     href: "/lr",
     icon: FileText,
+    permissionKey: "lr",
   },
   {
     label: "POD Entry",
     href: "/pod",
     icon: ClipboardCheck,
+    permissionKey: "pod",
   },
   {
     label: "Lorry Expenses",
     href: "/lorry-expenses",
     icon: Wallet,
+    permissionKey: "lorry_expenses",
   },
   {
     label: "Billing",
     href: "/billing",
     icon: ReceiptIndianRupee,
+    permissionKey: "billing",
   },
   {
     label: "Credit Note",
     href: "/credit-notes",
     icon: FileMinus2,
+    permissionKey: "credit_notes",
   },
   {
     label: "Debit Note",
     href: "/debit-notes",
     icon: FilePlus2,
+    permissionKey: "debit_notes",
   },
   {
     label: "Ledger",
     href: "/ledger",
     icon: BookOpen,
+    permissionKey: "ledger",
   },
   {
     label: "Reports",
     href: "/reports",
     icon: BarChart3,
+    permissionKey: "reports",
   },
   {
     label: "Settings",
@@ -109,9 +128,12 @@ const adminOnlyMenu = {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, isAdmin, signOut } = useAuth();
+  const { profile, isAdmin, signOut, hasPermission } = useAuth();
 
-  const visibleMenus = isAdmin ? [...menus, adminOnlyMenu] : menus;
+  const allowedMenus = menus.filter(
+    (menu) => !menu.permissionKey || hasPermission(menu.permissionKey, "view")
+  );
+  const visibleMenus = isAdmin ? [...allowedMenus, adminOnlyMenu] : allowedMenus;
 
   async function handleSignOut() {
     await signOut();

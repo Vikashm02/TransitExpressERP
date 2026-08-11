@@ -5,6 +5,8 @@ import type { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
 import { getMyProfile, type AppUserProfile } from "@/components/services/appUser.service";
+import { getMyPermissions, type PermissionMap } from "@/components/services/permission.service";
+import { meetsLevel, type PermissionKey, type PermissionLevel } from "@/lib/permissions";
 
 interface AuthContextValue {
   session: Session | null;
@@ -15,6 +17,15 @@ interface AuthContextValue {
    * existing session (if any) has had a chance to load. */
   loading: boolean;
   isAdmin: boolean;
+  /**
+   * Staff / Sub-User Access Control (migration 019). Admins always
+   * pass. A staff account with `profile.fullAccess` always passes.
+   * Otherwise this checks the loaded `app_user_permissions` rows.
+   * This is a UX convenience for nav/route gating only — real
+   * enforcement for `lrs`/`pods` lives in `public.has_permission()`
+   * at the database layer (see that migration).
+   */
+  hasPermission: (key: PermissionKey, level: PermissionLevel) => boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -38,15 +49,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AppUserProfile | null>(null);
+  const [permissions, setPermissions] = useState<PermissionMap>({});
   const [loading, setLoading] = useState(true);
 
   const loadProfile = useCallback(async (userId: string) => {
     try {
-      const data = await getMyProfile(userId);
+      const [data, perms] = await Promise.all([
+        getMyProfile(userId),
+        getMyPermissions(userId).catch((error) => {
+          console.error(error);
+          return {} as PermissionMap;
+        }),
+      ]);
       setProfile(data);
+      setPermissions(perms);
     } catch (error) {
       console.error(error);
       setProfile(null);
+      setPermissions({});
     }
   }, []);
 
@@ -76,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loadProfile(nextSession.user.id);
       } else {
         setProfile(null);
+        setPermissions({});
       }
     });
 
@@ -88,10 +109,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     await supabase.auth.signOut();
     setProfile(null);
+    setPermissions({});
   }
 
   async function refreshProfile() {
     if (session?.user) await loadProfile(session.user.id);
+  }
+
+  const isAdmin = profile?.role === "admin";
+
+  function hasPermission(key: PermissionKey, level: PermissionLevel): boolean {
+    if (isAdmin) return true;
+    if (!profile || profile.isLocked || profile.approvalStatus !== "approved") return false;
+    if (profile.fullAccess) return true;
+    return meetsLevel(permissions[key] ?? "none", level);
   }
 
   const value: AuthContextValue = {
@@ -99,7 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: session?.user ?? null,
     profile,
     loading,
-    isAdmin: profile?.role === "admin",
+    isAdmin,
+    hasPermission,
     signOut,
     refreshProfile,
   };

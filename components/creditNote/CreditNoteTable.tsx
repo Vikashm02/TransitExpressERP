@@ -11,6 +11,10 @@ interface CreditNoteTableProps {
   pageSize?: number;
   onView: (creditNote: CreditNoteRecord) => void;
   onEdit: (creditNote: CreditNoteRecord) => void;
+  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
+   * "credit_notes" edit permission. Defaults to `true` for existing
+   * call sites. */
+  canEdit?: boolean;
 }
 
 export default function CreditNoteTable({
@@ -19,6 +23,7 @@ export default function CreditNoteTable({
   pageSize,
   onView,
   onEdit,
+  canEdit = true,
 }: CreditNoteTableProps) {
   const columns: DataTableColumn<CreditNoteRecord>[] = [
     { key: "creditNoteNumber", header: "Credit Note No.", sortable: true, className: "font-medium" },
@@ -70,6 +75,7 @@ export default function CreditNoteTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
       ]}
     />

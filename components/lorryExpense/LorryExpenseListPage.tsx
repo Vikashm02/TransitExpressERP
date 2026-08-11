@@ -20,6 +20,7 @@ import {
 import { getLRs, type LRRecord } from "@/components/services/lr.service";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import { calculateLorrySettlement } from "@/lib/calculations/lorrySettlement";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
@@ -30,6 +31,10 @@ const PAGE_SIZE = 10;
  * effectively "My Lorry Expenses" with zero extra filtering code.
  */
 export default function LorryExpenseListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("lorry_expenses", "create_view");
+  const canEdit = hasPermission("lorry_expenses", "edit");
+
   const [expenses, setExpenses] = useState<LorryExpenseRecord[]>([]);
   const [lrs, setLrs] = useState<LRRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,6 +158,7 @@ export default function LorryExpenseListPage() {
         title="Lorry Expenses"
         buttonText="Add Lorry Expenses"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -185,6 +191,7 @@ export default function LorryExpenseListPage() {
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
+        canEdit={canEdit}
       />
 
       <LorryExpenseDialog

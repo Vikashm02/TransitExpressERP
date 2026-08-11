@@ -17,10 +17,15 @@ import {
   updateBillingParty,
   type BillingPartyRecord,
 } from "@/components/services/billingParty.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function BillingPartyListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("billing_parties", "create_view");
+  const canEdit = hasPermission("billing_parties", "edit");
+
   const [billingParties, setBillingParties] = useState<BillingPartyRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -160,6 +165,7 @@ export default function BillingPartyListPage() {
         title="Billing Party Master"
         buttonText="Add Billing Party"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <SearchToolbar
@@ -189,6 +195,7 @@ export default function BillingPartyListPage() {
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
+        canEdit={canEdit}
       />
 
       <BillingPartyDialog

@@ -19,10 +19,15 @@ import {
   type CreditNoteRecord,
 } from "@/components/services/creditNote.service";
 import { getBillingParty } from "@/components/services/billingParty.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function CreditNoteListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("credit_notes", "create_view");
+  const canEdit = hasPermission("credit_notes", "edit");
+
   const [creditNotes, setCreditNotes] = useState<CreditNoteRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -149,6 +154,7 @@ export default function CreditNoteListPage() {
         title="Credit Note"
         buttonText="Create Credit Note"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -183,6 +189,7 @@ export default function CreditNoteListPage() {
         pageSize={PAGE_SIZE}
         onView={handleView}
         onEdit={handleEdit}
+        canEdit={canEdit}
       />
 
       <CreditNoteDialog

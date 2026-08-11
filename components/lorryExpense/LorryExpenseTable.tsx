@@ -20,6 +20,10 @@ interface LorryExpenseTableProps {
   loading?: boolean;
   pageSize?: number;
   onEdit: (row: LorryExpenseListRow) => void;
+  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
+   * "lorry_expenses" edit permission. Defaults to `true` for existing
+   * call sites. */
+  canEdit?: boolean;
 }
 
 function money(value: number): string {
@@ -31,6 +35,7 @@ export default function LorryExpenseTable({
   loading,
   pageSize,
   onEdit,
+  canEdit = true,
 }: LorryExpenseTableProps) {
   const columns: DataTableColumn<LorryExpenseListRow>[] = [
     { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
@@ -78,6 +83,7 @@ export default function LorryExpenseTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
+          hidden: () => !canEdit,
         },
       ]}
     />

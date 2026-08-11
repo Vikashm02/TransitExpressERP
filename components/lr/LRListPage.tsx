@@ -31,7 +31,9 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function LRListPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, hasPermission } = useAuth();
+  const canCreate = hasPermission("lr", "create_view");
+  const canEdit = hasPermission("lr", "edit");
 
   const [lrs, setLRs] = useState<LRRecord[]>([]);
   const [staff, setStaff] = useState<AppUserProfile[]>([]);
@@ -309,6 +311,7 @@ export default function LRListPage() {
         title="LR Entry"
         buttonText="Create LR"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -377,6 +380,7 @@ export default function LRListPage() {
         isAdmin={isAdmin}
         onReassign={handleReassign}
         resolveAssignedName={resolveAssignedName}
+        canEdit={canEdit}
       />
 
       <LRDialog

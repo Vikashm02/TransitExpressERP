@@ -16,10 +16,15 @@ import {
   type PodRecord,
 } from "@/components/services/pod.service";
 import { getLRs, updateLR, type LRRecord } from "@/components/services/lr.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function PodListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("pod", "create_view");
+  const canEdit = hasPermission("pod", "edit");
+
   const [pods, setPods] = useState<PodRecord[]>([]);
   const [lrs, setLrs] = useState<LRRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,6 +179,7 @@ export default function PodListPage() {
         title="POD Entry"
         buttonText="Add POD"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <SearchToolbar
@@ -190,6 +196,7 @@ export default function PodListPage() {
         pageSize={PAGE_SIZE}
         onView={handleView}
         onEdit={handleEdit}
+        canEdit={canEdit}
       />
 
       <PodDialog

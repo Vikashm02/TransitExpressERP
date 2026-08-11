@@ -1,11 +1,12 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { Clock, ShieldX, Truck } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
+import { Clock, Lock, ShieldX, Truck } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
+import { permissionKeyForPath } from "@/lib/permissions";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 
@@ -28,12 +29,20 @@ interface DashboardLayoutProps {
  * dashboard — no redirect, so there's no loop, and refreshing re-runs
  * this same check every time (via AuthProvider re-fetching `profile`
  * on load), so it can't be bypassed by reloading the page.
+ *
+ * Also enforces, in order: the account-lock switch (`is_locked`) and
+ * then the per-module permission for the current route (via
+ * `permissionKeyForPath()` + `hasPermission()`, migration 019). Same
+ * caveat as above — this is the UX guard; `lrs`/`pods` are the only
+ * tables where the database itself (`public.has_permission()`) also
+ * enforces this if the guard is ever bypassed.
  */
 export default function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
   const router = useRouter();
-  const { session, profile, loading, signOut } = useAuth();
+  const pathname = usePathname();
+  const { session, profile, loading, signOut, hasPermission } = useAuth();
 
   useEffect(() => {
     if (!loading && !session) {
@@ -96,6 +105,54 @@ export default function DashboardLayout({
           >
             Sign Out
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (profile.isLocked) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-muted/30 p-4">
+        <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
+          <Lock className="h-10 w-10 text-destructive" />
+
+          <p className="text-sm font-medium text-foreground">
+            Your account has been locked. Please contact an administrator.
+          </p>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={signOut}
+          >
+            Sign Out
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const requiredPermissionKey = permissionKeyForPath(pathname ?? "");
+
+  if (requiredPermissionKey && !hasPermission(requiredPermissionKey, "view")) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-muted/30">
+        <Sidebar />
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Header />
+
+          <main className="flex flex-1 items-center justify-center overflow-y-auto p-4 sm:p-6 lg:p-8">
+            <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
+              <ShieldX className="h-10 w-10 text-muted-foreground/50" />
+              <p className="text-sm font-medium text-foreground">
+                You do not have permission to access this section.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Contact an administrator if you believe this is a mistake.
+              </p>
+            </div>
+          </main>
         </div>
       </div>
     );

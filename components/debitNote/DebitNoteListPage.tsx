@@ -19,10 +19,15 @@ import {
   type DebitNoteRecord,
 } from "@/components/services/debitNote.service";
 import { getBillingParty } from "@/components/services/billingParty.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function DebitNoteListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("debit_notes", "create_view");
+  const canEdit = hasPermission("debit_notes", "edit");
+
   const [debitNotes, setDebitNotes] = useState<DebitNoteRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -149,6 +154,7 @@ export default function DebitNoteListPage() {
         title="Debit Note"
         buttonText="Create Debit Note"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -183,6 +189,7 @@ export default function DebitNoteListPage() {
         pageSize={PAGE_SIZE}
         onView={handleView}
         onEdit={handleEdit}
+        canEdit={canEdit}
       />
 
       <DebitNoteDialog

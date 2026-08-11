@@ -17,10 +17,15 @@ import {
   updateCustomer,
   type CustomerRecord,
 } from "@/components/services/customer.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function CustomerListPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("customers", "create_view");
+  const canEdit = hasPermission("customers", "edit");
+
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -160,6 +165,7 @@ export default function CustomerListPage() {
         title="Customers"
         buttonText="Add Customer"
         onAdd={handleAdd}
+        showAddButton={canCreate}
       />
 
       <SearchToolbar
@@ -189,6 +195,7 @@ export default function CustomerListPage() {
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
+        canEdit={canEdit}
       />
 
       <CustomerDialog
