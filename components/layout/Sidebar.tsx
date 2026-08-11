@@ -9,6 +9,7 @@ import {
   Users,
   Banknote,
   Truck,
+  Package,
   FileText,
   ClipboardCheck,
   ReceiptIndianRupee,
@@ -62,6 +63,12 @@ const menus: {
     href: "/vehicle",
     icon: Truck,
     permissionKey: "vehicle",
+  },
+  {
+    label: "Material Master",
+    href: "/material",
+    icon: Package,
+    permissionKey: "material",
   },
   {
     label: "LR Entry",

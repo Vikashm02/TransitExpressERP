@@ -54,6 +54,7 @@ export type PermissionKey =
   | "customers"
   | "billing_parties"
   | "vehicle"
+  | "material"
   | "lr"
   | "pod"
   | "lorry_expenses"
@@ -68,6 +69,7 @@ export const PERMISSION_MODULES: { key: PermissionKey; label: string; routePrefi
   { key: "customers", label: "Customer Master", routePrefix: "/customers" },
   { key: "billing_parties", label: "Billing Party Master", routePrefix: "/billing-parties" },
   { key: "vehicle", label: "Vehicle Master", routePrefix: "/vehicle" },
+  { key: "material", label: "Material Master", routePrefix: "/material" },
   { key: "lr", label: "LR Entry", routePrefix: "/lr" },
   { key: "pod", label: "POD Entry", routePrefix: "/pod" },
   { key: "lorry_expenses", label: "Lorry Expenses", routePrefix: "/lorry-expenses" },

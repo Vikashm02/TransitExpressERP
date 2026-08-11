@@ -46,6 +46,9 @@ export default function MaterialSection({
         subtitle="Goods being transported"
       >
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+          {/* Material — must come from Material Master; selection only,
+              never free-typed (matches the same read-only + Search
+              pattern already used for Billing Party in LRHeader.tsx). */}
           <FormField
             label="Material"
             htmlFor="lr-material"
@@ -56,9 +59,10 @@ export default function MaterialSection({
             <div className="flex gap-3">
               <Input
                 id="lr-material"
-                placeholder="Select or enter material"
+                readOnly
+                placeholder="Select material"
                 value={lr.material}
-                onChange={(e) => update("material", e.target.value)}
+                onClick={() => setLookupOpen(true)}
               />
 
               <Button
