@@ -1,11 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 
-export default function Header() {
+interface HeaderProps {
+  /** Opens the mobile navigation drawer (see Sidebar.tsx). The trigger
+   * button is only rendered below the `lg` breakpoint — desktop
+   * header markup/behavior is otherwise unchanged. */
+  onMenuClick?: () => void;
+}
+
+export default function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter();
   const { profile, isAdmin, signOut } = useAuth();
 
@@ -16,7 +23,19 @@ export default function Header() {
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b bg-card px-4 sm:px-6 lg:px-8">
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-3">
+        {onMenuClick && (
+          <button
+            type="button"
+            title="Open menu"
+            aria-label="Open menu"
+            onClick={onMenuClick}
+            className="-ml-1.5 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
+
         <h2 className="truncate text-base font-semibold text-foreground sm:text-lg">
           Transjit Express TMS
         </h2>

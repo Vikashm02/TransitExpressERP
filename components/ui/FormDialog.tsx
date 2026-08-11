@@ -94,7 +94,7 @@ export default function FormDialog({
         )}
       >
         <DialogHeader
-          className={cn("shrink-0", isFullscreen && "border-b bg-card px-8 py-6")}
+          className={cn("shrink-0", isFullscreen && "border-b bg-card px-4 py-4 sm:px-8 sm:py-6")}
         >
           <DialogTitle className={isFullscreen ? "text-2xl font-semibold" : undefined}>
             {title}
@@ -111,7 +111,7 @@ export default function FormDialog({
           className={cn(
             "min-h-0",
             isFullscreen
-              ? "h-[calc(96vh-89px)] overflow-y-auto bg-muted/30 px-8 py-8"
+              ? "h-[calc(96vh-89px)] overflow-y-auto bg-muted/30 px-4 py-5 sm:px-8 sm:py-8"
               : "flex-1 overflow-y-auto"
           )}
         >
@@ -120,7 +120,7 @@ export default function FormDialog({
 
         {footer && (
           <DialogFooter
-            className={cn("shrink-0", isFullscreen && "border-t bg-card px-8 py-4")}
+            className={cn("shrink-0", isFullscreen && "border-t bg-card px-4 py-3 sm:px-8 sm:py-4")}
           >
             {footer}
           </DialogFooter>

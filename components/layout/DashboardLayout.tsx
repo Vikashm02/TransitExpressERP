@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Clock, Lock, ShieldX, Truck } from "lucide-react";
 
@@ -43,12 +43,19 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { session, profile, loading, signOut, hasPermission } = useAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !session) {
       router.replace("/login");
     }
   }, [loading, session, router]);
+
+  // Route changes should always close the mobile drawer (e.g. after
+  // tapping a nav link), on top of Sidebar already closing it itself.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   if (loading || !session) {
     return (
@@ -137,10 +144,10 @@ export default function DashboardLayout({
   if (requiredPermissionKey && !hasPermission(requiredPermissionKey, "view")) {
     return (
       <div className="flex h-screen overflow-hidden bg-muted/30">
-        <Sidebar />
+        <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Header />
+          <Header onMenuClick={() => setMobileNavOpen(true)} />
 
           <main className="flex flex-1 items-center justify-center overflow-y-auto p-4 sm:p-6 lg:p-8">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
@@ -160,10 +167,10 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-muted/30">
-      <Sidebar />
+      <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Header />
+        <Header onMenuClick={() => setMobileNavOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {children}

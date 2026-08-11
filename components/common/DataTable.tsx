@@ -194,6 +194,21 @@ export default function DataTable<T extends Record<string, any>>({
   const hasActions = Boolean(actions && actions.length > 0);
   const columnCount = columns.length + (hasActions ? 1 : 0);
 
+  // Mobile card list (below `md`) shows the same columns/actions as the
+  // desktop table, just stacked vertically instead of forced into a
+  // cramped horizontal scroller. The first column is the card's title;
+  // a "status"-typed column (if any) becomes a badge next to it; every
+  // other column renders as a label/value row.
+  const titleColumn = columns[0];
+  const statusColumn = columns.find((c) => c.type === "status" && c !== titleColumn);
+  const detailColumns = columns.filter((c) => c !== titleColumn && c !== statusColumn);
+
+  function renderCellValue(column: DataTableColumn<T>, row: T, index: number) {
+    if (column.render) return column.render(row, index);
+    if (column.type === "status") return <StatusBadge status={String(row[column.key] ?? "")} />;
+    return row[column.key];
+  }
+
   return (
     <div className={cn("overflow-hidden rounded-xl border bg-card shadow-sm", className)}>
       {searchable && (
@@ -211,8 +226,11 @@ export default function DataTable<T extends Record<string, any>>({
         </div>
       )}
 
+      {/* Desktop / tablet: unchanged table, horizontally scrollable
+       * within its own container if a row is ever wider than the
+       * viewport (see components/ui/table.tsx). */}
       <div
-        className="overflow-auto"
+        className="hidden overflow-auto md:block"
         style={maxHeight ? { maxHeight } : undefined}
       >
         <Table>
@@ -338,6 +356,93 @@ export default function DataTable<T extends Record<string, any>>({
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile: compact stacked cards instead of the desktop table —
+       * same data/actions/permission-driven `hidden` rules, just laid
+       * out vertically so nothing gets clipped on a phone width. */}
+      <div
+        className="divide-y overflow-auto md:hidden"
+        style={maxHeight ? { maxHeight } : undefined}
+      >
+        {loading ? (
+          Array.from({ length: loadingRows }).map((_, rowIndex) => (
+            <div key={`mobile-skeleton-${rowIndex}`} className="space-y-2 p-4">
+              <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+            </div>
+          ))
+        ) : pagedData.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 px-4 py-14 text-center">
+            <EmptyIcon className="h-8 w-8 text-muted-foreground/50" />
+            <p className="text-sm font-medium text-foreground">
+              {emptyTitle}
+            </p>
+            {emptyDescription && (
+              <p className="text-sm text-muted-foreground">
+                {emptyDescription}
+              </p>
+            )}
+          </div>
+        ) : (
+          pagedData.map((row, index) => (
+            <div key={rowKey ? rowKey(row, index) : index} className="space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+                  {renderCellValue(titleColumn, row, index)}
+                </p>
+
+                {statusColumn && (
+                  <div className="shrink-0">
+                    {renderCellValue(statusColumn, row, index)}
+                  </div>
+                )}
+              </div>
+
+              {detailColumns.length > 0 && (
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                  {detailColumns.map((column) => (
+                    <div key={column.key} className="min-w-0">
+                      <dt className="truncate text-xs text-muted-foreground">
+                        {column.header}
+                      </dt>
+                      <dd
+                        className={cn(
+                          "truncate font-medium text-foreground",
+                          column.align === "right" && "text-right"
+                        )}
+                      >
+                        {renderCellValue(column, row, index)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+
+              {hasActions && (
+                <div className="flex flex-wrap gap-2 border-t pt-3">
+                  {actions!.map((action) => {
+                    if (action.hidden?.(row)) return null;
+
+                    const ActionIcon = action.icon;
+
+                    return (
+                      <Button
+                        key={action.label}
+                        size="sm"
+                        variant={action.variant ?? "outline"}
+                        onClick={() => action.onClick(row)}
+                      >
+                        {ActionIcon && <ActionIcon className="h-3.5 w-3.5" />}
+                        {action.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
 
       {showPagination && !loading && pagedData.length > 0 && (
