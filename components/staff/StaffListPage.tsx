@@ -10,22 +10,29 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   getStaffUsers,
   updateAppUserRole,
+  updateAppUserApprovalStatus,
   type AppUserProfile,
 } from "@/components/services/appUser.service";
 
 /**
- * Admin-only staff roster. Lets an admin promote/demote a staff member
- * between "staff" and "admin" — the ONLY way any account (after the
- * very first, manually-bootstrapped Admin — see the "INITIAL ADMIN
- * BOOTSTRAP" section in migration 017) can ever become Admin. Every
- * new sign-up always starts as "staff" (enforced server-side); nobody,
- * including the person using this page, can promote themselves — the
- * `app_users_update_admin_only` RLS policy rejects any update not
- * coming from an already-authenticated Admin, so this is enforced at
- * the database layer, not just by the client-side `hidden` rule below.
+ * Admin-only staff roster. Lets an admin:
+ *   - promote/demote a staff member between "staff" and "admin" — the
+ *     ONLY way any account (after the very first, manually-bootstrapped
+ *     Admin — see the "INITIAL ADMIN BOOTSTRAP" section in migration
+ *     017) can ever become Admin.
+ *   - approve/reject a pending signup (migration 018) — the ONLY way a
+ *     new account's `approvalStatus` ever leaves "pending"; until then,
+ *     `DashboardLayout` blocks that account from the rest of the app.
+ *
+ * Every new sign-up always starts as "staff" + "pending" (enforced
+ * server-side); nobody, including the person using this page, can
+ * promote or approve themselves — the `app_users_update_admin_only`
+ * RLS policy rejects any update (role OR approval_status) not coming
+ * from an already-authenticated Admin, so both are enforced at the
+ * database layer, not just by the client-side `hidden` rules below.
  * Reassigning an individual LR to a staff member happens from the LR
  * table itself (see LRTable.tsx's "Reassign" action), not here — this
- * page only manages roles.
+ * page only manages roles and approval.
  */
 export default function StaffListPage() {
   const { isAdmin, profile } = useAuth();
@@ -70,6 +77,20 @@ export default function StaffListPage() {
     }
   }
 
+  async function handleSetApproval(user: AppUserProfile, approvalStatus: "approved" | "rejected") {
+    try {
+      setUpdatingId(user.id);
+      await updateAppUserApprovalStatus(user.id, approvalStatus);
+      toast.success(`${user.displayName} has been ${approvalStatus}.`);
+      await loadStaff();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to update approval status.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border bg-card p-14 text-center shadow-sm">
@@ -87,6 +108,17 @@ export default function StaffListPage() {
       header: "Role",
       sortable: true,
       render: (row) => <StatusBadge status={row.role === "admin" ? "Active" : "Pending"} label={row.role === "admin" ? "Admin" : "Staff"} />,
+    },
+    {
+      key: "approvalStatus",
+      header: "Approval",
+      sortable: true,
+      render: (row) => (
+        <StatusBadge
+          status={row.approvalStatus}
+          label={row.approvalStatus.charAt(0).toUpperCase() + row.approvalStatus.slice(1)}
+        />
+      ),
     },
   ];
 
@@ -108,6 +140,17 @@ export default function StaffListPage() {
         emptyIcon={UserCog}
         actions={[
           {
+            label: "Approve",
+            onClick: (row) => handleSetApproval(row, "approved"),
+            hidden: (row) => Boolean((profile && row.id === profile.id) || row.approvalStatus === "approved"),
+          },
+          {
+            label: "Reject",
+            variant: "destructive",
+            onClick: (row) => handleSetApproval(row, "rejected"),
+            hidden: (row) => Boolean((profile && row.id === profile.id) || row.approvalStatus === "rejected"),
+          },
+          {
             label: "Toggle Role",
             onClick: handleToggleRole,
             hidden: (row) => Boolean(profile && row.id === profile.id),
@@ -116,7 +159,8 @@ export default function StaffListPage() {
       />
 
       <p className="text-xs text-muted-foreground">
-        You cannot change your own role from here — ask another Administrator if you need to step down.
+        You cannot change your own role or approval status from here — ask another Administrator if you need to
+        step down.
       </p>
 
       {updatingId && (

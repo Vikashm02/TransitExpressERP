@@ -7,12 +7,17 @@ import { supabase } from "@/lib/supabase";
  * is decided; every ownership check elsewhere (LR/POD/Lorry Expenses
  * RLS policies, and the client-side `isAdmin` flag from
  * `lib/auth/AuthProvider.tsx`) reads from this same `role` column.
+ *
+ * `approvalStatus` (migration 018) gates whether a signed-in user may
+ * use the app at all — see `DashboardLayout.tsx`, which blocks anyone
+ * whose status isn't "approved". It is independent of `role`.
  */
 export interface AppUserProfile {
   id: string;
   email: string;
   displayName: string;
   role: "admin" | "staff";
+  approvalStatus: "pending" | "approved" | "rejected";
 }
 
 const TABLE = "app_users";
@@ -22,6 +27,7 @@ interface AppUserRow {
   email: string | null;
   display_name: string | null;
   role: string | null;
+  approval_status: string | null;
 }
 
 function fromRow(row: AppUserRow): AppUserProfile {
@@ -30,6 +36,9 @@ function fromRow(row: AppUserRow): AppUserProfile {
     email: row.email ?? "",
     displayName: row.display_name?.trim() || row.email || "Unnamed",
     role: row.role === "admin" ? "admin" : "staff",
+    approvalStatus: row.approval_status === "approved" || row.approval_status === "rejected"
+      ? row.approval_status
+      : "pending",
   };
 }
 
@@ -78,5 +87,21 @@ export async function updateAppUserRole(id: string, role: "admin" | "staff"): Pr
 
 export async function updateAppUserDisplayName(id: string, displayName: string): Promise<void> {
   const { error } = await supabase.from(TABLE).update({ display_name: displayName }).eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Admin-only: approve/reject a pending signup, or reverse a prior
+ * decision. Same RLS protection as `updateAppUserRole` above — the
+ * `app_users_update_admin_only` policy (migration 017) rejects this
+ * update unless the caller is already an admin, so a staff account
+ * cannot approve/reject themselves or anyone else even if they call
+ * this function directly.
+ */
+export async function updateAppUserApprovalStatus(
+  id: string,
+  approvalStatus: "pending" | "approved" | "rejected"
+): Promise<void> {
+  const { error } = await supabase.from(TABLE).update({ approval_status: approvalStatus }).eq("id", id);
   if (error) throw error;
 }

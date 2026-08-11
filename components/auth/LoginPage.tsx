@@ -23,13 +23,16 @@ type Tab = "sign-in" | "sign-up";
  * session for every subsequent `.from(...)` call once signed in.
  *
  * Sign-up intentionally has NO "role" selector, and never sends a role
- * to the server — every new account always starts as `staff`,
- * enforced server-side by migration 017's `handle_new_auth_user()`
- * trigger (hard-coded to 'staff', never derived from anything the
- * client sends). The very first Admin is created via a one-time
- * manual SQL step documented in that migration file, not by signing
- * up; from then on, an existing Admin promotes/demotes from the Staff
- * page.
+ * to the server — every new account always starts as `staff` with
+ * `approvalStatus: "pending"`, enforced server-side by migration
+ * 017/018's `handle_new_auth_user()` trigger (hard-coded, never
+ * derived from anything the client sends). The very first Admin is
+ * created via a one-time manual SQL step documented in migration
+ * 017, not by signing up; from then on, an existing Admin
+ * promotes/demotes roles and approves/rejects pending signups from
+ * the Staff page. A pending/rejected account can still sign in (the
+ * Supabase Auth credentials are valid) but is blocked from the rest
+ * of the app by `DashboardLayout` until an Admin approves it.
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -70,7 +73,7 @@ export default function LoginPage() {
 
         if (error) throw error;
 
-        toast.success("Account created. You're now signed in.");
+        toast.success("Account created. Your account is awaiting administrator approval.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -197,8 +200,8 @@ export default function LoginPage() {
 
           {tab === "sign-up" && (
             <p className="mt-4 text-center text-xs text-muted-foreground">
-              New accounts always start as Staff. An existing Administrator can promote your account from the
-              Staff page once it's created.
+              New accounts always start as Staff and require Administrator approval before you can sign in and
+              use the app.
             </p>
           )}
         </CardContent>
