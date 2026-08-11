@@ -130,3 +130,29 @@ export async function getLedgerStatement(
     closingBalance: runningBalance,
   };
 }
+
+/**
+ * Dashboard-only aggregate: the exact same Bill (Debit) / Credit Note
+ * (Credit) accounting rule as `getLedgerStatement` above — a Bill is a
+ * Debit, a Credit Note's `amount` is a Credit, Debit Notes are excluded —
+ * but summed across ALL Billing Parties instead of one, i.e. "Ledger with
+ * Billing Party = All" for a date range. `fromDate`/`toDate` are optional
+ * here (unlike the required range on `getLedgerStatement`) so the caller
+ * can represent "no lower/upper bound" without inventing a placeholder
+ * date. Does not read/modify `getLedgerStatement` or any Ledger UI.
+ */
+export async function getOverallOutstanding(fromDate?: string, toDate?: string): Promise<number> {
+  const [bills, creditNotes] = await Promise.all([getBills(), getCreditNotes()]);
+
+  const inRange = (date: string) => (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
+
+  const totalDebit = bills
+    .filter((bill) => inRange(bill.billDate))
+    .reduce((sum, bill) => sum + bill.grandTotal, 0);
+
+  const totalCredit = creditNotes
+    .filter((note) => inRange(note.noteDate))
+    .reduce((sum, note) => sum + note.amount, 0);
+
+  return totalDebit - totalCredit;
+}
