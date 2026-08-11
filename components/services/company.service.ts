@@ -12,7 +12,7 @@ const TABLE = "company_settings";
 const ASSETS_BUCKET = "company-assets";
 
 /** Optional URL fields are stored as `null` rather than an empty string. */
-const NULLABLE_URL_FIELDS = ["logoUrl", "signatureUrl", "stampUrl"] as const;
+const NULLABLE_URL_FIELDS = ["logoUrl", "signatureUrl", "stampUrl", "digitalSignatureUrl"] as const;
 
 /** Falls back to a sensible default if the column hasn't been set yet. */
 const NUMERIC_DEFAULTS: Partial<Record<keyof Company, number>> = {
@@ -29,8 +29,15 @@ function toRow(values: Company) {
 
   for (const field of NULLABLE_URL_FIELDS) {
     const value = values[field];
-    row[field === "logoUrl" ? "logo_url" : field === "signatureUrl" ? "signature_url" : "stamp_url"] =
-      value.trim() === "" ? null : value;
+    const column =
+      field === "logoUrl"
+        ? "logo_url"
+        : field === "signatureUrl"
+          ? "signature_url"
+          : field === "stampUrl"
+            ? "stamp_url"
+            : "digital_signature_url";
+    row[column] = value.trim() === "" ? null : value;
   }
 
   return row;
@@ -99,20 +106,22 @@ export async function saveCompany(
 }
 
 /* ==========================================================
-   ASSET UPLOAD (Logo / Signature / Stamp)
+   ASSET UPLOAD (Logo / Signature / Stamp / Digital Signature)
    Requires a public "company-assets" Storage bucket to exist.
+   "digital-signature" is a separate kind/path from "signature" — the
+   existing Authorized Signature image upload is untouched.
 ========================================================== */
 
 export async function uploadCompanyAsset(
   file: File,
-  kind: "logo" | "signature" | "stamp"
+  kind: "logo" | "signature" | "stamp" | "digital-signature"
 ): Promise<string> {
   const extension = file.name.split(".").pop() ?? "png";
   const path = `${kind}/${Date.now()}.${extension}`;
 
   const { error: uploadError } = await supabase.storage
     .from(ASSETS_BUCKET)
-    .upload(path, file, { upsert: true });
+    .upload(path, file);
 
   if (uploadError) throw uploadError;
 

@@ -10,6 +10,7 @@ import FormSelect from "@/components/ui/FormSelect";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import DigitalSignaturePad from "./DigitalSignaturePad";
 
 import {
   DEFAULT_BRANCH_OPTIONS,
@@ -56,6 +57,7 @@ const emptyCompany: Company = {
   logoUrl: "",
   signatureUrl: "",
   stampUrl: "",
+  digitalSignatureUrl: "",
 
   financialYear: getCurrentFinancialYear(),
   lrPrefix: "",
@@ -73,7 +75,14 @@ const emptyCompany: Company = {
   defaultGstPercentage: 0,
 };
 
-type AssetKind = "logo" | "signature" | "stamp";
+type AssetKind = "logo" | "signature" | "stamp" | "digital-signature";
+
+const ASSET_LABELS: Record<AssetKind, string> = {
+  logo: "Logo",
+  signature: "Signature",
+  stamp: "Stamp",
+  "digital-signature": "Digital signature",
+};
 
 function toOptions(values: readonly string[]) {
   return values.map((value) => ({ label: value, value }));
@@ -187,16 +196,22 @@ export default function CompanyForm() {
 
   async function handleAssetUpload(kind: AssetKind, file: File) {
     const fieldKey: keyof Company =
-      kind === "logo" ? "logoUrl" : kind === "signature" ? "signatureUrl" : "stampUrl";
+      kind === "logo"
+        ? "logoUrl"
+        : kind === "signature"
+          ? "signatureUrl"
+          : kind === "stamp"
+            ? "stampUrl"
+            : "digitalSignatureUrl";
 
     try {
       setUploading((prev) => ({ ...prev, [kind]: true }));
       const url = await uploadCompanyAsset(file, kind);
       update(fieldKey, url);
-      toast.success(`${kind.charAt(0).toUpperCase()}${kind.slice(1)} uploaded successfully.`);
+      toast.success(`${ASSET_LABELS[kind]} uploaded successfully.`);
     } catch (error) {
       console.error(error);
-      toast.error(`Unable to upload ${kind}. Confirm the "company-assets" storage bucket exists.`);
+      toast.error(`Unable to upload ${ASSET_LABELS[kind].toLowerCase()}. Confirm the "company-assets" storage bucket exists.`);
     } finally {
       setUploading((prev) => ({ ...prev, [kind]: false }));
     }
@@ -540,6 +555,17 @@ export default function CompanyForm() {
               onSelectFile={(file) => handleAssetUpload("stamp", file)}
             />
           </div>
+        </FormSection>
+
+        <FormSection
+          title="Digital Signature"
+          subtitle="Draw the authorized person's signature for reuse wherever a company digital signature is required."
+        >
+          <DigitalSignaturePad
+            value={company.digitalSignatureUrl}
+            saving={Boolean(uploading["digital-signature"])}
+            onSave={(file) => handleAssetUpload("digital-signature", file)}
+          />
         </FormSection>
 
         <FormSection title="Document Settings">

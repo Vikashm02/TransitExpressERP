@@ -68,6 +68,11 @@ export const companySchema = z.object({
   logoUrl: z.string().trim(),
   signatureUrl: z.string().trim(),
   stampUrl: z.string().trim(),
+  // Digital Signature — a separate, drawn (signature-pad) signature,
+  // exported as a PNG and uploaded the same way as the Branding assets
+  // above. Distinct from `signatureUrl` (the existing "Authorized
+  // Signature" image upload), which is untouched.
+  digitalSignatureUrl: z.string().trim(),
 
   // Document Settings
   financialYear: z
