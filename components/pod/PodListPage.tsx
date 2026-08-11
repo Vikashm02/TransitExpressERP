@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import PodDialog from "./PodDialog";
+import PodBulkUploadDialog from "./PodBulkUploadDialog";
 import PodTable, { type PodListRow } from "./PodTable";
 import type { Pod } from "./pod.schema";
+import { downloadPodUploadTemplate } from "./podBulkUpload";
 
 import {
   createPod,
@@ -35,6 +38,8 @@ export default function PodListPage() {
   const [editingPod, setEditingPod] = useState<PodRecord | null>(null);
   const [viewOnly, setViewOnly] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -173,6 +178,15 @@ export default function PodListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadPodUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -188,6 +202,20 @@ export default function PodListPage() {
         placeholder="Search by LR number or consignee..."
         onRefresh={loadData}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
       />
 
       <PodTable
@@ -206,6 +234,13 @@ export default function PodListPage() {
         loading={saving}
         readOnly={viewOnly}
         onSubmit={handleSubmit}
+      />
+
+      <PodBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        existingLRs={lrs}
+        onImported={loadData}
       />
     </div>
   );

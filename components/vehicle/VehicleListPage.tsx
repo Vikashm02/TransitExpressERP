@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import VehicleDialog from "./VehicleDialog";
+import VehicleBulkUploadDialog from "./VehicleBulkUploadDialog";
 import VehicleTable from "./VehicleTable";
 import { VEHICLE_STATUS_OPTIONS, type Vehicle } from "./vehicle.schema";
+import { downloadVehicleUploadTemplate } from "./vehicleBulkUpload";
 
 import {
   createVehicle,
@@ -38,6 +41,8 @@ export default function VehicleListPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<VehicleRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadVehicles();
@@ -197,6 +202,15 @@ export default function VehicleListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadVehicleUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -212,6 +226,20 @@ export default function VehicleListPage() {
         placeholder="Search by vehicle number, owner, mobile, RC or chassis number..."
         onRefresh={loadVehicles}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
         filters={[
           {
             key: "status",
@@ -242,6 +270,13 @@ export default function VehicleListPage() {
         vehicle={editingVehicle}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <VehicleBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        existingVehicles={vehicles}
+        onImported={loadVehicles}
       />
 
       <ConfirmDialog

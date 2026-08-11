@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import MaterialDialog from "./MaterialDialog";
+import MaterialBulkUploadDialog from "./MaterialBulkUploadDialog";
 import MaterialTable from "./MaterialTable";
 import { MATERIAL_STATUS_OPTIONS, type Material } from "./material.schema";
+import { downloadMaterialUploadTemplate } from "./materialBulkUpload";
 
 import {
   createMaterial,
@@ -33,6 +36,8 @@ export default function MaterialListPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<MaterialRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadMaterials();
@@ -164,6 +169,15 @@ export default function MaterialListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadMaterialUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -178,6 +192,20 @@ export default function MaterialListPage() {
         placeholder="Search by material code, name, category or HSN code..."
         onRefresh={loadMaterials}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
         filters={[
           {
             key: "status",
@@ -207,6 +235,13 @@ export default function MaterialListPage() {
         material={editingMaterial}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <MaterialBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        existingMaterials={materials}
+        onImported={loadMaterials}
       />
 
       <ConfirmDialog

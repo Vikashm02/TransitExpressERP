@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { IndianRupee, Wallet } from "lucide-react";
+import { FileDown, IndianRupee, Upload, Wallet } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import StatCard from "@/components/ui/StatCard";
 import LorryExpenseDialog from "./LorryExpenseDialog";
+import LorryExpenseBulkUploadDialog from "./LorryExpenseBulkUploadDialog";
 import LorryExpenseTable, { type LorryExpenseListRow } from "./LorryExpenseTable";
 import type { LorryExpense } from "./lorryExpense.schema";
+import { downloadLorryExpenseUploadTemplate } from "./lorryExpenseBulkUpload";
 
 import {
   createLorryExpense,
@@ -43,6 +45,8 @@ export default function LorryExpenseListPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<LorryExpenseRecord | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -152,6 +156,15 @@ export default function LorryExpenseListPage() {
 
   const editingLR = editingExpense ? lrs.find((lr) => lr.id === editingExpense.lrId) ?? null : null;
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadLorryExpenseUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -184,6 +197,20 @@ export default function LorryExpenseListPage() {
         onSearchChange={setSearch}
         placeholder="Search by LR number, consignor, consignee or vehicle number..."
         onRefresh={loadData}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
       />
 
       <LorryExpenseTable
@@ -201,6 +228,14 @@ export default function LorryExpenseListPage() {
         lr={editingLR}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <LorryExpenseBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        existingLRs={lrs}
+        existingLorryExpenses={expenses}
+        onImported={loadData}
       />
     </div>
   );

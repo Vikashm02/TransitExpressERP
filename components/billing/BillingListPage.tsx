@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Receipt } from "lucide-react";
+import { FileDown, FileText, Receipt, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
@@ -10,8 +10,10 @@ import StatCard from "@/components/ui/StatCard";
 import BillDialog from "./BillDialog";
 import EditBillDialog from "./EditBillDialog";
 import ShareBillDialog from "./ShareBillDialog";
+import BillingBulkUploadDialog from "./BillingBulkUploadDialog";
 import BillingTable from "./BillingTable";
 import type { Bill } from "./billing.schema";
+import { downloadBillingUploadTemplate } from "./billingBulkUpload";
 
 import {
   createBill,
@@ -43,6 +45,8 @@ export default function BillingListPage() {
 
   const [shareBillId, setShareBillId] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadBills();
@@ -184,6 +188,15 @@ export default function BillingListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadBillingUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -217,6 +230,20 @@ export default function BillingListPage() {
         placeholder="Search by bill number or billing party..."
         onRefresh={loadBills}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
       />
 
       <BillingTable
@@ -248,6 +275,12 @@ export default function BillingListPage() {
         open={shareOpen}
         onOpenChange={setShareOpen}
         billId={shareBillId}
+      />
+
+      <BillingBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        onImported={loadBills}
       />
     </div>
   );

@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import CustomerDialog from "./CustomerDialog";
+import CustomerBulkUploadDialog from "./CustomerBulkUploadDialog";
 import CustomerTable from "./CustomerTable";
 import { CUSTOMER_STATUS_OPTIONS, type Customer } from "./customer.schema";
+import { downloadCustomerUploadTemplate } from "./customerBulkUpload";
 
 import {
   createCustomer,
@@ -38,6 +41,8 @@ export default function CustomerListPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<CustomerRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadCustomers();
@@ -159,6 +164,15 @@ export default function CustomerListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadCustomerUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -174,6 +188,20 @@ export default function CustomerListPage() {
         placeholder="Search by name, code, city, mobile or GST..."
         onRefresh={loadCustomers}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
         filters={[
           {
             key: "status",
@@ -204,6 +232,13 @@ export default function CustomerListPage() {
         customer={editingCustomer}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <CustomerBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        existingCustomers={customers}
+        onImported={loadCustomers}
       />
 
       <ConfirmDialog

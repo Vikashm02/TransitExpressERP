@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FileMinus2, IndianRupee } from "lucide-react";
+import { FileDown, FileMinus2, IndianRupee, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import StatCard from "@/components/ui/StatCard";
 import CreditNoteDialog, { type CreditNoteDialogMode } from "./CreditNoteDialog";
+import CreditNoteBulkUploadDialog from "./CreditNoteBulkUploadDialog";
 import CreditNoteTable from "./CreditNoteTable";
 import type { CreditNote } from "./creditNote.schema";
+import { downloadCreditNoteUploadTemplate } from "./creditNoteBulkUpload";
 
 import {
   createCreditNote,
@@ -36,6 +38,8 @@ export default function CreditNoteListPage() {
   const [dialogMode, setDialogMode] = useState<CreditNoteDialogMode>("create");
   const [activeCreditNote, setActiveCreditNote] = useState<CreditNoteRecord | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadCreditNotes();
@@ -148,6 +152,15 @@ export default function CreditNoteListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadCreditNoteUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -181,6 +194,20 @@ export default function CreditNoteListPage() {
         placeholder="Search by credit note number or billing party..."
         onRefresh={loadCreditNotes}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
       />
 
       <CreditNoteTable
@@ -199,6 +226,12 @@ export default function CreditNoteListPage() {
         creditNote={activeCreditNote}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <CreditNoteBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        onImported={loadCreditNotes}
       />
     </div>
   );

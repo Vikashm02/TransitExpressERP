@@ -184,3 +184,18 @@ export async function updateCreditNote(id: number, values: CreditNote): Promise<
 
   return fromRow(data as unknown as CreditNoteRow);
 }
+
+/* ==========================================================
+   DELETE CREDIT NOTE (bulk-upload rollback only)
+   The Credit Note module has no Delete action anywhere in its UI
+   (CreditNoteListPage only ever Creates/Edits/Views) — this exists
+   solely so CreditNoteBulkUploadDialog can perform a compensating
+   rollback if an all-or-nothing bulk import fails partway through. It is
+   intentionally not exported from/used by any other Credit Note screen.
+========================================================== */
+
+export async function deleteCreditNote(id: number): Promise<void> {
+  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+
+  if (error) throw error;
+}

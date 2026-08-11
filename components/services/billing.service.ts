@@ -216,3 +216,20 @@ export async function createBill(values: Bill, lines: BillLineInput[]): Promise<
 
   return fromRow({ ...(billRow as BillRow), bill_lrs: [{ count: lines.length }] });
 }
+
+/* ==========================================================
+   DELETE BILL (bulk-upload rollback only)
+   The Billing module has no Delete action anywhere in its UI
+   (BillingListPage only ever Creates/Edits Bill Date & PO Number) — this
+   exists solely so BillingBulkUploadDialog can perform a compensating
+   rollback if an all-or-nothing bulk import fails partway through
+   (`bill_lrs` rows cascade-delete with their parent Bill automatically —
+   see migration 014). It is intentionally not exported from/used by any
+   other Billing screen.
+========================================================== */
+
+export async function deleteBill(id: number): Promise<void> {
+  const { error } = await supabase.from(BILLS_TABLE).delete().eq("id", id);
+
+  if (error) throw error;
+}

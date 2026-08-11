@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Banknote, FileText, PackageCheck, Truck } from "lucide-react";
+import { Banknote, FileDown, FileText, PackageCheck, Truck, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
@@ -12,9 +12,11 @@ import FormSelect from "@/components/ui/FormSelect";
 import { Button } from "@/components/ui/button";
 import StatCard from "@/components/ui/StatCard";
 import LRDialog from "./LRDialog";
+import LRBulkUploadDialog from "./LRBulkUploadDialog";
 import LRTable from "./LRTable";
 import ShareLRDialog from "./ShareLRDialog";
 import { FREIGHT_TYPE_OPTIONS, LR_STATUS_OPTIONS, type LR } from "./lr.schema";
+import { downloadLRUploadTemplate } from "./lrBulkUpload";
 
 import {
   createLR,
@@ -56,6 +58,8 @@ export default function LRListPage() {
   const [reassignTarget, setReassignTarget] = useState<LRRecord | null>(null);
   const [reassignValue, setReassignValue] = useState("");
   const [reassigning, setReassigning] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadLRs();
@@ -305,6 +309,15 @@ export default function LRListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadLRUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -343,6 +356,20 @@ export default function LRListPage() {
         placeholder="Search by LR number, consignor, consignee or vehicle number..."
         onRefresh={loadLRs}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
         filters={[
           {
             key: "status",
@@ -410,6 +437,12 @@ export default function LRListPage() {
         open={shareOpen}
         onOpenChange={setShareOpen}
         lr={shareTarget}
+      />
+
+      <LRBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        onImported={loadLRs}
       />
 
       <FormDialog

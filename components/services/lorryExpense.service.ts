@@ -94,3 +94,18 @@ export async function updateLorryExpense(id: number, values: LorryExpense): Prom
 
   return fromRow(data);
 }
+
+/* ==========================================================
+   DELETE LORRY EXPENSE (bulk-upload rollback only)
+   The Lorry Expenses module has no Delete action anywhere in its UI
+   (LorryExpenseListPage only ever Adds/Edits) — this exists solely so
+   LorryExpenseBulkUploadDialog can perform a compensating rollback if an
+   all-or-nothing bulk import fails partway through. It is intentionally
+   not exported from/used by any other Lorry Expenses screen.
+========================================================== */
+
+export async function deleteLorryExpense(id: number): Promise<void> {
+  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+
+  if (error) throw error;
+}

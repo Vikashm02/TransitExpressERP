@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import BillingPartyDialog from "./BillingPartyDialog";
+import BillingPartyBulkUploadDialog from "./BillingPartyBulkUploadDialog";
 import BillingPartyTable from "./BillingPartyTable";
 import { BILLING_PARTY_STATUS_OPTIONS, type BillingPartyMaster } from "./billingParty.schema";
+import { downloadBillingPartyUploadTemplate } from "./billingPartyBulkUpload";
 
 import {
   createBillingParty,
@@ -38,6 +41,8 @@ export default function BillingPartyListPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<BillingPartyRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadBillingParties();
@@ -159,6 +164,15 @@ export default function BillingPartyListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadBillingPartyUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -174,6 +188,20 @@ export default function BillingPartyListPage() {
         placeholder="Search by name, code, city, mobile or GST..."
         onRefresh={loadBillingParties}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
         filters={[
           {
             key: "status",
@@ -204,6 +232,13 @@ export default function BillingPartyListPage() {
         billingParty={editingBillingParty}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <BillingPartyBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        existingBillingParties={billingParties}
+        onImported={loadBillingParties}
       />
 
       <ConfirmDialog

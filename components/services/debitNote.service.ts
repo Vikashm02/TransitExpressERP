@@ -167,3 +167,19 @@ export async function updateDebitNote(id: number, values: DebitNote): Promise<De
 
   return fromRow(data as unknown as DebitNoteRow);
 }
+
+/* ==========================================================
+   DELETE DEBIT NOTE (bulk-upload rollback only)
+   The Debit Note module has no Delete action anywhere in its UI
+   (DebitNoteListPage only ever Creates/Edits/Views) — this exists
+   solely so DebitNoteBulkUploadDialog can perform a compensating
+   rollback if an all-or-nothing bulk import fails partway through. It
+   is intentionally not exported from/used by any other Debit Note
+   screen, mirroring `deleteCreditNote()` in creditNote.service.ts.
+========================================================== */
+
+export async function deleteDebitNote(id: number): Promise<void> {
+  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+
+  if (error) throw error;
+}

@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FilePlus2, IndianRupee } from "lucide-react";
+import { FileDown, FilePlus2, IndianRupee, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import StatCard from "@/components/ui/StatCard";
 import DebitNoteDialog, { type DebitNoteDialogMode } from "./DebitNoteDialog";
+import DebitNoteBulkUploadDialog from "./DebitNoteBulkUploadDialog";
 import DebitNoteTable from "./DebitNoteTable";
 import type { DebitNote } from "./debitNote.schema";
+import { downloadDebitNoteUploadTemplate } from "./debitNoteBulkUpload";
 
 import {
   createDebitNote,
@@ -36,6 +38,8 @@ export default function DebitNoteListPage() {
   const [dialogMode, setDialogMode] = useState<DebitNoteDialogMode>("create");
   const [activeDebitNote, setActiveDebitNote] = useState<DebitNoteRecord | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     loadDebitNotes();
@@ -148,6 +152,15 @@ export default function DebitNoteListPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await downloadDebitNoteUploadTemplate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to generate the upload template.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -181,6 +194,20 @@ export default function DebitNoteListPage() {
         placeholder="Search by debit note number or billing party..."
         onRefresh={loadDebitNotes}
         onExport={handleExport}
+        actions={[
+          {
+            key: "download-template",
+            label: "Download Template",
+            icon: FileDown,
+            onClick: handleDownloadTemplate,
+          },
+          {
+            key: "bulk-upload",
+            label: "Bulk Upload",
+            icon: Upload,
+            onClick: () => setBulkUploadOpen(true),
+          },
+        ]}
       />
 
       <DebitNoteTable
@@ -199,6 +226,12 @@ export default function DebitNoteListPage() {
         debitNote={activeDebitNote}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <DebitNoteBulkUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        onImported={loadDebitNotes}
       />
     </div>
   );

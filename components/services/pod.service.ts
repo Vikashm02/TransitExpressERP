@@ -118,6 +118,21 @@ export async function updatePod(id: number, values: Pod): Promise<PodRecord> {
 }
 
 /* ==========================================================
+   DELETE POD (bulk-upload rollback only)
+   The POD module has no Delete action anywhere in its UI (PodListPage
+   only ever Adds/Edits/Views) — this exists solely so PodBulkUploadDialog
+   can perform a compensating rollback if an all-or-nothing bulk import
+   fails partway through. It is intentionally not exported from/used by
+   any other POD screen.
+========================================================== */
+
+export async function deletePod(id: number): Promise<void> {
+  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+
+  if (error) throw error;
+}
+
+/* ==========================================================
    PROOF FILE UPLOAD
    Requires a public "pod-assets" Storage bucket to exist.
 ========================================================== */
