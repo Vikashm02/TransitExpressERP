@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, Pencil, Printer, ReceiptIndianRupee, Share2 } from "lucide-react";
+import { Eye, Pencil, Printer, ReceiptIndianRupee, Share2, Trash2 } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import type { BillRecord } from "@/components/services/billing.service";
@@ -13,10 +13,12 @@ interface BillingTableProps {
   onEdit: (bill: BillRecord) => void;
   onPrint: (bill: BillRecord) => void;
   onShare: (bill: BillRecord) => void;
-  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
-   * "billing" edit permission. Defaults to `true` for existing call
-   * sites. Print/Share are read-only/export actions and stay available
-   * to anyone who can already view this page. */
+  onDelete: (bill: BillRecord) => void;
+  /** Staff / Sub-User Access Control — hides Edit and Delete when the
+   * caller lacks "billing" edit permission (there is no separate Delete
+   * level, so Delete rides on "edit"). Defaults to `true` for existing
+   * call sites. Print/Share are read-only/export actions and stay
+   * available to anyone who can already view this page. */
   canEdit?: boolean;
 }
 
@@ -28,6 +30,7 @@ export default function BillingTable({
   onEdit,
   onPrint,
   onShare,
+  onDelete,
   canEdit = true,
 }: BillingTableProps) {
   const columns: DataTableColumn<BillRecord>[] = [
@@ -81,6 +84,13 @@ export default function BillingTable({
           icon: Share2,
           variant: "outline",
           onClick: onShare,
+        },
+        {
+          label: "Delete",
+          icon: Trash2,
+          variant: "destructive",
+          onClick: onDelete,
+          hidden: () => !canEdit,
         },
       ]}
     />

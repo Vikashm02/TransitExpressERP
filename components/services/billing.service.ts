@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import type { Bill } from "@/components/billing/billing.schema";
 import { getBillingParty, type BillingPartyRecord } from "./billingParty.service";
-import { getLRs, type LRRecord } from "./lr.service";
+import { getLRs, updateLR, type LRRecord } from "./lr.service";
+import { getPods } from "./pod.service";
 
 const BILLS_TABLE = "bills";
 const BILL_LRS_TABLE = "bill_lrs";
@@ -218,18 +219,48 @@ export async function createBill(values: Bill, lines: BillLineInput[]): Promise<
 }
 
 /* ==========================================================
-   DELETE BILL (bulk-upload rollback only)
-   The Billing module has no Delete action anywhere in its UI
-   (BillingListPage only ever Creates/Edits Bill Date & PO Number) — this
-   exists solely so BillingBulkUploadDialog can perform a compensating
-   rollback if an all-or-nothing bulk import fails partway through
-   (`bill_lrs` rows cascade-delete with their parent Bill automatically —
-   see migration 014). It is intentionally not exported from/used by any
-   other Billing screen.
+   DELETE BILL
+   Deletes the Bill row; `bill_lrs` cascade-delete with their parent
+   (migration 014 `on delete cascade`).
+
+   Associated LRs were marked `"Billed"` at Bill creation time
+   (BillingListPage / BillingBulkUploadDialog). Status is workflow-
+   controlled (RemarksSection.tsx): New LR → Open, POD saved →
+   Delivered, Billing → Billed. After the Bill is removed, each LR that
+   still shows `"Billed"` is restored to the only status the workflow
+   would have left it in without this Bill:
+     - `"Delivered"` if a POD exists for that LR
+     - `"Open"` otherwise
+   No other LR fields are touched. LRs that do not belong to this Bill
+   are never modified.
 ========================================================== */
 
 export async function deleteBill(id: number): Promise<void> {
+  // Capture this Bill's LR links before the cascade removes them.
+  const { data: lines, error: linesError } = await supabase
+    .from(BILL_LRS_TABLE)
+    .select("lr_id")
+    .eq("bill_id", id);
+
+  if (linesError) throw linesError;
+
+  const lrIds = (lines ?? []).map((row) => String(row.lr_id));
+
   const { error } = await supabase.from(BILLS_TABLE).delete().eq("id", id);
 
   if (error) throw error;
+
+  if (lrIds.length === 0) return;
+
+  const [lrs, pods] = await Promise.all([getLRs(), getPods()]);
+  const podLrNumbers = new Set(pods.map((pod) => pod.lrNumber));
+
+  const targets = lrs.filter((lr) => lrIds.includes(String(lr.id)) && lr.status === "Billed");
+
+  await Promise.all(
+    targets.map((lr) => {
+      const nextStatus = podLrNumbers.has(lr.lrNumber) ? "Delivered" : "Open";
+      return updateLR(lr.id, { ...lr, status: nextStatus });
+    })
+  );
 }

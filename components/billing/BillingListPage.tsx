@@ -7,6 +7,7 @@ import { FileDown, FileText, Receipt, Upload } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import StatCard from "@/components/ui/StatCard";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import BillDialog from "./BillDialog";
 import EditBillDialog from "./EditBillDialog";
 import ShareBillDialog from "./ShareBillDialog";
@@ -17,6 +18,7 @@ import { downloadBillingUploadTemplate } from "./billingBulkUpload";
 
 import {
   createBill,
+  deleteBill,
   getBills,
   type BillLineInput,
   type BillRecord,
@@ -47,6 +49,9 @@ export default function BillingListPage() {
   const [shareOpen, setShareOpen] = useState(false);
 
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<BillRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadBills();
@@ -108,6 +113,23 @@ export default function BillingListPage() {
   function handleShare(bill: BillRecord) {
     setShareBillId(bill.id);
     setShareOpen(true);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+
+    try {
+      setDeleting(true);
+      await deleteBill(deleteTarget.id);
+      toast.success(`Bill ${deleteTarget.billNumber} deleted successfully.`);
+      setDeleteTarget(null);
+      await loadBills();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to delete bill.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   /** After a Bill is saved, every included LR is marked "Billed" — the
@@ -254,6 +276,7 @@ export default function BillingListPage() {
         onEdit={handleEdit}
         onPrint={handlePrint}
         onShare={handleShare}
+        onDelete={setDeleteTarget}
         canEdit={canEdit}
       />
 
@@ -281,6 +304,21 @@ export default function BillingListPage() {
         open={bulkUploadOpen}
         onOpenChange={setBulkUploadOpen}
         onImported={loadBills}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete bill"
+        description={
+          deleteTarget
+            ? `Are you sure you want to delete Bill "${deleteTarget.billNumber}"? This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );
