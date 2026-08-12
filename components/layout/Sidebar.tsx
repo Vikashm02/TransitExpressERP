@@ -196,7 +196,7 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
        * width; mobile navigation is the drawer below instead. */}
       <aside className="hidden min-h-screen w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
         {/* Logo */}
-        <div className="flex items-center gap-3 border-b border-sidebar-border px-6 py-5">
+        <div className="flex shrink-0 items-center gap-3 border-b border-sidebar-border px-6 py-5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-foreground/10">
             <Truck className="h-5 w-5" />
           </div>
@@ -211,13 +211,14 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
           </div>
         </div>
 
-        {/* Menu */}
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        {/* Menu — scrollable so Settings / Staff stay reachable when the
+         * viewport is shorter than the full menu list. */}
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {renderNavLinks()}
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-sidebar-border p-5">
+        <div className="shrink-0 border-t border-sidebar-border p-5">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-foreground/15 text-sm font-semibold">
               {(profile?.displayName || "?").charAt(0).toUpperCase()}
