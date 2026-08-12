@@ -1,3 +1,5 @@
+import { format, parseISO } from "date-fns";
+
 import type { LRRecord } from "@/components/services/lr.service";
 import type { CompanyRecord } from "@/components/services/company.service";
 import styles from "./LRPrint.module.css";
@@ -7,264 +9,246 @@ interface LRPrintProps {
   company: CompanyRecord | null;
 }
 
+/** Stationery date format used on filled reference LRs (e.g. 12-08-2026). */
+function formatPrintDate(value: string): string {
+  if (!value) return "";
+  try {
+    return format(parseISO(value), "dd-MM-yyyy");
+  } catch {
+    return value;
+  }
+}
+
 /**
- * Replicates the approved LR book format exactly (see the reference PDF
- * shared for this task). Every field shown here maps 1:1 to an existing
- * `lr.schema.ts` / `company.schema.ts` field — no new data, no new
- * calculations. Text with no corresponding schema field (legal boilerplate:
- * ENDORSEMENT / CAUTION / NOTICE / Insurance block / Demurrage clause /
- * taglines) is reproduced as fixed template text, matching the reference
- * exactly, since there's nowhere else to source it from.
+ * A4-landscape Consignment Note stationery.
+ * Geometry measured from `LR sample.pdf` (page-absolute mm).
+ * Dynamic fields map 1:1 to LR Entry / billing party.
  */
 export default function LRPrint({ lr, company }: LRPrintProps) {
-  const companyName = company?.companyName || "";
+  const companyName = company?.companyName || "TRANS-JIT EXPRESS";
   const address = [company?.address, company?.city, company?.pincode]
     .filter(Boolean)
     .join(", ");
   const cellNumbers = [company?.mobile, company?.alternateMobile]
     .filter(Boolean)
     .join(", ");
-  const jurisdictionCity = (company?.city || "").toUpperCase();
+  const jurisdictionCity = (company?.city || "VISAKHAPATNAM").toUpperCase();
+  // Master header mark only — never the purple website logo.
+  const logoSrc = "/lr-stationery/header-mark.png";
+  // Company assets preferred; otherwise exact artwork extracted from LR sample.pdf.
+  const signatureSrc =
+    company?.signatureUrl || "/lr-stationery/consignor-signature.png";
+  const stampSrc = company?.stampUrl || "/lr-stationery/transport-stamp.png";
 
   const packagesDisplay = lr.packages > 0 ? String(lr.packages) : "-";
   const rateDisplay = lr.billRate > 0 ? lr.billRate.toFixed(2) : "-";
+  const actualWeightDisplay =
+    lr.loadingWeight > 0 ? `${lr.loadingWeight.toFixed(3)} MT` : "-";
+  const chargedWeightDisplay =
+    lr.chargedWeight > 0 ? `${lr.chargedWeight.toFixed(3)} MT` : "-";
+  const invoiceDcNumber = lr.dcNumber || lr.invoiceNumber;
+  const invoiceDcDate = formatPrintDate(lr.dcDate || lr.invoiceDate);
 
   return (
     <div className={styles.page}>
-      {/* ============ HEADER ============ */}
-      <div className={styles.headerGrid}>
-        {/* -------- LEFT -------- */}
-        <div className={styles.headerLeft}>
-          <div className={styles.gstinLine}>
-            GSTIN: {company?.gstin || ""}
+      <div className={styles.stationery}>
+        {/* ===== LEFT ===== */}
+        <div className={styles.gstinPan}>
+          GSTIN: {company?.gstin || ""}
+          <br />
+          PAN No.: {company?.pan || ""}
+        </div>
+
+        <div className={styles.endorsementBox}>
+          <div className={styles.endorsementTitle}>ENDORSEMENT</div>
+          <div className={styles.endorsementBody}>
+            It is intended to use the CONSIGNEE COPY of this set for the
             <br />
-            PAN No.: {company?.pan || ""}
-          </div>
-
-          <div className={styles.boxed}>
-            <div className={styles.redHeading}>ENDORSEMENT</div>
-            <div className={styles.blueText}>
-              It is intended to use the CONSIGNEE COPY of this set for the
-              purpose of borrowing from the consignee bank.
-            </div>
-          </div>
-
-          <div>
-            <div className={styles.blueHeading}>CAUTION</div>
-            <div className={styles.blueText}>
-              The consignment will not be detained diverted, re-routed re
-              booked without consignee&apos;s bank written permission will be
-              delivered at the destination.
-            </div>
-          </div>
-
-          <div>
-            <div className={styles.deliveryOfficeLabel}>
-              Address of delivery office
-            </div>
-            <div className={styles.deliveryOfficeBox} />
-          </div>
-
-          <div className={styles.consignmentNoteBlock}>
-            <div className={styles.consignmentNoteTitle}>CONSIGNMENT NOTE</div>
-          </div>
-          <div className={styles.lrNoLine}>No.: {lr.lrNumber}</div>
-          <div className={styles.lrDateLine}>Date: {lr.lrDate}</div>
-        </div>
-
-        {/* -------- CENTER -------- */}
-        <div className={styles.headerCenter}>
-          <div className={styles.jurisdictionLine}>
-            {jurisdictionCity
-              ? `ALL SUBJECT TO ${jurisdictionCity} JURISDICTION ONLY`
-              : "ALL SUBJECT TO COMPANY JURISDICTION ONLY"}
-          </div>
-
-          <div className={styles.companyBrand}>
-            {company?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={company.logoUrl} alt="Company logo" className={styles.logoImg} />
-            ) : (
-              <div className={styles.logoPlaceholder}>LOGO</div>
-            )}
-            <div className={styles.companyName}>{companyName}</div>
-          </div>
-
-          <div className={styles.companyTagline}>Let your Success Ride with Us</div>
-          <div className={styles.companySubtitle}>
-            Transport Contractor &amp; Commission Agents all over India
-          </div>
-          <div className={styles.companyAddressLine}>H.O.: {address}</div>
-          <div className={styles.companyAddressLine}>
-            website : {company?.website || ""} &nbsp;&nbsp; E-mail: {company?.email || ""}
-          </div>
-          <div className={styles.companyCellLine}>Cell: {cellNumbers}</div>
-
-          <div className={styles.ownerRiskHeading}>AT OWNER&apos;S RISK</div>
-          <div className={styles.insuranceHeading}>INSURANCE</div>
-          <div className={styles.insuranceBox}>
-            <div className={styles.insuranceStatement}>
-              The customer has stated that
-              <br />
-              He has Not Insured the consignment
-            </div>
-            <div className={styles.insuranceFieldRow}>
-              <span>Company</span>
-            </div>
-            <div className={styles.insuranceFieldRow}>
-              <span>Policy No.</span>
-              <span>Date</span>
-            </div>
-            <div className={styles.insuranceFieldRow}>
-              <span>Amount &nbsp; 0 INR</span>
-              <span>Risk</span>
-            </div>
+            purpose of borrowing from the consignee bank.
           </div>
         </div>
 
-        {/* -------- RIGHT -------- */}
-        <div className={styles.headerRight}>
-          <div className={styles.demurrageText}>
-            Demurrage chargeable after 1 hour from today @ Rs 0
+        <div className={styles.cautionTitle}>CAUTION</div>
+        <div className={styles.cautionBody}>
+          The consignment will not be detained diverted, re-routed re booked
+          <br />
+          without consignee&apos;s bank written permission will be delivered at the
+          <br />
+          destination.
+        </div>
+
+        <div className={styles.deliveryLabel}>Address of delivery office</div>
+        <div className={styles.deliveryBox} />
+
+        <div className={styles.consignmentNoteRuleTop} />
+        <div className={styles.consignmentNote}>CONSIGNMENT NOTE</div>
+        <div className={styles.consignmentNoteRuleBottom} />
+        <div className={styles.lrNumber}>No.: {lr.lrNumber}</div>
+        <div className={styles.lrDate}>Date: {formatPrintDate(lr.lrDate)}</div>
+
+        {/* ===== CENTER ===== */}
+        <div className={styles.jurisdiction}>
+          ALL SUBJECT TO {jurisdictionCity} JURISDICTION ONLY
+        </div>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoSrc} alt="" className={styles.headerMark} />
+        <div className={styles.companyName}>{companyName}</div>
+        <div className={styles.tagline}>Let your Success Ride with Us</div>
+        <div className={styles.subtitle}>
+          Transport Contractor &amp; Commission Agents all over India
+        </div>
+        <div className={styles.addressLine}>H.O.: {address}</div>
+        <div className={styles.webLine}>
+          website : {company?.website || ""} &nbsp;&nbsp; E-mail:{" "}
+          {company?.email || ""}
+        </div>
+        <div className={styles.cellLine}>Cell: {cellNumbers}</div>
+
+        <div className={styles.ownerRisk}>AT OWNER&apos;S RISK</div>
+        <div className={styles.ownerRiskRule} />
+        <div className={styles.insuranceTitle}>INSURANCE</div>
+        <div className={styles.insuranceBox}>
+          <div className={styles.insuranceStatement}>
+            The customer has stated that
             <br />
-            Per Hour per day Qtl. weight charged
+            He has Not Insured the consignment
           </div>
-
-          <div className={styles.noticeBox}>
-            <div className={styles.noticeHeading}>NOTICE</div>
-            <div className={styles.noticeBody}>
-              This Consignment covered by this set of Special Lorry Receipt
-              From shall be stored at the destination under the control of
-              the Transport Operator and shall be delivered to or to the
-              order of the Consignee Bank whose name is mention circumstances
-              be delivered to any one without the written authority from the
-              Consignee Bank or its order endorsed on the Consigned Copy of
-              on a separate Letter of Authority.
-            </div>
-          </div>
-
-          <div className={styles.gstPayableHeading}>GST PAYABLE BY:</div>
-          <div className={styles.gstPayableValue}>{lr.billingParty}</div>
-
-          <div className={styles.driverBox}>
-            <div className={styles.driverRow}>
-              <span className={styles.driverRowLabel}>Driver Name:</span>
-              <span>{lr.driverName}</span>
-            </div>
-            <div className={styles.driverRow}>
-              <span className={styles.driverRowLabel}>Mo. No.:</span>
-              <span>{lr.driverMobile}</span>
-            </div>
-            <div className={styles.driverRow}>
-              <span className={styles.driverRowLabel}>Vehicle No.:</span>
-              <span>{lr.vehicleNumber}</span>
-            </div>
-            <div className={styles.driverRow}>
-              <span className={styles.driverRowLabel}>From:</span>
-              <span>{lr.from}</span>
-            </div>
-            <div className={styles.driverRow}>
-              <span className={styles.driverRowLabel}>To:</span>
-              <span>{lr.to}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ============ CONSIGNOR / CONSIGNEE ============ */}
-      <div className={styles.partiesSection}>
-        <span className={styles.partyLabel}>CONSIGNOR:</span>
-        <span className={styles.partyValue}>{lr.consignor}</span>
-        <span className={styles.partyGstLabel}>GST IN:</span>
-        <span className={styles.partyGstValue}>{lr.consignorGST}</span>
-
-        <span className={styles.addressLabel}>Address:</span>
-        <span className={styles.addressValue}>{lr.consignorAddress}</span>
-
-        <span className={styles.partyLabel}>CONSIGNEE:</span>
-        <span className={styles.partyValue}>{lr.consignee}</span>
-        <span className={styles.partyGstLabel}>GST IN:</span>
-        <span className={styles.partyGstValue}>{lr.consigneeGST}</span>
-
-        <span className={styles.addressLabel}>Address:</span>
-        <span className={styles.addressValue}>{lr.consigneeAddress}</span>
-      </div>
-
-      {/* ============ MAIN TABLE ============ */}
-      <table className={styles.mainTable}>
-        <colgroup>
-          <col className={styles.colPackages} />
-          <col className={styles.colDescription} />
-          <col className={styles.colWeight} />
-          <col className={styles.colWeight} />
-          <col className={styles.colRate} />
-          <col className={styles.colFreight} />
-        </colgroup>
-        <thead>
-          <tr>
-            <th rowSpan={2}>Packages</th>
-            <th rowSpan={2}>Description (Said to Contain)</th>
-            <th colSpan={2}>Weight</th>
-            <th rowSpan={2}>Rate</th>
-            <th rowSpan={2}></th>
-          </tr>
-          <tr>
-            <th>Actual</th>
-            <th>Charged</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>{packagesDisplay} {lr.packageType}</td>
-            <td>
-              {lr.material}
-              <div className={styles.referenceBlock}>
-                <div>Vendor Code : {lr.vendorCode}</div>
-                <div>Invoice/DC No.: {lr.dcNumber || lr.invoiceNumber}</div>
-                <div>Invoice/DC Date: {lr.dcDate || lr.invoiceDate}</div>
-                <div>PO No. {lr.poNumber}</div>
-              </div>
-            </td>
-            <td>{lr.loadingWeight.toFixed(3)} MT</td>
-            <td>{lr.chargedWeight.toFixed(3)} MT</td>
-            <td>{rateDisplay}</td>
-            <td className={styles.freightCell}>Freight: {lr.freightType}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* ============ FOOTER ============ */}
-      <div className={styles.footerRow}>
-        <div>
-          <div>
-            <span className={styles.valueLabel}>Value</span> &nbsp;As per Invoice
-          </div>
-          <div className={styles.signatureLine} />
+          <div className={styles.insuranceCompany}>Company</div>
+          <div className={styles.insurancePolicy}>Policy No.</div>
+          <div className={styles.insuranceDate}>Date</div>
+          <div className={styles.insuranceAmount}>Amount &nbsp; 0 INR</div>
+          <div className={styles.insuranceRisk}>Risk</div>
         </div>
 
-        <div className={styles.signatureBlock}>
-          <div className={styles.signatureLabel}>Consignor&apos;s Signature</div>
-          <div className={styles.signatureLine} />
+        {/* ===== RIGHT ===== */}
+        <div className={styles.demurrage}>
+          Demurrage chargeable after 1 hour from today @ Rs 0
+          <br />
+          Per Hour per day Qtl. weight charged
         </div>
 
-        <div className={styles.transporterSignatureBlock}>
-          <div className={styles.signatureLabel}>Signature of the Transporter</div>
-          <div className={styles.signatureImagesWrap}>
-            <div className={styles.signatureImagesRow}>
-              {company?.signatureUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={company.signatureUrl} alt="Signature" className={styles.signatureImg} />
-              )}
-              {company?.stampUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={company.stampUrl} alt="Company stamp" className={styles.stampImg} />
-              ) : (
-                <div className={styles.stampPlaceholder}>STAMP</div>
-              )}
-            </div>
-            <div className={styles.signatureLine} />
+        <div className={styles.noticeBox}>
+          <div className={styles.noticeTitle}>NOTICE</div>
+          <div className={styles.noticeBody}>
+            This Consignment covered by this set of Special Lorry Receipt From
+            shall be stored at the destination under
+            <br />
+            control of the Transport Operator and shall be delivered to or to
+            the order of the Consignee Bank whose nam
+            <br />
+            mention circumstances be delivered to any one without the written
+            authority from the Consignee Bank or its
+            <br />
+            order endorsed on the Consigned Copy of on a separate Letter of
+            Authority.
           </div>
         </div>
+
+        <div className={styles.gstPayableLabel}>GST PAYABLE BY:</div>
+        <div className={styles.gstPayableValue}>{lr.billingParty}</div>
+
+        <div className={styles.driverBox}>
+          <div className={`${styles.driverRow} ${styles.driverRow1}`}>
+            <span className={styles.driverLabel}>Driver Name:</span>
+            {" "}{lr.driverName}
+          </div>
+          <div className={styles.driverRule1} />
+          <div className={`${styles.driverRow} ${styles.driverRow2}`}>
+            <span className={styles.driverLabel}>Mo. No.:</span>
+            {" "}{lr.driverMobile}
+          </div>
+          <div className={styles.driverRule2} />
+          <div className={`${styles.driverRow} ${styles.driverRow3}`}>
+            <span className={styles.driverLabel}>Vehicle No.:</span>
+            {" "}{lr.vehicleNumber}
+          </div>
+          <div className={styles.driverRule3} />
+          <div className={`${styles.driverRow} ${styles.driverRow4}`}>
+            <span className={styles.driverLabel}>From:</span>
+            {" "}{lr.from}
+          </div>
+          <div className={styles.driverRule4} />
+          <div className={`${styles.driverRow} ${styles.driverRow5}`}>
+            <span className={styles.driverLabel}>To:</span>
+            {" "}{lr.to}
+          </div>
+        </div>
+
+        {/* ===== PARTIES ===== */}
+        <div className={styles.consignorLabel}>CONSIGNOR:</div>
+        <div className={styles.consignorName}>{lr.consignor}</div>
+        <div className={styles.consignorGstLabel}>GST IN:</div>
+        <div className={styles.consignorGstValue}>{lr.consignorGST}</div>
+        <div className={styles.consignorGstRule} />
+        <div className={styles.consignorAddressLabel}>Address:</div>
+        <div className={styles.consignorAddressValue}>{lr.consignorAddress}</div>
+
+        <div className={styles.consigneeLabel}>CONSIGNEE:</div>
+        <div className={styles.consigneeName}>{lr.consignee}</div>
+        <div className={styles.consigneeGstLabel}>GST IN:</div>
+        <div className={styles.consigneeGstValue}>{lr.consigneeGST}</div>
+        <div className={styles.consigneeGstRule} />
+        <div className={styles.consigneeAddressLabel}>Address:</div>
+        <div className={styles.consigneeAddressValue}>{lr.consigneeAddress}</div>
+
+        {/* ===== TABLE ===== */}
+        <table className={styles.itemTable}>
+          <colgroup>
+            <col style={{ width: "22.86mm" }} />
+            <col style={{ width: "81.60mm" }} />
+            <col style={{ width: "30.37mm" }} />
+            <col style={{ width: "30.66mm" }} />
+            <col style={{ width: "22.86mm" }} />
+            <col style={{ width: "96.62mm" }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th rowSpan={2}>Packages</th>
+              <th rowSpan={2}>Description (Said to Contain)</th>
+              <th colSpan={2}>Weight</th>
+              <th rowSpan={2}>Rate</th>
+              <th rowSpan={2} />
+            </tr>
+            <tr>
+              <th>Actual</th>
+              <th>Charged</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                {packagesDisplay} {lr.packageType}
+              </td>
+              <td>
+                <div>{lr.material}</div>
+                <div className={styles.refLines}>
+                  <div>Vendor Code : {lr.vendorCode}</div>
+                  <div>Invoice/DC No.: {invoiceDcNumber}</div>
+                  <div>Invoice/DC Date: {invoiceDcDate}</div>
+                  <div>PO No. {lr.poNumber}</div>
+                </div>
+              </td>
+              <td>{actualWeightDisplay}</td>
+              <td>{chargedWeightDisplay}</td>
+              <td>{rateDisplay}</td>
+              <td className={styles.freightCell}>Freight: {lr.freightType}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* ===== FOOTER ===== */}
+        <div className={styles.footerValueLabel}>Value</div>
+        <div className={styles.footerValueText}>&nbsp;As per Invoice</div>
+        <div className={styles.footerConsignor}>Consignor&apos;s Signature</div>
+        <div className={styles.footerTransporter}>Signature of the Transporter</div>
+        <div className={styles.sigLineLeft} />
+        <div className={styles.sigLineCenter} />
+        <div className={styles.sigLineRight} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={signatureSrc} alt="" className={styles.sigImg} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={stampSrc} alt="" className={styles.stampImg} />
       </div>
     </div>
   );

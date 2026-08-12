@@ -1,461 +1,749 @@
 /* ==========================================================
-   LR Print — replicates the approved LR book format (see
-   /tmp/lr-print-ref/LR-19126.pdf.png used as the design reference).
-   Colors/borders are close visual approximations of the printed
-   stationery (exact brand hex values were not available).
+   LR Consignment Note — A4 landscape stationery.
+   Coordinates are PAGE-ABSOLUTE mm from LR sample.pdf.
+   Colours measured from the same master.
 ========================================================== */
 
 .page {
   --lr-red: #c0392b;
-  --lr-blue: #1f3864;
-  --lr-border-salmon: #d38b6d;
-  --lr-border-blue: #4a6fa5;
+  --lr-blue: #4a6fa5;
+  --lr-dark-blue: #1f3864;
+  --lr-salmon: #d38b6d;
+  --lr-black: #111111;
+  --lr-white: #ffffff;
+  --lr-sig-line: #444444;
 
+  position: relative;
   width: 297mm;
-  min-height: 200mm;
+  height: 210mm;
   margin: 0 auto;
-  padding: 6mm 8mm;
-  background: #fff;
-  color: #111;
+  padding: 0;
+  background: var(--lr-white);
+  color: var(--lr-black);
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 8.5px;
-  line-height: 1.25;
+  font-size: 6.26pt;
+  line-height: 1;
   box-sizing: border-box;
+  overflow: hidden;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
 
 .page * {
   box-sizing: border-box;
 }
 
-/* ---------------- HEADER (3-column grid) ---------------- */
-
-.headerGrid {
-  display: grid;
-  grid-template-columns: 25% 42% 33%;
-  gap: 0 10px;
-  align-items: start;
+/*
+  Form content occupies the upper band measured as:
+  x=6.09 y=6.09 w=285.22 h=131.18
+  Master has no continuous outer stroke — do not invent one.
+*/
+.stationery {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 297mm;
+  height: 210mm;
+  background: transparent;
 }
 
-.headerLeft,
-.headerCenter,
-.headerRight {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+/* ----- LEFT ----- */
 
-.gstinLine {
+.gstinPan {
+  position: absolute;
+  left: 6.09mm;
+  top: 6.05mm;
   color: var(--lr-red);
   font-weight: 700;
-  font-size: 9px;
+  font-size: 6.63pt;
+  line-height: 1.35;
 }
 
-.boxed {
-  border: 1px solid var(--lr-border-salmon);
-  padding: 4px 6px;
+.endorsementBox {
+  position: absolute;
+  left: 6.22mm;
+  top: 13.23mm;
+  width: 71.18mm;
+  height: 10.91mm;
+  border: 0.74pt solid var(--lr-salmon);
+  padding: 0.9mm 1.68mm 0.4mm;
+  overflow: hidden;
 }
 
-.boxedBlue {
-  border: 1px solid var(--lr-border-blue);
-  padding: 4px 6px;
-}
-
-.sectionHeading {
+.endorsementTitle {
   text-align: center;
   font-weight: 700;
   text-decoration: underline;
-  margin-bottom: 2px;
-}
-
-.redHeading {
-  composes: sectionHeading;
   color: var(--lr-red);
+  font-size: 6.26pt;
+  line-height: 1;
+  margin-bottom: 0.85mm;
 }
 
-.blueHeading {
-  composes: sectionHeading;
-  color: var(--lr-blue);
+.endorsementBody {
+  color: var(--lr-dark-blue);
+  font-size: 6.26pt;
+  line-height: 1.22;
 }
 
-.blueText {
-  color: var(--lr-blue);
-}
-
-.deliveryOfficeLabel {
-  color: var(--lr-blue);
-  font-weight: 700;
-}
-
-.deliveryOfficeBox {
-  border: 1px solid var(--lr-border-salmon);
-  min-height: 30px;
-}
-
-.consignmentNoteBlock {
-  border-top: 1px solid var(--lr-red);
-  border-bottom: 1px solid var(--lr-red);
-  padding: 2px 0;
+.cautionTitle {
+  position: absolute;
+  left: 6.09mm;
+  top: 25.39mm;
+  width: 71.3mm;
   text-align: center;
+  font-weight: 700;
+  text-decoration: underline;
+  color: var(--lr-dark-blue);
+  font-size: 6.26pt;
 }
 
-.consignmentNoteTitle {
+.cautionBody {
+  position: absolute;
+  left: 6.09mm;
+  top: 28.76mm;
+  width: 65.53mm;
+  color: var(--lr-dark-blue);
+  font-size: 6.26pt;
+  line-height: 1.22;
+}
+
+.deliveryLabel {
+  position: absolute;
+  left: 6.09mm;
+  top: 38.12mm;
+  color: var(--lr-dark-blue);
+  font-weight: 700;
+  font-size: 6.26pt;
+}
+
+.deliveryBox {
+  position: absolute;
+  left: 6.22mm;
+  top: 41.02mm;
+  width: 71.18mm;
+  height: 7.53mm;
+  border: 0.74pt solid var(--lr-salmon);
+}
+
+.consignmentNoteRuleTop {
+  position: absolute;
+  left: 6.09mm;
+  top: 49.73mm;
+  width: 71.44mm;
+  height: 0.26mm;
+  background: var(--lr-red);
+}
+
+.consignmentNoteRuleBottom {
+  position: absolute;
+  left: 6.09mm;
+  top: 54.14mm;
+  width: 71.44mm;
+  height: 0.26mm;
+  background: var(--lr-red);
+}
+
+.consignmentNote {
+  position: absolute;
+  left: 6.09mm;
+  top: 50.49mm;
+  width: 71.44mm;
+  text-align: center;
   color: var(--lr-red);
   font-weight: 700;
   font-style: italic;
-  font-size: 10px;
-}
-
-.lrNoLine {
-  font-weight: 700;
-  margin-top: 4px;
-}
-
-.lrDateLine {
-  margin-top: 2px;
-}
-
-/* Header center */
-
-.jurisdictionLine {
-  text-align: center;
-  color: var(--lr-blue);
-  font-weight: 700;
-  font-size: 8px;
-}
-
-.companyBrand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.logoImg {
-  height: 34px;
-  width: auto;
-  object-fit: contain;
-}
-
-.logoPlaceholder {
-  height: 34px;
-  width: 34px;
-  border: 1px dashed #999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 6px;
-  color: #999;
-  text-align: center;
-}
-
-.companyName {
-  color: var(--lr-red);
-  font-weight: 800;
-  font-size: 20px;
+  font-size: 7.36pt;
   line-height: 1;
 }
 
-.companyTagline {
-  text-align: center;
-  color: var(--lr-blue);
-  font-style: italic;
-  font-size: 8px;
-}
-
-.companySubtitle {
-  text-align: center;
-  color: var(--lr-blue);
+.lrNumber {
+  position: absolute;
+  left: 6.09mm;
+  top: 56.56mm;
   font-weight: 700;
-  font-size: 8.5px;
+  font-size: 6.26pt;
+  color: var(--lr-black);
 }
 
-.companyAddressLine {
+.lrDate {
+  position: absolute;
+  left: 6.09mm;
+  top: 60.98mm;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+}
+
+/* ----- CENTER brand (measured, not flex-centered) ----- */
+
+.jurisdiction {
+  position: absolute;
+  left: 111.08mm;
+  top: 6.02mm;
+  width: 57.61mm;
   text-align: center;
-  color: var(--lr-blue);
-  font-size: 7.5px;
+  color: var(--lr-dark-blue);
+  font-weight: 700;
+  font-size: 5.89pt;
+  white-space: nowrap;
 }
 
-.companyCellLine {
+.headerMark {
+  position: absolute;
+  left: 107.91mm;
+  top: 9.72mm;
+  width: 8.84mm;
+  height: 8.83mm;
+  object-fit: contain;
+}
+
+.companyName {
+  position: absolute;
+  left: 118.78mm;
+  top: 11.25mm;
+  color: var(--lr-red);
+  font-weight: 700;
+  font-size: 14.73pt;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tagline {
+  position: absolute;
+  left: 109.74mm;
+  top: 19.53mm;
+  width: 60.29mm;
+  text-align: center;
+  color: var(--lr-dark-blue);
+  font-style: italic;
+  font-size: 5.89pt;
+}
+
+.subtitle {
+  position: absolute;
+  left: 109.74mm;
+  top: 23.31mm;
+  width: 60.29mm;
+  text-align: center;
+  color: var(--lr-dark-blue);
+  font-weight: 700;
+  font-size: 6.26pt;
+}
+
+.addressLine {
+  position: absolute;
+  left: 81.53mm;
+  top: 27.18mm;
+  width: 116.71mm;
+  text-align: center;
+  color: var(--lr-dark-blue);
+  font-size: 5.52pt;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.webLine {
+  position: absolute;
+  left: 108.96mm;
+  top: 30.56mm;
+  width: 61.85mm;
+  text-align: center;
+  color: var(--lr-dark-blue);
+  font-size: 5.52pt;
+  white-space: nowrap;
+}
+
+.cellLine {
+  position: absolute;
+  left: 125.21mm;
+  top: 33.82mm;
+  width: 29.35mm;
   text-align: center;
   color: var(--lr-red);
   font-weight: 700;
-  font-size: 8px;
+  font-size: 5.89pt;
+  white-space: nowrap;
 }
 
-.ownerRiskHeading {
+.ownerRisk {
+  position: absolute;
+  left: 130.01mm;
+  top: 38.64mm;
+  width: 19.74mm;
   text-align: center;
-  color: var(--lr-blue);
+  color: var(--lr-dark-blue);
   font-weight: 700;
-  border-bottom: 1px solid var(--lr-blue);
-  padding-bottom: 2px;
-  margin-top: 4px;
+  font-size: 6.26pt;
+  white-space: nowrap;
 }
 
-.insuranceHeading {
+.ownerRiskRule {
+  position: absolute;
+  left: 80.12mm;
+  top: 41.93mm;
+  width: 119.75mm;
+  height: 0.26mm;
+  background: var(--lr-dark-blue);
+}
+
+.insuranceTitle {
+  position: absolute;
+  left: 133.32mm;
+  top: 43.31mm;
+  width: 13.13mm;
   text-align: center;
-  color: var(--lr-blue);
+  color: var(--lr-dark-blue);
   font-weight: 700;
+  font-size: 6.26pt;
+  white-space: nowrap;
 }
 
 .insuranceBox {
-  border: 1px solid var(--lr-border-blue);
-  padding: 4px 6px;
-  color: var(--lr-blue);
+  position: absolute;
+  left: 80.25mm;
+  top: 47.26mm;
+  width: 119.49mm;
+  height: 20.26mm;
+  border: 0.74pt solid var(--lr-blue);
+  color: var(--lr-dark-blue);
+  overflow: hidden;
 }
 
 .insuranceStatement {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1.0mm;
   text-align: center;
-  margin-bottom: 3px;
+  font-size: 6.26pt;
+  line-height: 1.25;
 }
 
-.insuranceFieldRow {
-  display: flex;
-  justify-content: space-between;
-  border-top: 1px dotted var(--lr-border-blue);
-  padding-top: 2px;
-  margin-top: 2px;
+.insuranceCompany {
+  position: absolute;
+  left: 1.56mm;
+  top: 8.26mm;
+  font-size: 6.26pt;
 }
 
-/* Header right */
+.insurancePolicy {
+  position: absolute;
+  left: 1.56mm;
+  top: 12.42mm;
+  font-size: 6.26pt;
+}
 
-.demurrageText {
-  color: var(--lr-blue);
+.insuranceDate {
+  position: absolute;
+  right: 2.29mm;
+  top: 12.42mm;
+  font-size: 6.26pt;
+}
+
+.insuranceAmount {
+  position: absolute;
+  left: 1.56mm;
+  top: 16.31mm;
+  font-size: 6.26pt;
+}
+
+.insuranceRisk {
+  position: absolute;
+  right: 2.29mm;
+  top: 16.31mm;
+  font-size: 6.26pt;
+}
+
+/* ----- RIGHT ----- */
+
+.demurrage {
+  position: absolute;
+  left: 249.26mm;
+  top: 6.14mm;
+  width: 42.7mm;
   text-align: right;
-  font-size: 7.5px;
+  color: var(--lr-dark-blue);
+  font-size: 5.52pt;
+  line-height: 1.2;
 }
 
 .noticeBox {
-  border: 1px solid var(--lr-border-blue);
-  padding: 4px 6px;
-  color: var(--lr-blue);
+  position: absolute;
+  left: 202.60mm;
+  top: 12.19mm;
+  width: 93.78mm;
+  height: 14.55mm;
+  border: 0.74pt solid var(--lr-blue);
+  padding: 0.9mm 1.5mm 0.3mm;
+  color: var(--lr-dark-blue);
+  overflow: hidden;
 }
 
-.noticeHeading {
+.noticeTitle {
   text-align: center;
   font-weight: 700;
-  margin-bottom: 2px;
+  font-size: 6.26pt;
+  line-height: 1;
+  margin-bottom: 0.7mm;
 }
 
 .noticeBody {
-  font-size: 7px;
+  font-size: 5.15pt;
+  line-height: 1.22;
+  text-align: left;
 }
 
-.gstPayableHeading {
-  text-align: center;
-  color: var(--lr-blue);
+.gstPayableLabel {
+  position: absolute;
+  left: 239.75mm;
+  top: 27.99mm;
+  color: var(--lr-dark-blue);
   font-weight: 700;
+  font-size: 6.26pt;
+  white-space: nowrap;
 }
 
 .gstPayableValue {
-  text-align: center;
-  color: var(--lr-blue);
+  position: absolute;
+  left: 244.41mm;
+  top: 31.88mm;
+  color: var(--lr-dark-blue);
+  font-size: 6.26pt;
+  white-space: nowrap;
 }
 
 .driverBox {
-  border: 1px solid var(--lr-border-blue);
-  color: var(--lr-blue);
+  position: absolute;
+  left: 202.60mm;
+  top: 35.83mm;
+  width: 93.78mm;
+  height: 20.26mm;
+  border: 0.74pt solid var(--lr-blue);
+  color: var(--lr-dark-blue);
+  overflow: hidden;
 }
 
 .driverRow {
-  display: flex;
-  border-bottom: 1px solid var(--lr-border-blue);
-  padding: 2px 6px;
+  position: absolute;
+  left: 1.6mm;
+  right: 1.6mm;
+  font-size: 6.26pt;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--lr-dark-blue);
 }
 
-.driverRow:last-child {
-  border-bottom: none;
+.driverRow1 { top: 0.73mm; }
+.driverRow2 { top: 4.62mm; }
+.driverRow3 { top: 8.78mm; }
+.driverRow4 { top: 12.94mm; }
+.driverRow5 { top: 16.83mm; }
+
+.driverRule1,
+.driverRule2,
+.driverRule3,
+.driverRule4 {
+  position: absolute;
+  left: 0.13mm;
+  width: 93.52mm;
+  height: 0.26mm;
+  background: var(--lr-blue);
 }
 
-.driverRowLabel {
+.driverRule1 { top: 3.77mm; }
+.driverRule2 { top: 7.92mm; }
+.driverRule3 { top: 12.08mm; }
+.driverRule4 { top: 15.97mm; }
+
+.driverLabel {
   font-weight: 700;
-  margin-right: 4px;
 }
 
-/* ---------------- CONSIGNOR / CONSIGNEE ---------------- */
+/* ----- PARTIES ----- */
 
-.partiesSection {
-  margin-top: 6px;
-  display: grid;
-  grid-template-columns: auto minmax(200px, 400px) auto 1fr;
-  column-gap: 6px;
-  row-gap: 2px;
-}
-
-.partyLabel {
+.consignorLabel {
+  position: absolute;
+  left: 6.09mm;
+  top: 69.29mm;
   color: var(--lr-red);
   font-weight: 700;
+  font-size: 6.26pt;
   white-space: nowrap;
 }
 
-.partyValue {
+.consignorName {
+  position: absolute;
+  left: 20.44mm;
+  top: 69.29mm;
+  max-width: 105mm;
   font-weight: 700;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.partyGstLabel {
-  color: #111;
+.consignorGstLabel {
+  position: absolute;
+  left: 127.46mm;
+  top: 69.29mm;
   font-weight: 700;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+}
+
+.consignorGstValue {
+  position: absolute;
+  left: 135.56mm;
+  top: 69.29mm;
+  font-size: 6.26pt;
+  color: var(--lr-black);
   white-space: nowrap;
 }
 
-.partyGstValue {
-  min-width: 90px;
-  border-bottom: 1px solid #999;
+/* Measured GST rules: y=71.81 / 78.56, x=137.01, w=154.30, #999999 */
+.consignorGstRule {
+  position: absolute;
+  left: 137.01mm;
+  top: 71.81mm;
+  width: 154.3mm;
+  height: 0.26mm;
+  background: #999999;
 }
 
-.addressLabel {
-  color: #111;
+.consignorAddressLabel {
+  position: absolute;
+  left: 6.09mm;
+  top: 72.67mm;
   font-weight: 700;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+}
+
+.consignorAddressValue {
+  position: absolute;
+  left: 22.00mm;
+  top: 72.67mm;
+  max-width: 260mm;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.consigneeLabel {
+  position: absolute;
+  left: 6.09mm;
+  top: 76.04mm;
+  color: var(--lr-red);
+  font-weight: 700;
+  font-size: 6.26pt;
   white-space: nowrap;
 }
 
-.addressValue {
-  grid-column: 2 / span 3;
+.consigneeName {
+  position: absolute;
+  left: 22.00mm;
+  top: 76.04mm;
+  max-width: 103mm;
+  font-weight: 700;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ---------------- MAIN TABLE ---------------- */
+.consigneeGstLabel {
+  position: absolute;
+  left: 127.46mm;
+  top: 76.04mm;
+  font-weight: 700;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+}
 
-.mainTable {
-  width: 100%;
+.consigneeGstValue {
+  position: absolute;
+  left: 135.56mm;
+  top: 76.04mm;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+  white-space: nowrap;
+}
+
+.consigneeGstRule {
+  position: absolute;
+  left: 137.01mm;
+  top: 78.56mm;
+  width: 154.3mm;
+  height: 0.26mm;
+  background: #999999;
+}
+
+.consigneeAddressLabel {
+  position: absolute;
+  left: 6.09mm;
+  top: 79.42mm;
+  font-weight: 700;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+}
+
+.consigneeAddressValue {
+  position: absolute;
+  left: 22.00mm;
+  top: 79.42mm;
+  max-width: 260mm;
+  font-size: 6.26pt;
+  color: var(--lr-black);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ----- TABLE: verts 6.07 / 28.93 / 110.53 / 140.90 / 171.56 / 194.42 / 291.04 ----- */
+/* H rules: 84.02 / 94.41 / 113.89 */
+
+.itemTable {
+  position: absolute;
+  left: 6.07mm;
+  top: 84.02mm;
+  width: 284.97mm;
+  height: 29.87mm;
   border-collapse: collapse;
-  margin-top: 8px;
   table-layout: fixed;
+  font-size: 6.26pt;
 }
 
-.mainTable th,
-.mainTable td {
-  border: 1px solid var(--lr-border-salmon);
-  padding: 4px 6px;
+.itemTable th,
+.itemTable td {
+  border: 0.74pt solid var(--lr-salmon);
+  padding: 0.6mm 1.2mm;
   vertical-align: top;
 }
 
-.mainTable th {
-  color: var(--lr-blue);
+.itemTable thead th {
+  color: var(--lr-dark-blue);
   font-weight: 700;
   text-align: center;
+  height: 5.2mm;
+  padding-top: 0.8mm;
 }
 
-.colPackages {
-  width: 9%;
+.itemTable thead tr:last-child th {
+  height: 5.19mm;
 }
 
-.colDescription {
-  width: 32%;
+.itemTable tbody td {
+  height: 19.48mm;
+  color: var(--lr-black);
 }
 
-.colWeight {
-  width: 12%;
+.refLines {
+  margin-top: 2.0mm;
+  font-size: 5.89pt;
 }
 
-.colRate {
-  width: 9%;
-}
-
-.colFreight {
-  width: 38%;
-}
-
-.referenceBlock {
-  margin-top: 10px;
-  font-size: 8px;
-}
-
-.referenceBlock div {
-  margin-top: 2px;
+.refLines div {
+  margin-top: 0.55mm;
 }
 
 .freightCell {
   text-align: center;
-  font-weight: 700;
-  vertical-align: middle;
-}
-
-/* ---------------- FOOTER ---------------- */
-
-.footerRow {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items: stretch;
-  min-height: 75px;
-  gap: 10px;
-}
-
-.footerRow > div {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-}
-
-.valueLabel {
-  color: var(--lr-red);
+  vertical-align: top;
   font-weight: 700;
 }
 
-.signatureBlock {
-  text-align: center;
-  align-items: center;
-}
+/* ----- FOOTER ----- */
 
-.signatureLabel {
-  color: var(--lr-red);
-  font-weight: 700;
-}
-
-.signatureLine {
-  border-top: 1px solid #444;
-  margin-top: 4px;
-}
-
-.transporterSignatureBlock {
-  align-items: center;
-}
-
-/* Positioned so the signature/stamp images float just above the line
- * without adding flow height — keeps the "Signature of the..." label at
- * the same baseline across all three footer columns, matching the
- * reference where the images overlay the line rather than push it down. */
-.signatureImagesWrap {
-  position: relative;
-  width: 100%;
-}
-
-.signatureImagesRow {
+.footerValueLabel {
   position: absolute;
-  bottom: 2px;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 8px;
+  left: 6.09mm;
+  top: 133.45mm;
+  color: var(--lr-red);
+  font-weight: 700;
+  font-size: 6.26pt;
 }
 
-.signatureImg {
-  height: 30px;
-  width: auto;
-  object-fit: contain;
+.footerValueText {
+  position: absolute;
+  left: 11.86mm;
+  top: 133.45mm;
+  color: var(--lr-black);
+  font-size: 6.26pt;
+}
+
+.footerConsignor {
+  position: absolute;
+  left: 136.90mm;
+  top: 133.45mm;
+  color: var(--lr-red);
+  font-weight: 700;
+  font-size: 6.26pt;
+  white-space: nowrap;
+}
+
+.footerTransporter {
+  position: absolute;
+  left: 229.79mm;
+  top: 133.45mm;
+  color: var(--lr-red);
+  font-weight: 700;
+  font-size: 6.26pt;
+  white-space: nowrap;
+}
+
+.sigLineLeft {
+  position: absolute;
+  left: 6.09mm;
+  top: 137.01mm;
+  width: 93.26mm;
+  height: 0.26mm;
+  background: var(--lr-sig-line);
+}
+
+.sigLineCenter {
+  position: absolute;
+  left: 71.81mm;
+  top: 137.01mm;
+  width: 154.3mm;
+  height: 0.26mm;
+  background: #999999;
+}
+
+.sigLineRight {
+  position: absolute;
+  left: 198.05mm;
+  top: 137.01mm;
+  width: 93.26mm;
+  height: 0.26mm;
+  background: var(--lr-sig-line);
+}
+
+/* Measured from LR sample.pdf image bboxes (page-absolute mm). */
+.sigImg {
+  position: absolute;
+  left: 230.784mm;
+  top: 128.956mm;
+  width: 16.365mm;
+  height: 7.793mm;
+  object-fit: fill;
 }
 
 .stampImg {
-  height: 36px;
-  width: 36px;
-  object-fit: contain;
+  position: absolute;
+  left: 249.228mm;
+  top: 127.397mm;
+  width: 9.092mm;
+  height: 9.352mm;
+  object-fit: fill;
 }
-
-.stampPlaceholder {
-  height: 36px;
-  width: 36px;
-  border: 1px dashed #999;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 5.5px;
-  color: #999;
-  text-align: center;
-}
-
-/* ---------------- TOOLBAR (screen only) ---------------- */
 
 .toolbar {
   max-width: 297mm;
@@ -465,27 +753,21 @@
   gap: 8px;
 }
 
-/* ---------------- PRINT ---------------- */
-
 @media print {
   @page {
     size: A4 landscape;
-    margin: 6mm;
+    margin: 0;
   }
-
-  /* html/body print reset now lives in app/globals.css — see the
-     note there (Next's webpack CSS-Modules loader runs in `pure`
-     mode, which rejects module rules with no local class/id). */
 
   .toolbar {
     display: none !important;
   }
 
   .page {
-    width: 100%;
-    min-height: 0;
+    width: 297mm;
+    height: 210mm;
     margin: 0;
-    padding: 0;
+    page-break-inside: avoid;
     page-break-after: avoid;
   }
 }
