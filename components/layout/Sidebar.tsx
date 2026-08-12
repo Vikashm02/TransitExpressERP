@@ -12,6 +12,7 @@ import {
   Package,
   FileText,
   ClipboardCheck,
+  ScrollText,
   ReceiptIndianRupee,
   FileMinus2,
   FilePlus2,
@@ -81,6 +82,12 @@ const menus: {
     href: "/pod",
     icon: ClipboardCheck,
     permissionKey: "pod",
+  },
+  {
+    label: "Delivery Challan",
+    href: "/delivery-challans",
+    icon: ScrollText,
+    permissionKey: "delivery_challans",
   },
   {
     label: "Lorry Expenses",
