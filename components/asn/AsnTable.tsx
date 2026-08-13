@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Eye, Pencil, Printer } from "lucide-react";
+import { ClipboardList, Eye, Pencil, Printer, Trash2 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
@@ -13,6 +13,10 @@ interface AsnTableProps {
   onView: (asn: AsnRecord) => void;
   onEdit: (asn: AsnRecord) => void;
   onPrint: (asn: AsnRecord) => void;
+  onDelete: (asn: AsnRecord) => void;
+  /** Staff / Sub-User Access Control — hides Edit and Delete when the
+   * caller lacks "asn_creations" edit permission (Delete rides on
+   * "edit" — no separate Delete level). Defaults to `true`. */
   canEdit?: boolean;
 }
 
@@ -33,6 +37,7 @@ export default function AsnTable({
   onView,
   onEdit,
   onPrint,
+  onDelete,
   canEdit = true,
 }: AsnTableProps) {
   const columns: DataTableColumn<AsnRecord>[] = [
@@ -79,6 +84,13 @@ export default function AsnTable({
           icon: Printer,
           variant: "outline",
           onClick: onPrint,
+        },
+        {
+          label: "Delete",
+          icon: Trash2,
+          variant: "destructive",
+          onClick: onDelete,
+          hidden: () => !canEdit,
         },
       ]}
     />

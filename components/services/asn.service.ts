@@ -200,6 +200,65 @@ export async function updateAsn(
 }
 
 /* ==========================================================
+   DELETE — DB row + this ASN's asn-assets objects only
+========================================================== */
+
+/**
+ * Extract the object path inside `asn-assets` from a public storage URL.
+ * Returns null for empty / non-matching URLs so we never touch other buckets.
+ */
+function asnAssetPathFromPublicUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  const marker = `/storage/v1/object/public/${ASSETS_BUCKET}/`;
+  const idx = trimmed.indexOf(marker);
+  if (idx === -1) return null;
+
+  const raw = trimmed.slice(idx + marker.length).split("?")[0] ?? "";
+  let path: string;
+  try {
+    path = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+
+  if (!path || path.includes("..") || path.startsWith("/")) return null;
+  return path;
+}
+
+/**
+ * Safe delete order:
+ * 1) Remove this ASN's attachment objects from `asn-assets` (if any).
+ * 2) Only then delete the `asn_creations` row.
+ * Storage failure aborts before the row is removed; DB failure is reported
+ * (attachments may already be gone).
+ */
+export async function deleteAsn(id: number): Promise<void> {
+  const asn = await getAsn(id);
+
+  const paths = [
+    asn.weightmentSlipUrl,
+    asn.challanCopySlipUrl,
+    asn.lrCopySlipUrl,
+  ]
+    .map(asnAssetPathFromPublicUrl)
+    .filter((path): path is string => Boolean(path));
+
+  if (paths.length > 0) {
+    const { error: storageError } = await supabase.storage
+      .from(ASSETS_BUCKET)
+      .remove(paths);
+
+    if (storageError) throw storageError;
+  }
+
+  const { error } = await supabase.from(TABLE).delete().eq("id", id);
+
+  if (error) throw error;
+}
+
+/* ==========================================================
    FILE UPLOADS — three separate slip kinds
 ========================================================== */
 

@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import PageHeader from "@/components/ui/PageHeader";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import AsnDialog, { type AsnDialogMode } from "./AsnDialog";
 import AsnTable from "./AsnTable";
 import type { Asn } from "./asn.schema";
 import {
   createAsn,
+  deleteAsn,
   getAsns,
   updateAsn,
   type AsnRecord,
@@ -31,6 +33,9 @@ export default function AsnListPage() {
   const [editing, setEditing] = useState<AsnRecord | null>(null);
   const [dialogMode, setDialogMode] = useState<AsnDialogMode>("create");
   const [saving, setSaving] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<AsnRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -113,6 +118,23 @@ export default function AsnListPage() {
     }
   }
 
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+
+    try {
+      setDeleting(true);
+      await deleteAsn(deleteTarget.id);
+      toast.success("ASN deleted successfully.");
+      setDeleteTarget(null);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to delete ASN.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -136,6 +158,7 @@ export default function AsnListPage() {
         onView={handleView}
         onEdit={handleEdit}
         onPrint={handlePrint}
+        onDelete={setDeleteTarget}
         canEdit={canEdit}
       />
 
@@ -146,6 +169,21 @@ export default function AsnListPage() {
         asn={editing}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete ASN"
+        description={
+          deleteTarget
+            ? `Are you sure you want to delete ASN "${deleteTarget.asnNumber}"? This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );
