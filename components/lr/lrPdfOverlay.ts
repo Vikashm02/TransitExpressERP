@@ -15,8 +15,13 @@ const COLOR_BLUE = rgb(0x1f / 255, 0x4a / 255, 0x77 / 255);
  * Field geometry measured from `LR 19175.pdf` (page top-left origin, mm).
  * Masks cover ONLY example dynamic values — never static labels/lines/header art.
  */
+type MaskBox = { x: number; y: number; w: number; h: number };
+
 type FieldSpec = {
-  mask?: { x: number; y: number; w: number; h: number };
+  /** Exact old-value glyph boxes only (never blank space / watermark / labels). */
+  masks?: MaskBox[];
+  /** @deprecated use masks — kept for single-box convenience via normalizeMasks */
+  mask?: MaskBox;
   x: number;
   y: number;
   maxW: number;
@@ -25,12 +30,37 @@ type FieldSpec = {
   color: "red" | "blue";
   wrap?: boolean;
   maxLines?: number;
+  /** Description-only: wrap + optional pt shrink; never ellipsis. */
+  descriptionWrap?: boolean;
+  /** Max bottom Y (mm from page top) for wrapped description lines. */
+  maxBottomY?: number;
+  minSizePt?: number;
 };
 
+function normalizeMasks(spec: FieldSpec): MaskBox[] {
+  if (spec.masks?.length) return spec.masks;
+  if (spec.mask) return [spec.mask];
+  return [];
+}
+
+/**
+ * Table vertical borders from lr-stationery.pdf (mm):
+ * 4.128 | 34.837 | 115.526 | 145.81 | 176.095 | 206.38 | 292.787
+ * Masks/text must stay ≥0.5mm inside these borders.
+ */
+const TABLE_V = {
+  packagesRight: 34.837,
+  descriptionRight: 115.526,
+  actualRight: 145.81,
+  chargedRight: 176.095,
+  rateRight: 206.38,
+} as const;
+const BORDER_INSET = 0.5;
+
 const FIELDS = {
-  // No.: label static; value "19175" at (13.87, 71.36)
+  // Exact value glyphs from lr-stationery.pdf (LR 19175) — no blank-space pads.
   lrNumber: {
-    mask: { x: 13.87, y: 71.36, w: 50, h: 4.93 },
+    masks: [{ x: 13.87, y: 71.36, w: 14.7, h: 4.93 }],
     x: 13.87,
     y: 71.36,
     maxW: 50,
@@ -38,25 +68,22 @@ const FIELDS = {
     bold: true,
     color: "red" as const,
   },
-  // Date: label static; value at (16.64, 85.06)
   lrDate: {
-    mask: { x: 16.64, y: 85.06, w: 40, h: 3.95 },
+    masks: [{ x: 16.64, y: 85.06, w: 19.66, h: 3.94 }],
     x: 16.64,
     y: 85.06,
     maxW: 40,
     sizePt: 9.61,
     color: "blue" as const,
   },
-  // GST PAYABLE BY: label static; value "Consignee" at (233.28, 87.81)
   gstPayable: {
-    mask: { x: 233.28, y: 87.81, w: 50, h: 3.95 },
+    masks: [{ x: 233.28, y: 87.81, w: 17.74, h: 3.95 }],
     x: 233.28,
     y: 87.81,
     maxW: 50,
     sizePt: 9.61,
     color: "blue" as const,
   },
-  // Driver values (right mid box) — labels static
   driverName: {
     x: 234.0,
     y: 95.44,
@@ -72,31 +99,31 @@ const FIELDS = {
     color: "blue" as const,
   },
   vehicleNumber: {
-    mask: { x: 231.16, y: 107.3, w: 58, h: 3.95 },
-    x: 231.16,
+    masks: [{ x: 232.23, y: 107.3, w: 26.29, h: 3.94 }],
+    x: 232.23,
     y: 107.3,
     maxW: 58,
     sizePt: 9.61,
     color: "blue" as const,
   },
   from: {
-    mask: { x: 219.3, y: 113.23, w: 70, h: 3.95 },
-    x: 219.3,
+    masks: [{ x: 220.37, y: 113.23, w: 14.33, h: 3.94 }],
+    x: 220.37,
     y: 113.23,
     maxW: 70,
     sizePt: 9.61,
     color: "blue" as const,
   },
   to: {
-    mask: { x: 214.0, y: 119.16, w: 75, h: 3.95 },
-    x: 214.0,
+    masks: [{ x: 215.08, y: 119.16, w: 12.85, h: 3.94 }],
+    x: 215.08,
     y: 119.16,
     maxW: 75,
     sizePt: 9.61,
     color: "blue" as const,
   },
   consignor: {
-    mask: { x: 35.9, y: 94.59, w: 98, h: 3.95 },
+    masks: [{ x: 35.9, y: 94.59, w: 52.39, h: 3.95 }],
     x: 35.9,
     y: 94.59,
     maxW: 98,
@@ -111,7 +138,7 @@ const FIELDS = {
     color: "blue" as const,
   },
   consignorAddress: {
-    mask: { x: 35.9, y: 100.31, w: 168, h: 3.95 },
+    masks: [{ x: 35.9, y: 100.31, w: 112.87, h: 3.94 }],
     x: 35.9,
     y: 100.31,
     maxW: 168,
@@ -119,7 +146,11 @@ const FIELDS = {
     color: "blue" as const,
   },
   consignee: {
-    mask: { x: 35.9, y: 106.03, w: 98, h: 8.0 },
+    // Two exact value lines — do not union into one wide/tall blank hole
+    masks: [
+      { x: 35.9, y: 106.03, w: 97.12, h: 3.94 },
+      { x: 35.9, y: 110.05, w: 14.05, h: 3.95 },
+    ],
     x: 35.9,
     y: 106.03,
     maxW: 98,
@@ -136,7 +167,10 @@ const FIELDS = {
     color: "blue" as const,
   },
   consigneeAddress: {
-    mask: { x: 35.9, y: 115.77, w: 168, h: 8.0 },
+    masks: [
+      { x: 35.9, y: 115.77, w: 163.91, h: 3.94 },
+      { x: 35.9, y: 119.79, w: 12.91, h: 3.95 },
+    ],
     x: 35.9,
     y: 115.77,
     maxW: 168,
@@ -146,78 +180,80 @@ const FIELDS = {
     maxLines: 2,
   },
   packages: {
-    mask: { x: 13.45, y: 137.79, w: 30, h: 3.95 },
+    masks: [{ x: 13.45, y: 137.79, w: 12.19, h: 3.95 }],
     x: 13.45,
     y: 137.79,
-    maxW: 30,
+    maxW: TABLE_V.packagesRight - BORDER_INSET - 13.45,
     sizePt: 9.61,
     color: "blue" as const,
   },
   material: {
-    mask: { x: 49.03, y: 137.79, w: 68, h: 3.95 },
-    x: 49.03,
+    masks: [{ x: 49.03, y: 137.79, w: 52.59, h: 3.95 }],
+    x: 36.0,
     y: 137.79,
-    maxW: 68,
+    maxW: TABLE_V.descriptionRight - BORDER_INSET - 36.0,
     sizePt: 9.61,
     color: "blue" as const,
+    descriptionWrap: true,
+    maxBottomY: 158.5,
+    minSizePt: 7.5,
   },
   vendorCode: {
     x: 63.2,
     y: 159.82,
-    maxW: 55,
+    maxW: TABLE_V.descriptionRight - BORDER_INSET - 63.2,
     sizePt: 9.61,
     color: "blue" as const,
   },
   invoiceDcNo: {
     x: 65.4,
     y: 163.84,
-    maxW: 53,
+    maxW: TABLE_V.descriptionRight - BORDER_INSET - 65.4,
     sizePt: 9.61,
     color: "blue" as const,
   },
   invoiceDcDate: {
-    mask: { x: 68.53, y: 167.87, w: 40, h: 3.95 },
+    masks: [{ x: 68.53, y: 167.87, w: 19.66, h: 3.94 }],
     x: 68.53,
     y: 167.87,
-    maxW: 40,
+    maxW: TABLE_V.descriptionRight - BORDER_INSET - 68.53,
     sizePt: 9.61,
     color: "blue" as const,
   },
   poNumber: {
-    mask: { x: 49.66, y: 171.89, w: 55, h: 3.95 },
+    masks: [{ x: 49.66, y: 171.89, w: 21.53, h: 3.95 }],
     x: 49.66,
     y: 171.89,
-    maxW: 55,
+    maxW: TABLE_V.descriptionRight - BORDER_INSET - 49.66,
     sizePt: 9.61,
     color: "blue" as const,
   },
   actualWeight: {
-    mask: { x: 121.77, y: 137.79, w: 36, h: 3.95 },
+    masks: [{ x: 121.77, y: 137.79, w: 17.89, h: 3.95 }],
     x: 121.77,
     y: 137.79,
-    maxW: 36,
+    maxW: TABLE_V.actualRight - BORDER_INSET - 121.77,
     sizePt: 9.61,
     color: "blue" as const,
   },
   chargedWeight: {
-    mask: { x: 153.0, y: 137.79, w: 30, h: 3.95 },
-    x: 160.42,
+    masks: [{ x: 160.42, y: 137.79, w: 1.21, h: 3.95 }],
+    x: 146.31,
     y: 137.79,
-    maxW: 28,
+    maxW: TABLE_V.chargedRight - BORDER_INSET - 146.31,
     sizePt: 9.61,
     color: "blue" as const,
   },
   rate: {
-    mask: { x: 186.0, y: 137.79, w: 20, h: 3.95 },
-    x: 186.9,
+    masks: [{ x: 190.71, y: 137.79, w: 1.21, h: 3.95 }],
+    x: 176.6,
     y: 137.79,
-    maxW: 20,
+    maxW: TABLE_V.rateRight - BORDER_INSET - 176.6,
     sizePt: 9.61,
     color: "blue" as const,
   },
-  // Static "Freight: " remains; mask only "To be billed"
   freightType: {
-    mask: { x: 246.74, y: 149.23, w: 42, h: 3.95 },
+    masks: [{ x: 246.74, y: 149.23, w: 22.32, h: 3.94 }],
     x: 246.74,
     y: 149.23,
     maxW: 42,
@@ -262,6 +298,7 @@ function colorOf(c: FieldSpec["color"]) {
   return c === "red" ? COLOR_RED : COLOR_BLUE;
 }
 
+/** Truncate with ellipsis — only for non-description single-line fields. */
 function fitSingleLine(text: string, font: PDFFont, sizePt: number, maxWidthPt: number): string {
   if (!text) return "";
   if (font.widthOfTextAtSize(text, sizePt) <= maxWidthPt) return text;
@@ -270,6 +307,60 @@ function fitSingleLine(text: string, font: PDFFont, sizePt: number, maxWidthPt: 
     t = t.slice(0, -1);
   }
   return t.length < text.length ? `${t}…` : t;
+}
+
+/**
+ * Word-wrap using the same embedded font metrics. No ellipsis.
+ * Returns null if content cannot fit in maxLines at this size.
+ */
+function wrapLinesNoEllipsis(
+  text: string,
+  font: PDFFont,
+  sizePt: number,
+  maxWidthPt: number,
+  maxLines: number
+): string[] | null {
+  if (!text) return [];
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    // Hard-break an overlong single word rather than spilling past the column.
+    if (font.widthOfTextAtSize(word, sizePt) > maxWidthPt) {
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+      let chunk = "";
+      for (const ch of word) {
+        const next = chunk + ch;
+        if (font.widthOfTextAtSize(next, sizePt) <= maxWidthPt) {
+          chunk = next;
+        } else {
+          if (chunk) lines.push(chunk);
+          chunk = ch;
+          if (lines.length >= maxLines) return null;
+        }
+      }
+      current = chunk;
+      continue;
+    }
+
+    const next = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(next, sizePt) <= maxWidthPt) {
+      current = next;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+      if (lines.length >= maxLines) return null;
+    }
+  }
+  if (current) {
+    if (lines.length >= maxLines) return null;
+    lines.push(current);
+  }
+  return lines.length <= maxLines ? lines : null;
 }
 
 function wrapLines(
@@ -299,15 +390,18 @@ function wrapLines(
   );
 }
 
+/**
+ * Value-tight white mask. Tiny vertical pad only — never expand horizontally
+ * past the measured value box (avoids covering table borders).
+ */
 function maskRect(
   page: PDFPage,
   pageHeightPt: number,
   m: { x: number; y: number; w: number; h: number }
 ) {
-  const padX = 0.2 * MM;
-  const padY = 0.1 * MM;
-  const x = m.x * MM - padX;
-  const w = m.w * MM + padX * 2;
+  const padY = 0.08 * MM;
+  const x = m.x * MM;
+  const w = m.w * MM;
   const topPt = pageHeightPt - m.y * MM + padY;
   const h = m.h * MM + padY * 2;
   page.drawRectangle({
@@ -320,6 +414,81 @@ function maskRect(
   });
 }
 
+function drawDescription(
+  page: PDFPage,
+  pageHeightPt: number,
+  font: PDFFont,
+  spec: FieldSpec,
+  value: string
+) {
+  for (const m of normalizeMasks(spec)) maskRect(page, pageHeightPt, m);
+  const text = (value || "").trim();
+  if (!text) return;
+
+  const maxWpt = spec.maxW * MM;
+  const color = colorOf(spec.color);
+  const x = spec.x * MM;
+  const minSize = spec.minSizePt ?? 7.5;
+  const maxBottomY = spec.maxBottomY ?? spec.y + 20;
+  const startSize = spec.sizePt;
+
+  let chosenSize = startSize;
+  let chosenLines: string[] | null = null;
+
+  for (let size = startSize; size >= minSize - 1e-6; size = Math.round((size - 0.25) * 100) / 100) {
+    const leadingPt = size * 1.15;
+    const leadingMm = leadingPt * (25.4 / 72);
+    const maxLines = Math.max(1, Math.floor((maxBottomY - spec.y) / leadingMm));
+    const lines = wrapLinesNoEllipsis(text, font, size, maxWpt, maxLines);
+    if (lines) {
+      chosenSize = size;
+      chosenLines = lines;
+      break;
+    }
+  }
+
+  if (!chosenLines) {
+    // Still too long at min size — draw what fits without ellipsis / without crossing column.
+    const leadingPt = minSize * 1.15;
+    const leadingMm = leadingPt * (25.4 / 72);
+    const maxLines = Math.max(1, Math.floor((maxBottomY - spec.y) / leadingMm));
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (font.widthOfTextAtSize(next, minSize) <= maxWpt) {
+        current = next;
+      } else {
+        if (current) lines.push(current);
+        current = word;
+        if (lines.length >= maxLines) {
+          current = "";
+          break;
+        }
+      }
+    }
+    if (current && lines.length < maxLines) lines.push(current);
+    chosenSize = minSize;
+    chosenLines = lines;
+  }
+
+  const bandH = chosenSize * (25.4 / 72);
+  const baselineY = pageHeightPt - (spec.y + bandH * 0.9) * MM;
+  const leading = chosenSize * 1.15;
+
+  chosenLines.forEach((line, i) => {
+    page.drawText(line, {
+      x,
+      y: baselineY - i * leading,
+      size: chosenSize,
+      font,
+      color,
+      maxWidth: maxWpt,
+    });
+  });
+}
+
 function drawField(
   page: PDFPage,
   pageHeightPt: number,
@@ -328,7 +497,13 @@ function drawField(
   spec: FieldSpec,
   value: string
 ) {
-  if (spec.mask) maskRect(page, pageHeightPt, spec.mask);
+  if (spec.descriptionWrap) {
+    drawDescription(page, pageHeightPt, font, spec, value);
+    return;
+  }
+
+  const masks = normalizeMasks(spec);
+  for (const m of masks) maskRect(page, pageHeightPt, m);
   const text = (value || "").trim();
   if (!text) return;
 
@@ -336,7 +511,11 @@ function drawField(
   const maxWpt = spec.maxW * MM;
   const size = spec.sizePt;
   const color = colorOf(spec.color);
-  const bandH = spec.mask?.h && !spec.wrap ? Math.min(spec.mask.h, size * (25.4 / 72) * 1.15) : size * (25.4 / 72);
+  const maskH = masks[0]?.h;
+  const bandH =
+    maskH && !spec.wrap
+      ? Math.min(maskH, size * (25.4 / 72) * 1.15)
+      : size * (25.4 / 72);
   const baselineY = pageHeightPt - (spec.y + bandH * 0.9) * MM;
   const x = spec.x * MM;
 
