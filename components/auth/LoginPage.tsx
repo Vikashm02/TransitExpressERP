@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
@@ -98,8 +97,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Truck className="h-6 w-6" />
+          <div className="mb-2 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/icons/icon-192.png"
+              alt="Transjit Express"
+              className="h-12 w-12 object-contain"
+            />
           </div>
           <CardTitle className="text-lg">Transjit Express TMS</CardTitle>
           <CardDescription>

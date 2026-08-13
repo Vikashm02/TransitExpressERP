@@ -211,8 +211,13 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
       <aside className="hidden min-h-screen w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
         {/* Logo */}
         <div className="flex shrink-0 items-center gap-3 border-b border-sidebar-border px-6 py-5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-foreground/10">
-            <Truck className="h-5 w-5" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/icons/icon-192.png"
+              alt="Transjit Express"
+              className="h-9 w-9 object-contain"
+            />
           </div>
 
           <div>
@@ -275,8 +280,13 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
 
             <div className="flex items-center justify-between gap-3 border-b border-sidebar-border px-4 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-foreground/10">
-                  <Truck className="h-5 w-5" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/icons/icon-192.png"
+                    alt="Transjit Express"
+                    className="h-9 w-9 object-contain"
+                  />
                 </div>
 
                 <div>
