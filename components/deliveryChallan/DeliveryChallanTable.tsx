@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, FileStack, Pencil, Printer } from "lucide-react";
+import { Eye, FileStack, Pencil, Printer, Share2 } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import type { DeliveryChallanRecord } from "@/components/services/deliveryChallan.service";
@@ -12,6 +12,7 @@ interface DeliveryChallanTableProps {
   onView: (challan: DeliveryChallanRecord) => void;
   onEdit: (challan: DeliveryChallanRecord) => void;
   onPrint: (challan: DeliveryChallanRecord) => void;
+  onShare: (challan: DeliveryChallanRecord) => void;
   canEdit?: boolean;
 }
 
@@ -22,6 +23,7 @@ export default function DeliveryChallanTable({
   onView,
   onEdit,
   onPrint,
+  onShare,
   canEdit = true,
 }: DeliveryChallanTableProps) {
   const columns: DataTableColumn<DeliveryChallanRecord>[] = [
@@ -71,6 +73,12 @@ export default function DeliveryChallanTable({
           icon: Printer,
           variant: "outline",
           onClick: onPrint,
+        },
+        {
+          label: "Share",
+          icon: Share2,
+          variant: "outline",
+          onClick: onShare,
         },
       ]}
     />

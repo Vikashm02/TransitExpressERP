@@ -9,6 +9,7 @@ import DeliveryChallanDialog, {
   type DeliveryChallanDialogMode,
 } from "./DeliveryChallanDialog";
 import DeliveryChallanTable from "./DeliveryChallanTable";
+import ShareDeliveryChallanDialog from "./ShareDeliveryChallanDialog";
 import type { DeliveryChallan } from "./deliveryChallan.schema";
 
 import {
@@ -35,6 +36,9 @@ export default function DeliveryChallanListPage() {
   const [editing, setEditing] = useState<DeliveryChallanRecord | null>(null);
   const [dialogMode, setDialogMode] = useState<DeliveryChallanDialogMode>("create");
   const [saving, setSaving] = useState(false);
+
+  const [shareTarget, setShareTarget] = useState<DeliveryChallanRecord | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -92,6 +96,11 @@ export default function DeliveryChallanListPage() {
 
   function handlePrint(challan: DeliveryChallanRecord) {
     window.open(`/delivery-challans/${challan.id}/print`, "_blank", "noopener,noreferrer");
+  }
+
+  function handleShare(challan: DeliveryChallanRecord) {
+    setShareTarget(challan);
+    setShareOpen(true);
   }
 
   function handleDialogOpenChange(open: boolean) {
@@ -195,6 +204,7 @@ export default function DeliveryChallanListPage() {
         onView={handleView}
         onEdit={handleEdit}
         onPrint={handlePrint}
+        onShare={handleShare}
         canEdit={canEdit}
       />
 
@@ -205,6 +215,12 @@ export default function DeliveryChallanListPage() {
         challan={editing}
         loading={saving}
         onSubmit={handleSubmit}
+      />
+
+      <ShareDeliveryChallanDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        challan={shareTarget}
       />
     </div>
   );
