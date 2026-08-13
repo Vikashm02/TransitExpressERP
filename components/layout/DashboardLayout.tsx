@@ -42,8 +42,18 @@ export default function DashboardLayout({
 }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { session, profile, loading, signOut, hasPermission } = useAuth();
+  const {
+    session,
+    profile,
+    loading,
+    profileLoading,
+    profileError,
+    signOut,
+    refreshProfile,
+    hasPermission,
+  } = useAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (!loading && !session) {
@@ -57,6 +67,17 @@ export default function DashboardLayout({
     setMobileNavOpen(false);
   }, [pathname]);
 
+  async function handleRetryProfile() {
+    try {
+      setRetrying(true);
+      await refreshProfile();
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  // State 1 — initial auth bootstrap, or waiting for redirect when
+  // there is no session after init.
   if (loading || !session) {
     return (
       <div className="flex h-screen items-center justify-center bg-muted/30">
@@ -68,26 +89,53 @@ export default function DashboardLayout({
     );
   }
 
-  if (!profile || profile.approvalStatus !== "approved") {
-    // `profile` can briefly (or, if the fetch fails, indefinitely) be
-    // null right after `session` becomes available — `loadProfile()`
-    // in AuthProvider is async and isn't covered by `loading` once
-    // the initial page load has finished (e.g. right after signing
-    // in on /login and being redirected here). Treat "not loaded yet"
-    // the same as "still checking" rather than letting it fall
-    // through to the dashboard below — never render dashboard content
-    // for anything other than a confirmed `approvalStatus === "approved"`.
-    if (!profile) {
-      return (
-        <div className="flex h-screen items-center justify-center bg-muted/30">
-          <div className="flex flex-col items-center gap-3 text-muted-foreground">
-            <Truck className="h-8 w-8 animate-pulse" />
-            <p className="text-sm font-medium">Loading...</p>
+  // Profile fetch in flight (e.g. right after sign-in) — still Loading,
+  // but only while actively loading, never as a permanent stand-in for errors.
+  if (profileLoading && !profile) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-muted/30">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Truck className="h-8 w-8 animate-pulse" />
+          <p className="text-sm font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // State 3 — session exists but profile failed / missing after load finished.
+  if (profileError || !profile) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-muted/30 p-4">
+        <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
+          <ShieldX className="h-10 w-10 text-destructive" />
+
+          <p className="text-sm font-medium text-foreground">
+            {profileError || "Unable to load your account."}
+          </p>
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              onClick={handleRetryProfile}
+              disabled={retrying || profileLoading}
+            >
+              {retrying || profileLoading ? "Retrying..." : "Retry"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={signOut}
+              disabled={retrying || profileLoading}
+            >
+              Sign out
+            </Button>
           </div>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
+  if (profile.approvalStatus !== "approved") {
     const isRejected = profile.approvalStatus === "rejected";
 
     return (
