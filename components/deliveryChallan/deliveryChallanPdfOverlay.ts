@@ -634,8 +634,13 @@ export async function generateDeliveryChallanPdfBytes(
     fontBytes?.timesBold ??
     (await loadFontBytes("/delivery-challan/fonts/TimesNewRoman-Bold.ttf"));
   const calibriBytes =
+    // Stationery-extracted Calibri.ttf was a tiny subset (sample text
+    // "RESSPL" / "RE TRANS-JIT EXPRESS" only) and lacked glyphs for
+    // ASCII C, V, F, K, Q, Y, Z, most lowercase, etc. pdf-lib draws
+    // missing glyphs as "?" — e.g. "LOC" → "LO?", "PVT" → "P?T".
+    // Use full Arial (same sans role, complete Latin) for Dispatch From.
     fontBytes?.calibri ??
-    (await loadFontBytes("/delivery-challan/fonts/Calibri.ttf"));
+    (await loadFontBytes("/delivery-challan/fonts/Arial.ttf"));
 
   const fonts = {
     times: await pdfDoc.embedFont(timesBytes),
