@@ -58,6 +58,7 @@ export type PermissionKey =
   | "lr"
   | "pod"
   | "delivery_challans"
+  | "asn_creations"
   | "lorry_expenses"
   | "billing"
   | "credit_notes"
@@ -74,6 +75,7 @@ export const PERMISSION_MODULES: { key: PermissionKey; label: string; routePrefi
   { key: "lr", label: "LR Entry", routePrefix: "/lr" },
   { key: "pod", label: "POD Entry", routePrefix: "/pod" },
   { key: "delivery_challans", label: "Delivery Challan", routePrefix: "/delivery-challans" },
+  { key: "asn_creations", label: "ASN Creation", routePrefix: "/asn" },
   { key: "lorry_expenses", label: "Lorry Expenses", routePrefix: "/lorry-expenses" },
   { key: "billing", label: "Billing", routePrefix: "/billing" },
   { key: "credit_notes", label: "Credit Note", routePrefix: "/credit-notes" },

@@ -13,6 +13,7 @@ import {
   FileText,
   ClipboardCheck,
   ScrollText,
+  ClipboardList,
   ReceiptIndianRupee,
   FileMinus2,
   FilePlus2,
@@ -88,6 +89,12 @@ const menus: {
     href: "/delivery-challans",
     icon: ScrollText,
     permissionKey: "delivery_challans",
+  },
+  {
+    label: "ASN Creation",
+    href: "/asn",
+    icon: ClipboardList,
+    permissionKey: "asn_creations",
   },
   {
     label: "Lorry Expenses",
