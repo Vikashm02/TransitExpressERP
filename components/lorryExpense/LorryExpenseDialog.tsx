@@ -6,16 +6,21 @@ import { toast } from "sonner";
 import FormDialog from "@/components/ui/FormDialog";
 import FormField from "@/components/ui/FormField";
 import FormSection from "@/components/ui/FormSection";
+import FormSelect from "@/components/ui/FormSelect";
+import FormDatePicker from "@/components/ui/FormDatePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import BlankableNumberInput from "@/components/common/BlankableNumberInput";
 import LRLookup from "@/components/lookup/LRLookup";
-import { validateLorryExpense, type LorryExpense } from "./lorryExpense.schema";
+import {
+  LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS,
+  validateLorryExpense,
+  type LorryExpense,
+} from "./lorryExpense.schema";
 import {
   getLorryExpenseByLrId,
   type LorryExpenseRecord,
 } from "@/components/services/lorryExpense.service";
-import { getPods, type PodRecord } from "@/components/services/pod.service";
 import type { LRRecord } from "@/components/services/lr.service";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import { calculateLorrySettlement } from "@/lib/calculations/lorrySettlement";
@@ -42,12 +47,21 @@ interface LorryExpenseDialogProps {
 const emptyExpense: LorryExpense = {
   lrId: 0,
   driverAdvance: 0,
+  driverAdvance1Date: "",
+  driverAdvance2: 0,
+  driverAdvance2Date: "",
   dieselAdvance: 0,
   loadingCharges: 0,
   unloadingCharges: 0,
+  detentionCharges: 0,
   hamali: 0,
   commission: 0,
   otherExpense: 0,
+  brokerName: "",
+  stChalan: 0,
+  tdsPercentage: 0,
+  otherDeduction: 0,
+  balancePaidOn: "",
 };
 
 function toEditableExpense(record: LorryExpenseRecord): LorryExpense {
@@ -69,14 +83,9 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 
 /**
  * Create/Edit for the Lorry Expenses module — one record per LR (see
- * migration 017's unique `lr_id` constraint). The LR lookup here is
- * powered by the same `LRLookup` used elsewhere, so it already only
- * lists LRs visible to the current user via RLS (their own assigned
- * LRs, or every LR for an admin) — no extra filtering code needed.
- *
- * If the user picks an LR during "Add" that already has an expense
- * record, this dialog transparently switches into "editing that
- * record" instead of erroring on the DB's unique constraint.
+ * migration 017's unique `lr_id` constraint). Settlement fields that
+ * used to live on POD (ST Chalan, TDS, Other Deduction, Balance Paid On)
+ * are entered here; underlying POD columns remain for historical data.
  */
 export default function LorryExpenseDialog({
   open,
@@ -91,11 +100,10 @@ export default function LorryExpenseDialog({
   const [errors, setErrors] = useState<FieldErrors<LorryExpense>>({});
   const [selectedLR, setSelectedLR] = useState<LRRecord | null>(null);
   const [existingId, setExistingId] = useState<number | null>(null);
-  const [pods, setPods] = useState<PodRecord[]>([]);
   const [lookupOpen, setLookupOpen] = useState(false);
 
   const isEditing = Boolean(lorryExpense);
-  const lrLocked = isEditing; // Add flow may still change LR via lookup; Edit flow keeps it fixed.
+  const lrLocked = isEditing;
 
   useEffect(() => {
     if (!open) return;
@@ -104,10 +112,6 @@ export default function LorryExpenseDialog({
     setValues(lorryExpense ? { ...emptyExpense, ...toEditableExpense(lorryExpense) } : emptyExpense);
     setExistingId(lorryExpense?.id ?? null);
     setSelectedLR(lr ?? null);
-
-    getPods()
-      .then(setPods)
-      .catch((error) => console.error(error));
   }, [open, lorryExpense, lr]);
 
   async function handleSelectLR(lr: LRRecord) {
@@ -129,21 +133,22 @@ export default function LorryExpenseDialog({
     }
   }
 
-  const matchingPod = selectedLR ? pods.find((pod) => pod.lrNumber === selectedLR.lrNumber) ?? null : null;
   const lorryHireAmount = selectedLR ? calculateLR(selectedLR).lorryHireAmount : 0;
 
   const settlement = calculateLorrySettlement({
     lorryHireAmount,
     driverAdvance: values.driverAdvance,
+    driverAdvance2: values.driverAdvance2,
     dieselAdvance: values.dieselAdvance,
     loadingCharges: values.loadingCharges,
     unloadingCharges: values.unloadingCharges,
+    detentionCharges: values.detentionCharges,
     hamali: values.hamali,
     commission: values.commission,
     otherExpense: values.otherExpense,
-    stChalan: matchingPod?.stChalan,
-    otherDeduction: matchingPod?.otherDeduction,
-    tdsPercentage: matchingPod?.tdsPercentage,
+    stChalan: values.stChalan,
+    otherDeduction: values.otherDeduction,
+    tdsPercentage: values.tdsPercentage,
   });
 
   function update<K extends keyof LorryExpense>(key: K, value: LorryExpense[K]) {
@@ -172,7 +177,7 @@ export default function LorryExpenseDialog({
         open={open}
         onOpenChange={onOpenChange}
         title={readOnly ? "View Lorry Expenses" : isEditing || existingId ? "Edit Lorry Expenses" : "Add Lorry Expenses"}
-        description="Driver/Diesel Advance, Loading/Unloading, Hamali, Commission and Other Expense for one LR."
+        description="Expense and settlement details for one LR."
         size="lg"
         loading={loading}
         loadingText="Saving Lorry Expenses..."
@@ -241,7 +246,7 @@ export default function LorryExpenseDialog({
         <FormSection title="Expenses">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <FormField
-              label="Driver Advance"
+              label="Driver Advance 1"
               htmlFor="le-driver-advance"
               error={errors.driverAdvance}
             >
@@ -254,6 +259,37 @@ export default function LorryExpenseDialog({
                 onChange={(value) => update("driverAdvance", value)}
               />
             </FormField>
+
+            <FormDatePicker
+              label="Driver Advance 1 Date"
+              id="le-driver-advance-1-date"
+              value={values.driverAdvance1Date}
+              onChange={(value) => update("driverAdvance1Date", value)}
+              disabled={readOnly}
+            />
+
+            <FormField
+              label="Driver Advance 2"
+              htmlFor="le-driver-advance-2"
+              error={errors.driverAdvance2}
+            >
+              <BlankableNumberInput
+                id="le-driver-advance-2"
+                min={0}
+                readOnly={readOnly}
+                blankWhenZero={!isEditing}
+                value={values.driverAdvance2}
+                onChange={(value) => update("driverAdvance2", value)}
+              />
+            </FormField>
+
+            <FormDatePicker
+              label="Driver Advance 2 Date"
+              id="le-driver-advance-2-date"
+              value={values.driverAdvance2Date}
+              onChange={(value) => update("driverAdvance2Date", value)}
+              disabled={readOnly}
+            />
 
             <FormField
               label="Diesel Advance"
@@ -301,6 +337,21 @@ export default function LorryExpenseDialog({
             </FormField>
 
             <FormField
+              label="Detention Charges"
+              htmlFor="le-detention-charges"
+              error={errors.detentionCharges}
+            >
+              <BlankableNumberInput
+                id="le-detention-charges"
+                min={0}
+                readOnly={readOnly}
+                blankWhenZero={!isEditing}
+                value={values.detentionCharges}
+                onChange={(value) => update("detentionCharges", value)}
+              />
+            </FormField>
+
+            <FormField
               label="Hamali"
               htmlFor="le-hamali"
               error={errors.hamali}
@@ -344,11 +395,80 @@ export default function LorryExpenseDialog({
                 onChange={(value) => update("otherExpense", value)}
               />
             </FormField>
+
+            <FormField
+              label="Broker Name"
+              htmlFor="le-broker-name"
+              error={errors.brokerName}
+            >
+              <Input
+                id="le-broker-name"
+                value={values.brokerName}
+                onChange={(e) => update("brokerName", e.target.value)}
+                disabled={readOnly}
+                placeholder="Optional"
+              />
+            </FormField>
+          </div>
+        </FormSection>
+
+        <FormSection title="Settlement">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <FormField
+              label="ST Chalan"
+              htmlFor="le-st-chalan"
+              error={errors.stChalan}
+            >
+              <BlankableNumberInput
+                id="le-st-chalan"
+                min={0}
+                readOnly={readOnly}
+                blankWhenZero={!isEditing}
+                value={values.stChalan}
+                onChange={(value) => update("stChalan", value)}
+              />
+            </FormField>
+
+            <FormSelect
+              label="TDS"
+              id="le-tds"
+              value={String(values.tdsPercentage)}
+              onValueChange={(value) => update("tdsPercentage", Number(value))}
+              disabled={readOnly}
+              hint="1% of the calculated Lorry Hire Amount."
+              options={LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS.map((option) => ({
+                label: option === 0 ? "NIL" : "1%",
+                value: String(option),
+              }))}
+            />
+
+            <FormField
+              label="Any Other Deduction"
+              htmlFor="le-other-deduction"
+              error={errors.otherDeduction}
+            >
+              <BlankableNumberInput
+                id="le-other-deduction"
+                min={0}
+                readOnly={readOnly}
+                blankWhenZero={!isEditing}
+                value={values.otherDeduction}
+                onChange={(value) => update("otherDeduction", value)}
+              />
+            </FormField>
+
+            <FormDatePicker
+              label="Balance Paid On"
+              id="le-balance-paid-on"
+              value={values.balancePaidOn}
+              onChange={(value) => update("balancePaidOn", value)}
+              disabled={readOnly}
+            />
           </div>
         </FormSection>
 
         {selectedLR && (
-          <div className="mt-2 grid grid-cols-2 gap-4 rounded-xl border bg-card p-6 shadow-sm sm:grid-cols-4">
+          <div className="mt-2 grid grid-cols-2 gap-4 rounded-xl border bg-card p-6 shadow-sm sm:grid-cols-3">
             <div>
               <p className="text-xs text-muted-foreground">Lorry Hire Amount</p>
               <p className="text-lg font-semibold">{money(lorryHireAmount)}</p>
@@ -356,14 +476,6 @@ export default function LorryExpenseDialog({
             <div>
               <p className="text-xs text-muted-foreground">Total Expenses</p>
               <p className="text-lg font-semibold">{money(settlement.totalExpenses)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">
-                POD Deductions {matchingPod ? "" : "(none recorded yet)"}
-              </p>
-              <p className="text-lg font-semibold">
-                {money(settlement.totalDeductions - settlement.totalExpenses)}
-              </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Balance Payable</p>

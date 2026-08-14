@@ -13,17 +13,45 @@ export interface LorryExpenseRecord extends LorryExpense {
 
 const TABLE = "lorry_expenses";
 
+const DATE_KEYS = [
+  "driverAdvance1Date",
+  "driverAdvance2Date",
+  "balancePaidOn",
+] as const;
+
+function emptyToNull(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 function toRow(values: LorryExpense) {
-  return objectToSnakeCase(values);
+  const row = objectToSnakeCase(values);
+  row.driver_advance_1_date = emptyToNull(values.driverAdvance1Date);
+  row.driver_advance_2_date = emptyToNull(values.driverAdvance2Date);
+  row.balance_paid_on = emptyToNull(values.balancePaidOn);
+  return row;
 }
 
 function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
   const { id, created_at, updated_at: _updated_at, ...rest } = row;
 
   const expense = objectToCamelCase<LorryExpense>(rest);
+  const record = expense as Record<string, unknown>;
+
+  for (const key of DATE_KEYS) {
+    if (record[key] == null) record[key] = "";
+  }
+
+  // Safe defaults if a row is read before migration 026 is applied.
+  if (record.driverAdvance2 == null) record.driverAdvance2 = 0;
+  if (record.detentionCharges == null) record.detentionCharges = 0;
+  if (record.brokerName == null) record.brokerName = "";
+  if (record.stChalan == null) record.stChalan = 0;
+  if (record.tdsPercentage == null) record.tdsPercentage = 0;
+  if (record.otherDeduction == null) record.otherDeduction = 0;
 
   return {
-    ...expense,
+    ...(record as LorryExpense),
     id: id as number,
     created_at: created_at as string | undefined,
   };

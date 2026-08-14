@@ -236,12 +236,21 @@ export async function parseAndValidateLorryExpenseUpload(
     const candidate: LorryExpense = {
       lrId: matchingLR?.id ?? 0,
       driverAdvance,
+      driverAdvance1Date: "",
+      driverAdvance2: 0,
+      driverAdvance2Date: "",
       dieselAdvance,
       loadingCharges,
       unloadingCharges,
+      detentionCharges: 0,
       hamali,
       commission,
       otherExpense,
+      brokerName: "",
+      stChalan: 0,
+      tdsPercentage: 0,
+      otherDeduction: 0,
+      balancePaidOn: "",
     };
 
     for (const message of Object.values(validateLorryExpense(candidate))) {

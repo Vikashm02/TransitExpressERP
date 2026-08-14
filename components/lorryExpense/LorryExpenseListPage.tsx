@@ -75,12 +75,17 @@ export default function LorryExpenseListPage() {
           const settlement = calculateLorrySettlement({
             lorryHireAmount,
             driverAdvance: expense.driverAdvance,
+            driverAdvance2: expense.driverAdvance2,
             dieselAdvance: expense.dieselAdvance,
             loadingCharges: expense.loadingCharges,
             unloadingCharges: expense.unloadingCharges,
+            detentionCharges: expense.detentionCharges,
             hamali: expense.hamali,
             commission: expense.commission,
             otherExpense: expense.otherExpense,
+            stChalan: expense.stChalan,
+            otherDeduction: expense.otherDeduction,
+            tdsPercentage: expense.tdsPercentage,
           });
 
           return {

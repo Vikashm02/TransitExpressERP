@@ -10,7 +10,6 @@ import LRLookup from "@/components/lookup/LRLookup";
 import { validatePod, type Pod } from "./pod.schema";
 import { uploadPodProof, type PodRecord } from "@/components/services/pod.service";
 import { getLRs, type LRRecord } from "@/components/services/lr.service";
-import { getLorryExpenseByLrId, type LorryExpenseRecord } from "@/components/services/lorryExpense.service";
 import type { FieldErrors } from "@/lib/validation";
 import { pickFields } from "@/lib/utils";
 
@@ -58,7 +57,6 @@ export default function PodDialog({
   const [lrs, setLrs] = useState<LRRecord[]>([]);
   const [lookupOpen, setLookupOpen] = useState(false);
   const [uploadingProof, setUploadingProof] = useState(false);
-  const [lorryExpense, setLorryExpense] = useState<LorryExpenseRecord | null>(null);
 
   const isEditing = Boolean(pod);
   const selectedLR = lrs.find((lr) => lr.lrNumber === values.lrNumber) ?? null;
@@ -72,30 +70,6 @@ export default function PodDialog({
         .catch((error) => console.error(error));
     }
   }, [open, pod]);
-
-  // Feeds the read-only settlement preview in PodForm — Lorry Expenses
-  // (if any exist yet for this LR) plus this POD's own ST
-  // Chalan/TDS/Other Deduction fields determine the Balance Payable,
-  // via the same lib/calculations/lorrySettlement.ts formula the Lorry
-  // Expenses module itself uses.
-  useEffect(() => {
-    if (!selectedLR) {
-      setLorryExpense(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    getLorryExpenseByLrId(selectedLR.id)
-      .then((data) => {
-        if (!cancelled) setLorryExpense(data);
-      })
-      .catch((error) => console.error(error));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedLR]);
 
   function handleSelectLR(lr: LRRecord) {
     setValues((prev) => ({ ...prev, lrNumber: lr.lrNumber }));
@@ -175,8 +149,6 @@ export default function PodDialog({
         errors={errors}
         onChange={setValues}
         selectedLR={selectedLR}
-        lorryExpense={lorryExpense}
-        blankWhenZero={!isEditing && !readOnly}
         onSearchLR={() => setLookupOpen(true)}
         onProofSelect={handleProofSelect}
         uploadingProof={uploadingProof}
