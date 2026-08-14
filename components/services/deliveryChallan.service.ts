@@ -106,3 +106,30 @@ export async function updateDeliveryChallan(
 
   return fromRow(data);
 }
+
+/* ==========================================================
+   SYNC LR-DERIVED SNAPSHOT FIELDS
+   Delivery Challan stores snapshots of selected LR fields (see
+   migration 023 + applyLrSnapshot). On LR save, every challan linked
+   by `lr_number` gets `qty` + `po_number` updated in one write.
+   `po_date`, `by_name`, `hsn`, and all other DC columns are left alone.
+========================================================== */
+
+export async function syncDeliveryChallanFromLr(
+  lrNumber: string,
+  loadingWeight: number,
+  poNumber: string
+): Promise<void> {
+  const trimmed = lrNumber.trim();
+  if (!trimmed) return;
+
+  const { error } = await supabase
+    .from(TABLE)
+    .update({
+      qty: loadingWeight,
+      po_number: poNumber.trim(),
+    })
+    .eq("lr_number", trimmed);
+
+  if (error) throw error;
+}

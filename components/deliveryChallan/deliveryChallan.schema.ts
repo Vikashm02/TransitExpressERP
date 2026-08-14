@@ -4,8 +4,9 @@ import { getFieldErrors } from "@/lib/validation";
 
 /**
  * Delivery Challan: created from an existing LR. Most party / material /
- * vehicle / qty fields are snapshotted from the LR at save time. Manual
- * entry fields are only `byName`, `poNumber`, `poDate`, and `hsn`.
+ * vehicle / qty / poNumber fields are snapshotted from the LR (and kept
+ * in sync on LR save for qty + poNumber). Manual entry fields are
+ * `byName`, `poDate`, and `hsn`.
  *
  * `qty` is the LR's Actual Weight (`loadingWeight` on the LR form /
  * print — there is no separate `actualWeight` column).

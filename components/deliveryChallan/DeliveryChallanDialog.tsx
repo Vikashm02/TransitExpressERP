@@ -49,9 +49,9 @@ function toEditable(record: DeliveryChallanRecord): DeliveryChallan {
   return pickFields(record, Object.keys(emptyState) as (keyof DeliveryChallan)[]);
 }
 
-/** Snapshot LR → Delivery Challan auto fields. QTY uses Actual Weight
- * (`loadingWeight` — the LR print's "Actual" column). Manual fields
- * (By / PO / HSN) are left untouched so user edits are never wiped. */
+/** Snapshot LR → Delivery Challan auto fields. QTY ← Loading Weight;
+ * PO Number ← LR PO Number. Manual fields (By / PO Date / HSN) are left
+ * untouched so independent DC edits are never wiped. */
 function applyLrSnapshot(current: DeliveryChallan, lr: LRRecord): DeliveryChallan {
   return {
     ...current,
@@ -66,6 +66,7 @@ function applyLrSnapshot(current: DeliveryChallan, lr: LRRecord): DeliveryChalla
     description: lr.material,
     qty: lr.loadingWeight,
     vehicleNumber: lr.vehicleNumber,
+    poNumber: lr.poNumber,
   };
 }
 
@@ -141,7 +142,7 @@ export default function DeliveryChallanDialog({
         open={open}
         onOpenChange={onOpenChange}
         title={title}
-        description="Select an LR to auto-fill party, material, vehicle and actual weight. Enter only By, PO Number, PO Date and HSN."
+        description="Select an LR to auto-fill party, material, vehicle, actual weight and PO Number. Enter By, PO Date and HSN."
         loading={loading}
         loadingText="Saving Delivery Challan..."
         footer={
@@ -330,6 +331,7 @@ export default function DeliveryChallanDialog({
                     htmlFor="dc-po-number"
                     required
                     error={errors.poNumber}
+                    hint="Auto-filled from LR"
                   >
                     <Input
                       id="dc-po-number"

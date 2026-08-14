@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import type { LR } from "@/components/lr/lr.schema";
+import { syncDeliveryChallanFromLr } from "@/components/services/deliveryChallan.service";
 
 /** A persisted LR row. `billAmount`/`lorryHireAmount`/`profitAmount` are
  * intentionally NOT part of the editable `LR` schema — they are always
@@ -183,7 +184,14 @@ export async function updateLR(id: number, values: LR): Promise<LRRecord> {
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+
+  // Keep linked Delivery Challans (matched by `lr_number`) in sync for
+  // LR-derived snapshot fields only: qty ← loadingWeight, po_number ←
+  // poNumber. po_date / by_name / hsn and other DC fields stay untouched.
+  await syncDeliveryChallanFromLr(record.lrNumber, record.loadingWeight, record.poNumber);
+
+  return record;
 }
 
 /* ==========================================================
