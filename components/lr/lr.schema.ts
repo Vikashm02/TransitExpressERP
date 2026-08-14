@@ -12,10 +12,22 @@ export const BILL_RATE_TYPE_OPTIONS = [
   "Guaranteed Weight",
 ] as const;
 
-/** "Guaranteed Weight" uses its own `lorryHireGuaranteedWeight` field,
- * independent of Bill Rate Type's `guaranteedWeight` — Bill Rate and Lorry
- * Hire are separate commercial terms (see lrCalculations.ts). */
-export const LORRY_HIRE_TYPE_OPTIONS = ["Fixed", "Per Ton", "Guaranteed Weight"] as const;
+/** UI options for new/edited Lorry Hire Type selection. */
+export const LORRY_HIRE_TYPE_OPTIONS = [
+  "Fixed",
+  "Per Ton (Loading)",
+  "Per Ton (Unloading)",
+  "Guaranteed Weight",
+] as const;
+
+/** Older LRs may still store the generic "Per Ton" value — accepted on
+ * load/edit/validate, but not offered in the Hire Type dropdown. */
+export const LEGACY_LORRY_HIRE_TYPE_OPTIONS = ["Per Ton"] as const;
+
+const LORRY_HIRE_TYPE_SCHEMA_OPTIONS = [
+  ...LORRY_HIRE_TYPE_OPTIONS,
+  ...LEGACY_LORRY_HIRE_TYPE_OPTIONS,
+] as const;
 
 /** Re-exported for convenience so `LRForm`/sections don't need a second import
  * from `company.schema.ts` — the values themselves remain owned by Company Master. */
@@ -126,7 +138,7 @@ export const lrSchema = z
     guaranteedWeight: nonNegativeNumber("Guaranteed weight cannot be negative."),
 
     lorryHireRate: requiredPositiveNumber("Lorry hire rate is required."),
-    lorryHireType: z.enum(LORRY_HIRE_TYPE_OPTIONS),
+    lorryHireType: z.enum(LORRY_HIRE_TYPE_SCHEMA_OPTIONS),
     // Independent from Bill Rate's `guaranteedWeight` — Bill Rate and Lorry
     // Hire are separate commercial terms and may use different guaranteed
     // weights on the same LR.

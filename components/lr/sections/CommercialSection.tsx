@@ -7,7 +7,12 @@ import FormSection from "@/components/ui/FormSection";
 
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import LRNumericInput from "../LRNumericInput";
-import { BILL_RATE_TYPE_OPTIONS, FREIGHT_TYPE_OPTIONS, LORRY_HIRE_TYPE_OPTIONS, type LR } from "../lr.schema";
+import {
+  BILL_RATE_TYPE_OPTIONS,
+  FREIGHT_TYPE_OPTIONS,
+  LORRY_HIRE_TYPE_OPTIONS,
+  type LR,
+} from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
 
 interface CommercialSectionProps {
@@ -18,6 +23,14 @@ interface CommercialSectionProps {
 
 function toOptions(values: readonly string[]) {
   return values.map((value) => ({ label: value, value }));
+}
+
+/** Hire Type dropdown options; keep a legacy stored value visible on edit. */
+function hireTypeSelectOptions(current: LR["lorryHireType"]) {
+  if ((LORRY_HIRE_TYPE_OPTIONS as readonly string[]).includes(current)) {
+    return toOptions(LORRY_HIRE_TYPE_OPTIONS);
+  }
+  return toOptions([current, ...LORRY_HIRE_TYPE_OPTIONS]);
 }
 
 /** True only for the one rate type whose amount depends on POD Unloading
@@ -145,7 +158,7 @@ export default function CommercialSection({
               error={errors.lorryHireType}
               value={lr.lorryHireType}
               onValueChange={(value) => update("lorryHireType", value as LR["lorryHireType"])}
-              options={toOptions(LORRY_HIRE_TYPE_OPTIONS)}
+              options={hireTypeSelectOptions(lr.lorryHireType)}
             />
 
             <FormField

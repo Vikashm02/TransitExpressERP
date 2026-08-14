@@ -35,6 +35,8 @@ function calculateBillAmount(lr: LR): number {
    "Guaranteed Weight" uses its own `lorryHireGuaranteedWeight` field —
    Bill Rate and Lorry Hire are separate commercial terms and are entered
    independently, even when both are "Guaranteed Weight".
+   Legacy "Per Ton" (pre-split) keeps using Charged Weight so existing
+   records still calculate without a data migration.
 =========================================== */
 
 function calculateLorryHireAmount(lr: LR): number {
@@ -42,11 +44,18 @@ function calculateLorryHireAmount(lr: LR): number {
     case "Fixed":
       return lr.lorryHireRate;
 
-    case "Per Ton":
-      return lr.lorryHireRate * lr.chargedWeight;
+    case "Per Ton (Loading)":
+      return lr.lorryHireRate * lr.loadingWeight;
+
+    case "Per Ton (Unloading)":
+      return lr.lorryHireRate * lr.unloadingWeight;
 
     case "Guaranteed Weight":
       return lr.lorryHireRate * lr.lorryHireGuaranteedWeight;
+
+    // Legacy stored value from older LRs / Vehicle Master "Per Ton".
+    case "Per Ton":
+      return lr.lorryHireRate * lr.chargedWeight;
 
     default:
       return 0;
