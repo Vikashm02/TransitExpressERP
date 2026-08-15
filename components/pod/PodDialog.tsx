@@ -83,7 +83,17 @@ export default function PodDialog({
       toast.success("File uploaded successfully.");
     } catch (error) {
       console.error(error);
-      toast.error('Unable to upload file. Confirm the "pod-assets" storage bucket exists.');
+      const detail =
+        error && typeof error === "object" && "message" in error
+          ? String((error as { message: unknown }).message)
+          : error instanceof Error
+            ? error.message
+            : "";
+      toast.error(
+        detail
+          ? `Unable to upload file. ${detail}`
+          : 'Unable to upload file. Confirm the "pod-assets" storage bucket exists.'
+      );
     } finally {
       setUploadingProof(false);
     }

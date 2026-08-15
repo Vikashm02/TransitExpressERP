@@ -19,18 +19,14 @@ export const podSchema = z.object({
   // other four fields.
   proofUrl: z.string().trim(),
 
-  // ===========================
-  // Lorry Settlement (moved here from LR Entry / added new)
-  // ===========================
-  // ST Chalan used to be captured on the LR itself; it now belongs
-  // here since it's only known once the shipment is actually
-  // delivered/settled — matches where TDS/Other Deduction live.
+  // Historical settlement columns — kept for DB compatibility and so
+  // edit/save of old PODs does not wipe stored values. Entry UI lives
+  // exclusively in Financials; these are not shown on the POD form.
   stChalan: z.number().min(0, "Cannot be negative."),
   tdsPercentage: z.number().refine((value) => TDS_PERCENTAGE_OPTIONS.includes(value as 0 | 1), {
     message: "TDS must be NIL or 1%.",
   }),
   otherDeduction: z.number().min(0, "Cannot be negative."),
-  // Optional — settlement may happen after the POD itself is recorded.
   balancePaidOn: z.string().trim(),
 });
 

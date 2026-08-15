@@ -36,9 +36,9 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Proof of Delivery form. Lorry Settlement entry moved to Lorry Expenses;
- * POD settlement columns remain in the schema/DB for historical data and
- * are preserved on save via PodDialog state (not shown here).
+ * Proof of Delivery form. Settlement fields are not shown here —
+ * they are entered only in Financials. POD DB columns remain for
+ * historical compatibility and are preserved on save via PodDialog.
  */
 export default function PodForm({
   pod,

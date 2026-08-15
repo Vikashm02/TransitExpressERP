@@ -1,28 +1,17 @@
-import { validatePod, TDS_PERCENTAGE_OPTIONS, type Pod } from "./pod.schema";
+import { validatePod, type Pod } from "./pod.schema";
 import type { LRRecord } from "@/components/services/lr.service";
 
 /**
- * The fields the existing POD creation flow actually collects (see
- * PodForm.tsx). Deliberately excludes "Proof of POD" (`proofUrl`) — that
- * field is always a Supabase Storage file upload (see `uploadPodProof()`
- * in pod.service.ts), which has no meaningful plain-text representation in
- * an Excel cell; it stays exactly as it is today (upload one-by-one from
- * the Add/Edit POD dialog after a bulk import, if needed).
- *
- * "LR Number" is selection-only in the existing POD form (PodForm.tsx —
- * read-only input, populated only via LRLookup), so it must reference an
- * existing LR here too, exactly like Billing Party / Material already do
- * for LR Entry's own bulk upload.
+ * Fields the POD create flow collects (see PodForm.tsx). Excludes proof
+ * upload (Storage) and settlement fields (now Financials-only). Settlement
+ * columns are still written as defaults (0 / "") so historical DB shape
+ * is preserved without exposing those fields in the template.
  */
 export const POD_TEMPLATE_HEADERS = [
   "LR Number",
   "POD Date",
   "Unloading Weight",
   "Unloading Date",
-  "ST Chalan",
-  "TDS",
-  "Any Other Deduction",
-  "Balance Paid On",
 ] as const;
 
 type TemplateHeader = (typeof POD_TEMPLATE_HEADERS)[number];
@@ -32,10 +21,6 @@ const SAMPLE_ROW: Record<TemplateHeader, string> = {
   "POD Date": "2026-08-05",
   "Unloading Weight": "9.8",
   "Unloading Date": "2026-08-05",
-  "ST Chalan": "500",
-  TDS: "NIL",
-  "Any Other Deduction": "0",
-  "Balance Paid On": "",
 };
 
 export interface PodUploadRow {
@@ -203,10 +188,6 @@ export async function parseAndValidatePodUpload(
     const podDate = cellValue(row, "POD Date");
     const rawUnloadingWeight = cellValue(row, "Unloading Weight");
     const unloadingDate = cellValue(row, "Unloading Date");
-    const rawStChalan = cellValue(row, "ST Chalan");
-    const rawTds = cellValue(row, "TDS");
-    const rawOtherDeduction = cellValue(row, "Any Other Deduction");
-    const balancePaidOn = cellValue(row, "Balance Paid On");
 
     const messages: string[] = [];
 
@@ -222,10 +203,6 @@ export async function parseAndValidatePodUpload(
       messages.push("Unloading Date must be a valid date (YYYY-MM-DD).");
     }
 
-    if (balancePaidOn && !/^\d{4}-\d{2}-\d{2}$/.test(balancePaidOn)) {
-      messages.push("Balance Paid On must be a valid date (YYYY-MM-DD).");
-    }
-
     function parseNumber(raw: string, label: string): number {
       if (!raw) return 0;
       const parsed = Number(raw);
@@ -237,27 +214,6 @@ export async function parseAndValidatePodUpload(
     }
 
     const unloadingWeight = parseNumber(rawUnloadingWeight, "Unloading Weight");
-    const stChalan = parseNumber(rawStChalan, "ST Chalan");
-    const otherDeduction = parseNumber(rawOtherDeduction, "Any Other Deduction");
-
-    // TDS is a closed NIL/1% choice (see TDS_PERCENTAGE_OPTIONS) — accepts
-    // either the raw 0/1 the schema stores or the "NIL"/"1%" label the
-    // existing form displays.
-    let tdsPercentage = 0;
-    if (rawTds) {
-      const normalized = rawTds.toLowerCase();
-      if (normalized === "nil" || normalized === "0") {
-        tdsPercentage = 0;
-      } else if (normalized === "1%" || normalized === "1") {
-        tdsPercentage = 1;
-      } else {
-        messages.push('TDS must be "NIL" or "1%".');
-      }
-    }
-
-    if (!TDS_PERCENTAGE_OPTIONS.includes(tdsPercentage as 0 | 1)) {
-      tdsPercentage = 0;
-    }
 
     const candidate: Pod = {
       lrNumber,
@@ -265,10 +221,10 @@ export async function parseAndValidatePodUpload(
       unloadingWeight,
       unloadingDate,
       proofUrl: "",
-      stChalan,
-      tdsPercentage,
-      otherDeduction,
-      balancePaidOn,
+      stChalan: 0,
+      tdsPercentage: 0,
+      otherDeduction: 0,
+      balancePaidOn: "",
     };
 
     for (const message of Object.values(validatePod(candidate))) {
