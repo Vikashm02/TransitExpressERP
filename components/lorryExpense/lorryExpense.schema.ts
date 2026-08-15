@@ -10,9 +10,10 @@ function nonNegativeNumber(message: string) {
 export const LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS = [0, 1] as const;
 
 /**
- * Lorry Expenses: LR-side expense/settlement tracking (one record per LR).
- * `driverAdvance` is Driver Advance 1 in the UI; dates and Advance 2 /
- * Detention / Broker / POD-moved settlement fields are additive (026).
+ * Financials (lorry_expenses): expense/settlement per LR.
+ * Billing/hire rates live on the linked LR and are edited via Financials UI
+ * but saved back to `lrs`. `dieselAdvance` remains in the schema for
+ * historical rows (hidden from new-entry UI).
  */
 export const lorryExpenseSchema = z.object({
   lrId: z.number().int().positive("Select an LR."),
@@ -28,17 +29,30 @@ export const lorryExpenseSchema = z.object({
   commission: nonNegativeNumber("Cannot be negative."),
   otherExpense: nonNegativeNumber("Cannot be negative."),
   brokerName: z.string().trim(),
+  beneficiaryName: z.string().trim(),
   stChalan: nonNegativeNumber("Cannot be negative."),
   tdsPercentage: z.number().refine(
     (value) => LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS.includes(value as 0 | 1),
     { message: "TDS must be NIL or 1%." }
   ),
   otherDeduction: nonNegativeNumber("Cannot be negative."),
+  finalAmountPaid: nonNegativeNumber("Cannot be negative."),
   balancePaidOn: z.string().trim(),
+  remarks: z.string().trim(),
 });
 
 export type LorryExpense = z.infer<typeof lorryExpenseSchema>;
 
 export function validateLorryExpense(values: LorryExpense) {
   return getFieldErrors(lorryExpenseSchema, values);
+}
+
+/** Commercial fields edited in Financials and persisted on the LR. */
+export interface FinancialsLrCommercial {
+  billRate: number;
+  billRateType: string;
+  guaranteedWeight: number;
+  lorryHireRate: number;
+  lorryHireType: string;
+  lorryHireGuaranteedWeight: number;
 }

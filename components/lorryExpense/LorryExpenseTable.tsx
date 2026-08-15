@@ -7,12 +7,16 @@ import type { LorryExpenseRecord } from "@/components/services/lorryExpense.serv
 
 export interface LorryExpenseListRow extends LorryExpenseRecord {
   lrNumber: string;
+  lrDate: string;
   consignor: string;
   consignee: string;
   vehicleNumber: string;
+  billAmount: number;
   lorryHireAmount: number;
   totalExpenses: number;
   balancePayable: number;
+  profitLoss: number;
+  totalPaid: number;
 }
 
 interface LorryExpenseTableProps {
@@ -20,9 +24,6 @@ interface LorryExpenseTableProps {
   loading?: boolean;
   pageSize?: number;
   onEdit: (row: LorryExpenseListRow) => void;
-  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
-   * "lorry_expenses" edit permission. Defaults to `true` for existing
-   * call sites. */
   canEdit?: boolean;
 }
 
@@ -39,12 +40,12 @@ export default function LorryExpenseTable({
 }: LorryExpenseTableProps) {
   const columns: DataTableColumn<LorryExpenseListRow>[] = [
     { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
-    { key: "consignor", header: "Consignor" },
-    { key: "consignee", header: "Consignee" },
-    { key: "vehicleNumber", header: "Vehicle" },
+    { key: "lrDate", header: "LR Date", sortable: true },
+    { key: "brokerName", header: "Broker", sortable: true },
+    { key: "beneficiaryName", header: "Beneficiary", sortable: true },
     {
       key: "lorryHireAmount",
-      header: "Lorry Hire Amount",
+      header: "Lorry Hire",
       align: "right",
       sortable: true,
       render: (row) => money(row.lorryHireAmount),
@@ -58,10 +59,27 @@ export default function LorryExpenseTable({
     },
     {
       key: "balancePayable",
-      header: "Balance Payable",
+      header: "Pending",
       align: "right",
       sortable: true,
-      render: (row) => money(row.balancePayable),
+      render: (row) => (
+        <span
+          className={
+            row.balancePayable > 0
+              ? "font-medium text-orange-700 dark:text-orange-400"
+              : undefined
+          }
+        >
+          {money(row.balancePayable)}
+        </span>
+      ),
+    },
+    {
+      key: "profitLoss",
+      header: "Profit / Loss",
+      align: "right",
+      sortable: true,
+      render: (row) => money(row.profitLoss),
     },
   ];
 
@@ -71,8 +89,8 @@ export default function LorryExpenseTable({
       data={rows}
       rowKey={(row) => row.id}
       loading={loading}
-      emptyTitle="No Lorry Expenses recorded"
-      emptyDescription="Add expenses against an LR to track its lorry settlement."
+      emptyTitle="No Financials recorded"
+      emptyDescription="Add Financials against an LR to track billing, hire and settlement."
       emptyIcon={Wallet}
       sortable
       defaultSort={{ key: "lrNumber", direction: "desc" }}

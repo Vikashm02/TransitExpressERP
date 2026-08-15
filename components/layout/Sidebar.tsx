@@ -97,7 +97,7 @@ const menus: {
     permissionKey: "asn_creations",
   },
   {
-    label: "Lorry Expenses",
+    label: "Financials",
     href: "/lorry-expenses",
     icon: Wallet,
     permissionKey: "lorry_expenses",

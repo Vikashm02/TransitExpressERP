@@ -13,7 +13,6 @@ import type { LorryExpenseRecord } from "@/components/services/lorryExpense.serv
 export const LORRY_EXPENSE_TEMPLATE_HEADERS = [
   "LR Number",
   "Driver Advance",
-  "Diesel Advance",
   "Loading Charges",
   "Unloading Charges",
   "Hamali",
@@ -26,7 +25,6 @@ type TemplateHeader = (typeof LORRY_EXPENSE_TEMPLATE_HEADERS)[number];
 const SAMPLE_ROW: Record<TemplateHeader, string> = {
   "LR Number": "TRJ0001",
   "Driver Advance": "2000",
-  "Diesel Advance": "5000",
   "Loading Charges": "500",
   "Unloading Charges": "500",
   Hamali: "300",
@@ -192,7 +190,6 @@ export async function parseAndValidateLorryExpenseUpload(
 
     const lrNumber = cellValue(row, "LR Number");
     const rawDriverAdvance = cellValue(row, "Driver Advance");
-    const rawDieselAdvance = cellValue(row, "Diesel Advance");
     const rawLoadingCharges = cellValue(row, "Loading Charges");
     const rawUnloadingCharges = cellValue(row, "Unloading Charges");
     const rawHamali = cellValue(row, "Hamali");
@@ -208,7 +205,7 @@ export async function parseAndValidateLorryExpenseUpload(
     }
 
     if (matchingLR && existingLorryExpenses.some((expense) => expense.lrId === matchingLR.id)) {
-      messages.push(`LR "${lrNumber}" already has a Lorry Expenses record — exactly one is allowed per LR.`);
+      messages.push(`LR "${lrNumber}" already has a Financials record — exactly one is allowed per LR.`);
     }
 
     if (lrNumber) {
@@ -226,7 +223,6 @@ export async function parseAndValidateLorryExpenseUpload(
     }
 
     const driverAdvance = parseNumber(rawDriverAdvance, "Driver Advance");
-    const dieselAdvance = parseNumber(rawDieselAdvance, "Diesel Advance");
     const loadingCharges = parseNumber(rawLoadingCharges, "Loading Charges");
     const unloadingCharges = parseNumber(rawUnloadingCharges, "Unloading Charges");
     const hamali = parseNumber(rawHamali, "Hamali");
@@ -239,7 +235,7 @@ export async function parseAndValidateLorryExpenseUpload(
       driverAdvance1Date: "",
       driverAdvance2: 0,
       driverAdvance2Date: "",
-      dieselAdvance,
+      dieselAdvance: 0,
       loadingCharges,
       unloadingCharges,
       detentionCharges: 0,
@@ -247,10 +243,13 @@ export async function parseAndValidateLorryExpenseUpload(
       commission,
       otherExpense,
       brokerName: "",
+      beneficiaryName: "",
       stChalan: 0,
       tdsPercentage: 0,
       otherDeduction: 0,
+      finalAmountPaid: 0,
       balancePaidOn: "",
+      remarks: "",
     };
 
     for (const message of Object.values(validateLorryExpense(candidate))) {

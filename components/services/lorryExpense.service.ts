@@ -2,10 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { LorryExpense } from "@/components/lorryExpense/lorryExpense.schema";
 
-/** A persisted Lorry Expense row — one per LR (`lr_id` is UNIQUE, see
- * migration 017). Visibility/writes are additionally enforced by RLS
- * (via the linked LR's `assigned_to`), so `getLorryExpenses()` already
- * returns only the current user's own records (or all, for admin). */
+/** A persisted Financials / Lorry Expense row — one per LR (`lr_id` UNIQUE). */
 export interface LorryExpenseRecord extends LorryExpense {
   id: number;
   created_at?: string;
@@ -42,13 +39,15 @@ function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
     if (record[key] == null) record[key] = "";
   }
 
-  // Safe defaults if a row is read before migration 026 is applied.
   if (record.driverAdvance2 == null) record.driverAdvance2 = 0;
   if (record.detentionCharges == null) record.detentionCharges = 0;
   if (record.brokerName == null) record.brokerName = "";
+  if (record.beneficiaryName == null) record.beneficiaryName = "";
   if (record.stChalan == null) record.stChalan = 0;
   if (record.tdsPercentage == null) record.tdsPercentage = 0;
   if (record.otherDeduction == null) record.otherDeduction = 0;
+  if (record.finalAmountPaid == null) record.finalAmountPaid = 0;
+  if (record.remarks == null) record.remarks = "";
 
   return {
     ...(record as LorryExpense),
@@ -56,10 +55,6 @@ function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
     created_at: created_at as string | undefined,
   };
 }
-
-/* ==========================================================
-   GET ALL LORRY EXPENSES
-========================================================== */
 
 export async function getLorryExpenses(): Promise<LorryExpenseRecord[]> {
   const { data, error } = await supabase
@@ -71,10 +66,6 @@ export async function getLorryExpenses(): Promise<LorryExpenseRecord[]> {
 
   return (data ?? []).map(fromRow);
 }
-
-/* ==========================================================
-   GET ONE LORRY EXPENSE BY LR
-========================================================== */
 
 export async function getLorryExpenseByLrId(lrId: number): Promise<LorryExpenseRecord | null> {
   const { data, error } = await supabase
@@ -88,9 +79,25 @@ export async function getLorryExpenseByLrId(lrId: number): Promise<LorryExpenseR
   return data ? fromRow(data) : null;
 }
 
-/* ==========================================================
-   CREATE LORRY EXPENSE
-========================================================== */
+/** Distinct non-empty broker names from saved Financials rows (DB-backed suggestions). */
+export async function getBrokerNameSuggestions(): Promise<string[]> {
+  const { data, error } = await supabase.from(TABLE).select("broker_name");
+  if (error) throw error;
+  return uniqueNonEmpty((data ?? []).map((row) => String(row.broker_name ?? "")));
+}
+
+/** Distinct non-empty beneficiary names from saved Financials rows. */
+export async function getBeneficiaryNameSuggestions(): Promise<string[]> {
+  const { data, error } = await supabase.from(TABLE).select("beneficiary_name");
+  if (error) throw error;
+  return uniqueNonEmpty((data ?? []).map((row) => String(row.beneficiary_name ?? "")));
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+}
 
 export async function createLorryExpense(values: LorryExpense): Promise<LorryExpenseRecord> {
   const { data, error } = await supabase
@@ -103,10 +110,6 @@ export async function createLorryExpense(values: LorryExpense): Promise<LorryExp
 
   return fromRow(data);
 }
-
-/* ==========================================================
-   UPDATE LORRY EXPENSE
-========================================================== */
 
 export async function updateLorryExpense(id: number, values: LorryExpense): Promise<LorryExpenseRecord> {
   const sanitized = omitServerFields(values as unknown as Record<string, unknown>) as LorryExpense;
@@ -122,15 +125,6 @@ export async function updateLorryExpense(id: number, values: LorryExpense): Prom
 
   return fromRow(data);
 }
-
-/* ==========================================================
-   DELETE LORRY EXPENSE (bulk-upload rollback only)
-   The Lorry Expenses module has no Delete action anywhere in its UI
-   (LorryExpenseListPage only ever Adds/Edits) — this exists solely so
-   LorryExpenseBulkUploadDialog can perform a compensating rollback if an
-   all-or-nothing bulk import fails partway through. It is intentionally
-   not exported from/used by any other Lorry Expenses screen.
-========================================================== */
 
 export async function deleteLorryExpense(id: number): Promise<void> {
   const { error } = await supabase.from(TABLE).delete().eq("id", id);

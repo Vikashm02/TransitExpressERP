@@ -76,7 +76,7 @@ export const PERMISSION_MODULES: { key: PermissionKey; label: string; routePrefi
   { key: "pod", label: "POD Entry", routePrefix: "/pod" },
   { key: "delivery_challans", label: "Delivery Challan", routePrefix: "/delivery-challans" },
   { key: "asn_creations", label: "ASN Creation", routePrefix: "/asn" },
-  { key: "lorry_expenses", label: "Lorry Expenses", routePrefix: "/lorry-expenses" },
+  { key: "lorry_expenses", label: "Financials", routePrefix: "/lorry-expenses" },
   { key: "billing", label: "Billing", routePrefix: "/billing" },
   { key: "credit_notes", label: "Credit Note", routePrefix: "/credit-notes" },
   { key: "debit_notes", label: "Debit Note", routePrefix: "/debit-notes" },

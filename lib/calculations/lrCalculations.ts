@@ -7,8 +7,20 @@ export interface LRCalculationResult {
   profit: number;
 }
 
+/**
+ * Truncate (not round) a weight to one decimal place for Lorry Hire
+ * Per Ton calculations only. Example: 22.680 → 22.6, 22.920 → 22.9.
+ * Billing and all other calculations must continue using full weights.
+ */
+export function truncateWeightToOneDecimal(weight: number): number {
+  if (!Number.isFinite(weight) || weight === 0) return 0;
+  const scaled = weight * 10;
+  // Small epsilon absorbs binary float noise so 22.9 does not become 22.8.
+  return Math.floor(scaled + 1e-9) / 10;
+}
+
 /* ===========================================
-   BILL AMOUNT
+   BILL AMOUNT — full weights (no truncation)
 =========================================== */
 
 function calculateBillAmount(lr: LR): number {
@@ -32,11 +44,8 @@ function calculateBillAmount(lr: LR): number {
 
 /* ===========================================
    LORRY HIRE
-   "Guaranteed Weight" uses its own `lorryHireGuaranteedWeight` field —
-   Bill Rate and Lorry Hire are separate commercial terms and are entered
-   independently, even when both are "Guaranteed Weight".
-   Legacy "Per Ton" (pre-split) keeps using Charged Weight so existing
-   records still calculate without a data migration.
+   Per Ton (Loading/Unloading) use weight truncated to 1 decimal.
+   Guaranteed Weight / Fixed / legacy Per Ton unchanged otherwise.
 =========================================== */
 
 function calculateLorryHireAmount(lr: LR): number {
@@ -45,10 +54,10 @@ function calculateLorryHireAmount(lr: LR): number {
       return lr.lorryHireRate;
 
     case "Per Ton (Loading)":
-      return lr.lorryHireRate * lr.loadingWeight;
+      return lr.lorryHireRate * truncateWeightToOneDecimal(lr.loadingWeight);
 
     case "Per Ton (Unloading)":
-      return lr.lorryHireRate * lr.unloadingWeight;
+      return lr.lorryHireRate * truncateWeightToOneDecimal(lr.unloadingWeight);
 
     case "Guaranteed Weight":
       return lr.lorryHireRate * lr.lorryHireGuaranteedWeight;
@@ -63,16 +72,7 @@ function calculateLorryHireAmount(lr: LR): number {
 }
 
 /* ===========================================
-   EXPENSES
-   Kept purely for backward compatibility with any historical LR that
-   still carries values in these fields (the LR Entry form no longer
-   collects them — see components/lr/sections/CommercialSection.tsx and
-   the new Lorry Expenses module). `totalExpense` is still returned by
-   `calculateLR()` for callers that want to display it, but per the
-   approved decision it is NEVER subtracted from `profit` below, so a
-   pre-existing LR's leftover expense values can't silently change its
-   stored profit figure, and Lorry Expenses (tracked separately) are
-   never double-counted here.
+   EXPENSES (legacy LR columns — not Financials TE)
 =========================================== */
 
 function calculateTotalExpense(lr: LR): number {
@@ -90,26 +90,15 @@ function calculateTotalExpense(lr: LR): number {
 
 /* ===========================================
    MAIN CALCULATION
+   Stored LR `profit` remains Bill − Hire (unchanged persistence meaning).
+   Financials UI Profit/Loss uses Bill − settlement Total Expenses instead.
 =========================================== */
 
-export function calculateLR(
-  lr: LR
-): LRCalculationResult {
-  const billAmount =
-    calculateBillAmount(lr);
-
-  const lorryHireAmount =
-    calculateLorryHireAmount(lr);
-
-  const totalExpense =
-    calculateTotalExpense(lr);
-
-  // Profit = Bill Amount - Lorry Hire Amount (approved decision — Lorry
-  // Expenses are a separate, non-double-counted tracking/settlement
-  // module and must not reduce LR profit).
-  const profit =
-    billAmount -
-    lorryHireAmount;
+export function calculateLR(lr: LR): LRCalculationResult {
+  const billAmount = calculateBillAmount(lr);
+  const lorryHireAmount = calculateLorryHireAmount(lr);
+  const totalExpense = calculateTotalExpense(lr);
+  const profit = billAmount - lorryHireAmount;
 
   return {
     billAmount,

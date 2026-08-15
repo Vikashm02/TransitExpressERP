@@ -130,14 +130,12 @@ export const lrSchema = z
     invoiceValue: nonNegativeNumber("Invoice value cannot be negative."),
     ewayBillNumber: z.string().trim(),
 
-    // ===========================
-    // Commercial
-    // ===========================
-    billRate: requiredPositiveNumber("Bill rate is required."),
+    // Commercial — rates may be 0 at LR create and filled later in Financials
+    billRate: nonNegativeNumber("Bill rate cannot be negative."),
     billRateType: z.enum(BILL_RATE_TYPE_OPTIONS),
     guaranteedWeight: nonNegativeNumber("Guaranteed weight cannot be negative."),
 
-    lorryHireRate: requiredPositiveNumber("Lorry hire rate is required."),
+    lorryHireRate: nonNegativeNumber("Lorry hire rate cannot be negative."),
     lorryHireType: z.enum(LORRY_HIRE_TYPE_SCHEMA_OPTIONS),
     // Independent from Bill Rate's `guaranteedWeight` — Bill Rate and Lorry
     // Hire are separate commercial terms and may use different guaranteed

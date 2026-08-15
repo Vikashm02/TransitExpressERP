@@ -1,25 +1,26 @@
 /**
- * Shared Lorry Expenses / settlement totals.
+ * Shared Financials / Lorry Expenses settlement totals.
  *
- * Total Expenses and Balance Payable follow the approved directional
- * rules (source of truth — do not "correct" as normal accounting):
+ * Total Expenses (TE) includes only:
+ *   Driver Advance 1/2, Diesel Advance (historical), Loading, Unloading,
+ *   Detention Charges.
  *
+ * Balance Payable (BP) directional rules:
  *   Driver Advance 1/2, Diesel Advance:  TE ↑  BP ↓
  *   Loading / Unloading / Detention:     TE ↑  BP ↑
  *   Hamali / Commission / Other Expense /
- *   TDS / Other Deduction / ST Chalan:   TE unchanged  BP ↓
+ *   TDS / Other Deduction / ST Chalan /
+ *   Final Amount Paid:                   TE unchanged  BP ↓
  *
- * TDS uses the existing POD meaning: `tdsPercentage` is 0 (NIL) or 1
- * (1%), and `tdsAmount` = (tdsPercentage / 100) * lorryHireAmount.
- *
- * ST Chalan follows the prior settlement behaviour (deducted from
- * Balance Payable, not included in Total Expenses).
+ * TDS: `tdsPercentage` is 0 (NIL) or 1 (1% of lorryHireAmount).
+ * Balance Paid On is a date only — not used in calculations.
  */
 export interface LorrySettlementInput {
   lorryHireAmount: number;
   /** Driver Advance 1 (existing `driverAdvance` column). */
   driverAdvance?: number;
   driverAdvance2?: number;
+  /** Historical only — hidden from new Financials UI, still applied when present. */
   dieselAdvance?: number;
   loadingCharges?: number;
   unloadingCharges?: number;
@@ -29,6 +30,8 @@ export interface LorrySettlementInput {
   otherExpense?: number;
   stChalan?: number;
   otherDeduction?: number;
+  /** Actual final payment clearing remaining balance — BP ↓, TE unchanged. */
+  finalAmountPaid?: number;
   /** 0 ("NIL") or 1 ("1%") — same meaning as pods.tds_percentage. */
   tdsPercentage?: number;
 }
@@ -56,6 +59,7 @@ export function calculateLorrySettlement(input: LorrySettlementInput): LorrySett
     otherExpense = 0,
     stChalan = 0,
     otherDeduction = 0,
+    finalAmountPaid = 0,
     tdsPercentage = 0,
   } = input;
 
@@ -69,7 +73,6 @@ export function calculateLorrySettlement(input: LorrySettlementInput): LorrySett
 
   const tdsAmount = (tdsPercentage / 100) * lorryHireAmount;
 
-  // TE↑BP↓ items subtract; TE↑BP↑ items add; TE-unchanged BP↓ items subtract.
   const balancePayable =
     lorryHireAmount -
     driverAdvance -
@@ -83,7 +86,13 @@ export function calculateLorrySettlement(input: LorrySettlementInput): LorrySett
     otherExpense -
     tdsAmount -
     otherDeduction -
-    stChalan;
+    stChalan -
+    finalAmountPaid;
 
   return { totalExpenses, tdsAmount, balancePayable };
+}
+
+/** Financials Profit/Loss = Bill Amount − Total Expenses (not Hire). */
+export function calculateFinancialProfitLoss(billAmount: number, totalExpenses: number): number {
+  return billAmount - totalExpenses;
 }
