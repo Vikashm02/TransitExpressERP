@@ -1,34 +1,24 @@
 import {
   validateLR,
   BILLING_PARTY_OPTIONS,
-  BILL_RATE_TYPE_OPTIONS,
   FREIGHT_TYPE_OPTIONS,
-  LORRY_HIRE_TYPE_OPTIONS,
   type LR,
 } from "./lr.schema";
 import type { BillingPartyRecord } from "@/components/services/billingParty.service";
 import type { MaterialRecord } from "@/components/services/material.service";
 
 /**
- * The exact fields the existing LR creation flow actually collects, in the
- * same order they appear on the LR form's sections (LRHeader, PartySection
- * x2, VehicleSection, MaterialSection, DispatchDocumentsSection,
- * CommercialSection, RemarksSection). Deliberately excludes:
- *  - "LR Number" — auto-generated from Company Master Document Settings at
- *    save time (see LRListPage.tsx `handleSubmit`), never typed by a user.
- *  - "Status" — workflow-controlled, always starts as "Open" for a new LR
- *    (see RemarksSection.tsx).
- *  - "Unloading Weight" — captured exclusively by the POD module, not at
- *    LR-creation time (see MaterialSection.tsx).
- *  - "Bill Amount" / "Lorry Hire Amount" / "Profit Amount" — always
- *    (re)computed by `calculateLR()` at save time, never entered.
- *  - Driver Advance / Diesel Advance / ST Challan / Loading & Unloading
- *    Charges / Hamali / Commission / Other Expense — moved to the separate
- *    Lorry Expenses module; no longer collected on LR Entry
- *    (see CommercialSection.tsx).
- * "DC Number / Invoice Number" and "DC Date / Invoice Date" are single
- * combined columns because the existing form writes the same one value the
- * user enters into both underlying fields (see DispatchDocumentsSection.tsx).
+ * Fields collected by the LR create flow (same sections as LRForm).
+ * Deliberately excludes:
+ *  - "LR Number" — auto-generated at save time
+ *  - "Status" — always starts as "Open"
+ *  - "Unloading Weight" — POD module
+ *  - Bill Amount / Lorry Hire Amount / Profit — computed at save
+ *  - Bill Rate / Bill Rate Type / Guaranteed Weight / Lorry Hire Rate /
+ *    Lorry Hire Type / Lorry Hire Guaranteed Weight — entered only in
+ *    Financials (CommercialSection keeps Freight Type only)
+ *  - Expense fields — Financials module
+ * Combined DC/Invoice columns match DispatchDocumentsSection behavior.
  */
 export const LR_TEMPLATE_HEADERS = [
   "LR Date",
@@ -59,12 +49,6 @@ export const LR_TEMPLATE_HEADERS = [
   "DC Date / Invoice Date",
   "Invoice Value",
   "E-Way Bill Number",
-  "Bill Rate",
-  "Bill Rate Type",
-  "Guaranteed Weight",
-  "Lorry Hire Rate",
-  "Lorry Hire Type",
-  "Lorry Hire Guaranteed Weight",
   "Freight Type",
   "Remarks",
   "Internal Remarks",
@@ -101,12 +85,6 @@ const SAMPLE_ROW: Record<TemplateHeader, string> = {
   "DC Date / Invoice Date": "2026-08-01",
   "Invoice Value": "150000",
   "E-Way Bill Number": "EWB123456789012",
-  "Bill Rate": "3500",
-  "Bill Rate Type": "Fixed",
-  "Guaranteed Weight": "0",
-  "Lorry Hire Rate": "3000",
-  "Lorry Hire Type": "Fixed",
-  "Lorry Hire Guaranteed Weight": "0",
   "Freight Type": "To Be Billed",
   Remarks: "",
   "Internal Remarks": "",
@@ -306,12 +284,6 @@ export async function parseAndValidateLRUpload(
     const dcInvoiceDate = cellValue(row, "DC Date / Invoice Date");
     const rawInvoiceValue = cellValue(row, "Invoice Value");
     const ewayBillNumber = cellValue(row, "E-Way Bill Number");
-    const rawBillRate = cellValue(row, "Bill Rate");
-    const rawBillRateType = cellValue(row, "Bill Rate Type");
-    const rawGuaranteedWeight = cellValue(row, "Guaranteed Weight");
-    const rawLorryHireRate = cellValue(row, "Lorry Hire Rate");
-    const rawLorryHireType = cellValue(row, "Lorry Hire Type");
-    const rawLorryHireGuaranteedWeight = cellValue(row, "Lorry Hire Guaranteed Weight");
     const rawFreightType = cellValue(row, "Freight Type");
     const remarks = cellValue(row, "Remarks");
     const internalRemarks = cellValue(row, "Internal Remarks");
@@ -350,30 +322,6 @@ export async function parseAndValidateLRUpload(
       }
     }
 
-    let billRateType: LR["billRateType"] = "Fixed";
-    if (rawBillRateType) {
-      const matched = BILL_RATE_TYPE_OPTIONS.find(
-        (option) => option.toLowerCase() === rawBillRateType.toLowerCase()
-      );
-      if (!matched) {
-        messages.push(`Bill Rate Type must be one of: ${BILL_RATE_TYPE_OPTIONS.join(", ")}.`);
-      } else {
-        billRateType = matched;
-      }
-    }
-
-    let lorryHireType: LR["lorryHireType"] = "Fixed";
-    if (rawLorryHireType) {
-      const matched = LORRY_HIRE_TYPE_OPTIONS.find(
-        (option) => option.toLowerCase() === rawLorryHireType.toLowerCase()
-      );
-      if (!matched) {
-        messages.push(`Lorry Hire Type must be one of: ${LORRY_HIRE_TYPE_OPTIONS.join(", ")}.`);
-      } else {
-        lorryHireType = matched;
-      }
-    }
-
     // Same default the LR form itself falls back to when Company Settings
     // don't specify a default Freight Type (see LRDialog.tsx).
     let freightType: LR["freightType"] = "To Be Billed";
@@ -402,10 +350,6 @@ export async function parseAndValidateLRUpload(
     const loadingWeight = parseNumber(rawLoadingWeight, "Loading Weight");
     const chargedWeight = parseNumber(rawChargedWeight, "Charged Weight");
     const invoiceValue = parseNumber(rawInvoiceValue, "Invoice Value");
-    const billRate = parseNumber(rawBillRate, "Bill Rate");
-    const guaranteedWeight = parseNumber(rawGuaranteedWeight, "Guaranteed Weight");
-    const lorryHireRate = parseNumber(rawLorryHireRate, "Lorry Hire Rate");
-    const lorryHireGuaranteedWeight = parseNumber(rawLorryHireGuaranteedWeight, "Lorry Hire Guaranteed Weight");
 
     const candidate: LR = {
       lrNumber: "",
@@ -446,12 +390,13 @@ export async function parseAndValidateLRUpload(
       invoiceValue,
       ewayBillNumber,
 
-      billRate,
-      billRateType,
-      guaranteedWeight,
-      lorryHireRate,
-      lorryHireType,
-      lorryHireGuaranteedWeight,
+      // Billing / hire are Financials-only; defaults match new LR dialog.
+      billRate: 0,
+      billRateType: "Fixed",
+      guaranteedWeight: 0,
+      lorryHireRate: 0,
+      lorryHireType: "Fixed",
+      lorryHireGuaranteedWeight: 0,
       freightType,
 
       driverAdvance: 0,
