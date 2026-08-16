@@ -82,7 +82,7 @@ export default function DashboardLayout({
   // there is no session after init.
   if (loading || !session) {
     return (
-      <div className="flex h-screen items-center justify-center bg-muted/30">
+      <div className="flex h-screen items-center justify-center erp-shell">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
           <Truck className="h-8 w-8 animate-pulse" />
           <p className="text-sm font-medium">Loading...</p>
@@ -95,7 +95,7 @@ export default function DashboardLayout({
   // but only while actively loading, never as a permanent stand-in for errors.
   if (profileLoading && !profile) {
     return (
-      <div className="flex h-screen items-center justify-center bg-muted/30">
+      <div className="flex h-screen items-center justify-center erp-shell">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
           <Truck className="h-8 w-8 animate-pulse" />
           <p className="text-sm font-medium">Loading...</p>
@@ -107,7 +107,7 @@ export default function DashboardLayout({
   // State 3 — session exists but profile failed / missing after load finished.
   if (profileError || !profile) {
     return (
-      <div className="flex h-screen items-center justify-center bg-muted/30 p-4">
+      <div className="flex h-screen items-center justify-center erp-shell p-4">
         <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
           <ShieldX className="h-10 w-10 text-destructive" />
 
@@ -141,7 +141,7 @@ export default function DashboardLayout({
     const isRejected = profile.approvalStatus === "rejected";
 
     return (
-      <div className="flex h-screen items-center justify-center bg-muted/30 p-4">
+      <div className="flex h-screen items-center justify-center erp-shell p-4">
         <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
           {isRejected ? (
             <ShieldX className="h-10 w-10 text-destructive" />
@@ -169,7 +169,7 @@ export default function DashboardLayout({
 
   if (profile.isLocked) {
     return (
-      <div className="flex h-screen items-center justify-center bg-muted/30 p-4">
+      <div className="flex h-screen items-center justify-center erp-shell p-4">
         <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
           <Lock className="h-10 w-10 text-destructive" />
 
@@ -194,7 +194,7 @@ export default function DashboardLayout({
   // Admin-only Settings (no permission key — role gate).
   if ((pathname ?? "").startsWith("/settings") && profile.role !== "admin") {
     return (
-      <div className="flex h-screen overflow-hidden bg-muted/30">
+      <div className="flex h-screen overflow-hidden erp-shell">
         <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header onMenuClick={() => setMobileNavOpen(true)} />
@@ -213,7 +213,7 @@ export default function DashboardLayout({
 
   if (requiredPermissionKey && !hasPermission(requiredPermissionKey, "view")) {
     return (
-      <div className="flex h-screen overflow-hidden bg-muted/30">
+      <div className="flex h-screen overflow-hidden erp-shell">
         <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -236,7 +236,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-muted/30">
+    <div className="flex h-screen overflow-hidden erp-shell">
       <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

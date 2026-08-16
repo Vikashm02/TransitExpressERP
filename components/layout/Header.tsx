@@ -5,6 +5,7 @@ import { LogOut, Menu } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 import NotificationBell from "@/components/pwa/NotificationBell";
+import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
   /** Opens the mobile navigation drawer (see Sidebar.tsx). The trigger
@@ -23,44 +24,64 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b bg-card px-4 sm:px-6 lg:px-8">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/80 bg-card/90 px-3 backdrop-blur-md sm:h-16 sm:gap-4 sm:px-6 lg:px-8">
+      <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
         {onMenuClick && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             title="Open menu"
             aria-label="Open menu"
             onClick={onMenuClick}
-            className="-ml-1.5 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+            className="-ml-1 shrink-0 text-muted-foreground hover:text-foreground lg:hidden"
           >
             <Menu className="h-5 w-5" />
-          </button>
+          </Button>
         )}
 
-        <h2 className="truncate text-base font-semibold text-foreground sm:text-lg">
-          Transjit Express TMS
-        </h2>
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Operations console
+          </p>
+          <h2 className="truncate font-heading text-base font-semibold text-foreground sm:text-lg">
+            Transjit Express TMS
+          </h2>
+        </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
         <NotificationBell />
 
-        <span className="hidden text-sm font-medium text-foreground sm:inline">
-          {profile?.displayName || "..."} {isAdmin && "(Admin)"}
-        </span>
+        <div className="hidden items-center gap-2.5 rounded-full border border-border/80 bg-surface-muted/70 py-1 pr-3 pl-1 sm:flex">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground ring-2 ring-highlight/40">
+            {(profile?.displayName || "?").charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-sm font-medium text-foreground">
+              {profile?.displayName || "..."}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {isAdmin ? "Administrator" : "Staff"}
+            </p>
+          </div>
+        </div>
 
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground sm:hidden">
           {(profile?.displayName || "?").charAt(0).toUpperCase()}
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           title="Sign out"
+          aria-label="Sign out"
           onClick={handleSignOut}
-          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />
-        </button>
+        </Button>
       </div>
     </header>
   );

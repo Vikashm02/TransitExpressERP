@@ -3,21 +3,11 @@ interface FormLabelProps {
   required?: boolean;
 }
 
-export default function FormLabel({
-  children,
-  required,
-}: FormLabelProps) {
+export default function FormLabel({ children, required }: FormLabelProps) {
   return (
-    <label className="block mb-2 text-sm font-semibold text-slate-700">
-
+    <label className="mb-2 block text-sm font-medium text-foreground">
       {children}
-
-      {required && (
-        <span className="text-red-500 ml-1">
-          *
-        </span>
-      )}
-
+      {required && <span className="ml-1 text-destructive">*</span>}
     </label>
   );
 }

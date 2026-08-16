@@ -195,10 +195,11 @@ export default function SettingsPageClient() {
     <div className="space-y-6">
       <PageHeader title="Settings" buttonText="" showAddButton={false} />
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           variant={tab === "notifications" ? "default" : "outline"}
           onClick={() => setTab("notifications")}
+          className="min-h-10"
         >
           <BellRing className="mr-2 h-4 w-4" />
           Notification Settings
@@ -206,6 +207,7 @@ export default function SettingsPageClient() {
         <Button
           variant={tab === "announcements" ? "default" : "outline"}
           onClick={() => setTab("announcements")}
+          className="min-h-10"
         >
           <Megaphone className="mr-2 h-4 w-4" />
           Announcements

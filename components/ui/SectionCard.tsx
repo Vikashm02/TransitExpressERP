@@ -4,34 +4,16 @@ interface SectionCardProps {
   children: React.ReactNode;
 }
 
-export default function SectionCard({
-  title,
-  subtitle,
-  children,
-}: SectionCardProps) {
+export default function SectionCard({ title, subtitle, children }: SectionCardProps) {
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-
-      <div className="px-6 py-5 border-b bg-slate-50">
-
-        <h2 className="text-xl font-semibold text-slate-900">
+    <section className="erp-panel overflow-hidden">
+      <div className="border-b border-border/80 bg-surface-muted/50 px-6 py-4">
+        <h2 className="font-heading text-lg font-semibold tracking-tight text-foreground">
           {title}
         </h2>
-
-        {subtitle && (
-          <p className="text-sm text-slate-500 mt-1">
-            {subtitle}
-          </p>
-        )}
-
+        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
-
-      <div className="p-6">
-
-        {children}
-
-      </div>
-
+      <div className="p-6">{children}</div>
     </section>
   );
 }

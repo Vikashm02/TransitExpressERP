@@ -11,6 +11,7 @@ import {
   type InboxItem,
 } from "@/components/services/notification.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { cn } from "@/lib/utils";
 
 export default function NotificationBell() {
   const { session, hasPermission } = useAuth();
@@ -53,42 +54,63 @@ export default function NotificationBell() {
       <Button
         type="button"
         variant="ghost"
-        size="sm"
-        className="relative"
+        size="icon"
+        className="relative text-muted-foreground hover:text-foreground"
         onClick={() => setOpen((value) => !value)}
         aria-label="Notifications"
+        aria-expanded={open}
       >
         <Bell className="h-4 w-4" />
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] text-primary-foreground">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-highlight px-1 text-[10px] font-bold text-highlight-foreground ring-2 ring-card">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </Button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-80 max-w-[90vw] rounded-xl border bg-card shadow-lg">
-          <div className="border-b px-3 py-2 text-sm font-semibold">Notifications</div>
+        <div className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-border/80 bg-card shadow-xl shadow-primary/10">
+          <div className="flex items-center justify-between border-b border-border/80 bg-surface-muted/60 px-3.5 py-2.5">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Notifications</p>
+              <p className="text-[11px] text-muted-foreground">
+                {unread > 0 ? `${unread} unread` : "All caught up"}
+              </p>
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              Close
+            </Button>
+          </div>
           <div className="max-h-80 overflow-y-auto">
             {items.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">No notifications yet.</p>
+              <p className="p-5 text-sm text-muted-foreground">No notifications yet.</p>
             ) : (
               items.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => openItem(item)}
-                  className={`block w-full border-b px-3 py-2 text-left hover:bg-muted/50 ${
-                    item.readAt ? "opacity-70" : ""
-                  }`}
-                >
-                  <p className="text-sm font-medium">{item.title}</p>
-                  {item.body && (
-                    <p className="line-clamp-2 text-xs text-muted-foreground">{item.body}</p>
+                  className={cn(
+                    "block w-full border-b border-border/60 px-3.5 py-3 text-left transition-colors hover:bg-primary/[0.04]",
+                    item.readAt ? "opacity-70" : "bg-primary/[0.03]"
                   )}
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {new Date(item.createdAt).toLocaleString()}
-                  </p>
+                >
+                  <div className="flex items-start gap-2">
+                    {!item.readAt && (
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-highlight" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">{item.title}</p>
+                      {item.body && (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                          {item.body}
+                        </p>
+                      )}
+                      <p className="mt-1.5 text-[10px] text-muted-foreground">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
                 </button>
               ))
             )}

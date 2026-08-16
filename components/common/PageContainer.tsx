@@ -8,7 +8,7 @@ export default function PageContainer({
   children,
 }: PageContainerProps) {
   return (
-    <div className="mx-auto w-full max-w-7xl p-6">
+    <div className="mx-auto w-full max-w-7xl">
       {children}
     </div>
   );

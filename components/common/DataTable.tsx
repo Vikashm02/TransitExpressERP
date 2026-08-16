@@ -210,7 +210,7 @@ export default function DataTable<T extends Record<string, any>>({
   }
 
   return (
-    <div className={cn("overflow-hidden rounded-xl border bg-card shadow-sm", className)}>
+    <div className={cn("erp-panel overflow-hidden", className)}>
       {searchable && (
         <div className="border-b p-3">
           <div className="relative max-w-sm">
@@ -235,7 +235,7 @@ export default function DataTable<T extends Record<string, any>>({
       >
         <Table>
           <TableHeader>
-            <TableRow className={stickyHeader ? "sticky top-0 z-10 bg-card" : undefined}>
+            <TableRow className={stickyHeader ? "sticky top-0 z-10 border-b bg-surface-muted/95 backdrop-blur-sm" : "bg-surface-muted/40"}>
               {columns.map((column) => {
                 const isActive = activeSort?.key === column.key;
                 const canSort = sortable && column.sortable;

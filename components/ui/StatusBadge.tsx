@@ -25,41 +25,43 @@ interface StatusBadgeProps {
 
 const STATUS_STYLES: Record<string, string> = {
   // Canonical set
-  active: "bg-success/10 text-success",
-  inactive: "bg-muted text-muted-foreground",
-  pending: "bg-warning/10 text-warning",
-  cancelled: "bg-destructive/10 text-destructive",
-  canceled: "bg-destructive/10 text-destructive",
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
-  error: "bg-destructive/10 text-destructive",
+  active: "bg-success/12 text-success ring-1 ring-success/20",
+  inactive: "bg-muted text-muted-foreground ring-1 ring-border/60",
+  pending: "bg-warning/15 text-warning-foreground ring-1 ring-warning/25",
+  cancelled: "bg-destructive/10 text-destructive ring-1 ring-destructive/20",
+  canceled: "bg-destructive/10 text-destructive ring-1 ring-destructive/20",
+  success: "bg-success/12 text-success ring-1 ring-success/20",
+  warning: "bg-warning/15 text-warning-foreground ring-1 ring-warning/25",
+  error: "bg-destructive/10 text-destructive ring-1 ring-destructive/20",
 
   // Common ERP domain aliases (LR / booking lifecycle, etc.)
-  open: "bg-info/10 text-info",
-  "in transit": "bg-info/10 text-info",
-  delivered: "bg-info/10 text-info",
-  billed: "bg-violet/10 text-violet",
-  draft: "bg-muted text-muted-foreground",
-  failed: "bg-destructive/10 text-destructive",
-  rejected: "bg-destructive/10 text-destructive",
-  approved: "bg-success/10 text-success",
-  completed: "bg-success/10 text-success",
+  open: "bg-info/12 text-info ring-1 ring-info/20",
+  "in transit": "bg-info/12 text-info ring-1 ring-info/20",
+  delivered: "bg-info/12 text-info ring-1 ring-info/20",
+  billed: "bg-violet/12 text-violet ring-1 ring-violet/20",
+  draft: "bg-muted text-muted-foreground ring-1 ring-border/60",
+  failed: "bg-destructive/10 text-destructive ring-1 ring-destructive/20",
+  rejected: "bg-destructive/10 text-destructive ring-1 ring-destructive/20",
+  approved: "bg-success/12 text-success ring-1 ring-success/20",
+  completed: "bg-success/12 text-success ring-1 ring-success/20",
+  settled: "bg-success/12 text-success ring-1 ring-success/20",
+  unsettled: "bg-warning/15 text-warning-foreground ring-1 ring-warning/25",
 
   // Vehicle master lifecycle / compliance aliases
-  "under maintenance": "bg-warning/10 text-warning",
-  sold: "bg-muted text-muted-foreground",
-  valid: "bg-success/10 text-success",
-  expiring: "bg-warning/10 text-warning",
-  expired: "bg-destructive/10 text-destructive",
-  missing: "bg-muted text-muted-foreground",
+  "under maintenance": "bg-warning/15 text-warning-foreground ring-1 ring-warning/25",
+  sold: "bg-muted text-muted-foreground ring-1 ring-border/60",
+  valid: "bg-success/12 text-success ring-1 ring-success/20",
+  expiring: "bg-warning/15 text-warning-foreground ring-1 ring-warning/25",
+  expired: "bg-destructive/10 text-destructive ring-1 ring-destructive/20",
+  missing: "bg-muted text-muted-foreground ring-1 ring-border/60",
 
   // Reports — Outstanding Payment aging report's Payment Status
-  overdue: "bg-destructive/10 text-destructive",
-  "within cycle": "bg-success/10 text-success",
-  "no outstanding": "bg-muted text-muted-foreground",
+  overdue: "bg-destructive/10 text-destructive ring-1 ring-destructive/20",
+  "within cycle": "bg-success/12 text-success ring-1 ring-success/20",
+  "no outstanding": "bg-muted text-muted-foreground ring-1 ring-border/60",
 };
 
-const DEFAULT_STYLE = "bg-muted text-muted-foreground";
+const DEFAULT_STYLE = "bg-muted text-muted-foreground ring-1 ring-border/60";
 
 export default function StatusBadge({
   status,

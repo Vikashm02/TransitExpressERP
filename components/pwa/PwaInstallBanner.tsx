@@ -132,12 +132,15 @@ export default function PwaInstallBanner() {
   if (standalone || !visible) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-lg rounded-xl border bg-card p-4 shadow-lg sm:left-auto">
-      <div className="flex items-start gap-3">
-        <Download className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+    <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-lg overflow-hidden rounded-xl border border-border/80 bg-card p-4 shadow-xl shadow-primary/15 sm:left-auto">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-highlight" />
+      <div className="flex items-start gap-3 pt-1">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Download className="h-5 w-5" />
+        </div>
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-sm font-semibold">Install Trans Jit ERP</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             {deferred
               ? "Add the ERP to your device for quick access like an app."
               : showIosHelp
@@ -158,7 +161,7 @@ export default function PwaInstallBanner() {
             </Button>
           </div>
         </div>
-        <button type="button" aria-label="Dismiss" onClick={dismiss} className="text-muted-foreground">
+        <button type="button" aria-label="Dismiss" onClick={dismiss} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
           <X className="h-4 w-4" />
         </button>
       </div>

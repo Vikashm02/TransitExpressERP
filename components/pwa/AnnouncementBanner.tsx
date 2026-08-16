@@ -72,23 +72,29 @@ export default function AnnouncementBanner() {
   }
 
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-primary/20 bg-primary/5">
-      <div className="flex items-start gap-3 p-4">
+    <div className="mb-4 overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-r from-primary/[0.08] via-card to-highlight/[0.1] shadow-sm">
+      <div className="flex items-start gap-3 p-3.5 sm:p-4">
+        <div className="mt-0.5 hidden h-8 w-1 shrink-0 rounded-full bg-highlight sm:block" />
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-base font-semibold text-foreground">{current.title}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+            Announcement
+          </p>
+          <p className="font-heading text-base font-semibold text-foreground">{current.title}</p>
           {current.message && (
-            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{current.message}</p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+              {current.message}
+            </p>
           )}
           {current.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={current.imageUrl}
               alt=""
-              className="mt-2 max-h-56 w-full rounded-lg object-contain"
+              className="mt-2 max-h-56 w-full rounded-lg object-contain ring-1 ring-border/60"
             />
           )}
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={handleDismiss} aria-label="Dismiss">
+        <Button type="button" variant="ghost" size="icon" onClick={handleDismiss} aria-label="Dismiss">
           <X className="h-4 w-4" />
         </Button>
       </div>

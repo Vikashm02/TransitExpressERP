@@ -30,121 +30,65 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import type { PermissionKey } from "@/lib/permissions";
 
-const menus: {
+type MenuItem = {
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
-  /** No key = always visible to any approved user (e.g. Dashboard). */
   permissionKey?: PermissionKey;
-}[] = [
-  {
-    label: "Dashboard",
-    href: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Company Master",
-    href: "/company",
-    icon: Building2,
-    permissionKey: "company",
-  },
-  {
-    label: "Customer Master",
-    href: "/customers",
-    icon: Users,
-    permissionKey: "customers",
-  },
-  {
-    label: "Billing Party Master",
-    href: "/billing-parties",
-    icon: Banknote,
-    permissionKey: "billing_parties",
-  },
-  {
-    label: "Vehicle Master",
-    href: "/vehicle",
-    icon: Truck,
-    permissionKey: "vehicle",
-  },
-  {
-    label: "Material Master",
-    href: "/material",
-    icon: Package,
-    permissionKey: "material",
-  },
-  {
-    label: "LR Entry",
-    href: "/lr",
-    icon: FileText,
-    permissionKey: "lr",
-  },
-  {
-    label: "POD Entry",
-    href: "/pod",
-    icon: ClipboardCheck,
-    permissionKey: "pod",
-  },
-  {
-    label: "Delivery Challan",
-    href: "/delivery-challans",
-    icon: ScrollText,
-    permissionKey: "delivery_challans",
-  },
-  {
-    label: "ASN Creation",
-    href: "/asn",
-    icon: ClipboardList,
-    permissionKey: "asn_creations",
-  },
-  {
-    label: "Financials",
-    href: "/lorry-expenses",
-    icon: Wallet,
-    permissionKey: "lorry_expenses",
-  },
-  {
-    label: "Billing",
-    href: "/billing",
-    icon: ReceiptIndianRupee,
-    permissionKey: "billing",
-  },
-  {
-    label: "Credit Note",
-    href: "/credit-notes",
-    icon: FileMinus2,
-    permissionKey: "credit_notes",
-  },
-  {
-    label: "Debit Note",
-    href: "/debit-notes",
-    icon: FilePlus2,
-    permissionKey: "debit_notes",
-  },
-  {
-    label: "Ledger",
-    href: "/ledger",
-    icon: BookOpen,
-    permissionKey: "ledger",
-  },
-  {
-    label: "Reports",
-    href: "/reports",
-    icon: BarChart3,
-    permissionKey: "reports",
-  },
-];
+  adminOnly?: boolean;
+};
 
-/** Admin-only — hidden entirely for staff. */
-const adminOnlyMenus = [
+const menuSections: { title: string; items: MenuItem[] }[] = [
   {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
+    title: "Overview",
+    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
   },
   {
-    label: "Staff",
-    href: "/staff",
-    icon: UserCog,
+    title: "Masters",
+    items: [
+      { label: "Company Master", href: "/company", icon: Building2, permissionKey: "company" },
+      { label: "Customer Master", href: "/customers", icon: Users, permissionKey: "customers" },
+      {
+        label: "Billing Party Master",
+        href: "/billing-parties",
+        icon: Banknote,
+        permissionKey: "billing_parties",
+      },
+      { label: "Vehicle Master", href: "/vehicle", icon: Truck, permissionKey: "vehicle" },
+      { label: "Material Master", href: "/material", icon: Package, permissionKey: "material" },
+    ],
+  },
+  {
+    title: "Operations",
+    items: [
+      { label: "LR Entry", href: "/lr", icon: FileText, permissionKey: "lr" },
+      { label: "POD Entry", href: "/pod", icon: ClipboardCheck, permissionKey: "pod" },
+      {
+        label: "Delivery Challan",
+        href: "/delivery-challans",
+        icon: ScrollText,
+        permissionKey: "delivery_challans",
+      },
+      { label: "ASN Creation", href: "/asn", icon: ClipboardList, permissionKey: "asn_creations" },
+    ],
+  },
+  {
+    title: "Finance",
+    items: [
+      { label: "Financials", href: "/lorry-expenses", icon: Wallet, permissionKey: "lorry_expenses" },
+      { label: "Billing", href: "/billing", icon: ReceiptIndianRupee, permissionKey: "billing" },
+      { label: "Credit Note", href: "/credit-notes", icon: FileMinus2, permissionKey: "credit_notes" },
+      { label: "Debit Note", href: "/debit-notes", icon: FilePlus2, permissionKey: "debit_notes" },
+      { label: "Ledger", href: "/ledger", icon: BookOpen, permissionKey: "ledger" },
+      { label: "Reports", href: "/reports", icon: BarChart3, permissionKey: "reports" },
+    ],
+  },
+  {
+    title: "Administration",
+    items: [
+      { label: "Settings", href: "/settings", icon: Settings, adminOnly: true },
+      { label: "Staff", href: "/staff", icon: UserCog, adminOnly: true },
+    ],
   },
 ];
 
@@ -161,10 +105,16 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
   const router = useRouter();
   const { profile, isAdmin, signOut, hasPermission } = useAuth();
 
-  const allowedMenus = menus.filter(
-    (menu) => !menu.permissionKey || hasPermission(menu.permissionKey, "view")
-  );
-  const visibleMenus = isAdmin ? [...allowedMenus, ...adminOnlyMenus] : allowedMenus;
+  const visibleSections = menuSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((menu) => {
+        if (menu.adminOnly) return isAdmin;
+        if (!menu.permissionKey) return true;
+        return hasPermission(menu.permissionKey, "view");
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
 
   async function handleSignOut() {
     onMobileOpenChange?.(false);
@@ -176,166 +126,130 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
     onMobileOpenChange?.(false);
   }
 
-  function renderNavLinks(onNavigate?: () => void) {
-    return visibleMenus.map((menu) => {
-      const Icon = menu.icon;
-      const active = pathname === menu.href;
+  function isActive(href: string) {
+    if (href === "/") return pathname === "/";
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
 
-      return (
-        <Link
-          key={menu.label}
-          href={menu.href}
-          title={menu.label}
-          onClick={onNavigate}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150",
-            active
-              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          )}
-        >
-          <Icon className="h-5 w-5 shrink-0" />
-          <span className="truncate">
-            {menu.label}
-          </span>
-        </Link>
-      );
-    });
+  function renderNavLinks(onNavigate?: () => void) {
+    return visibleSections.map((section) => (
+      <div key={section.title} className="space-y-1">
+        <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/45">
+          {section.title}
+        </p>
+        {section.items.map((menu) => {
+          const Icon = menu.icon;
+          const active = isActive(menu.href);
+
+          return (
+            <Link
+              key={menu.label}
+              href={menu.href}
+              title={menu.label}
+              onClick={onNavigate}
+              className={cn(
+                "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                active
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md shadow-black/10"
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              {active && (
+                <span className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-r bg-sidebar-primary-foreground/80" />
+              )}
+              <Icon
+                className={cn(
+                  "h-4 w-4 shrink-0 transition-transform duration-150",
+                  active ? "scale-105" : "opacity-80 group-hover:opacity-100"
+                )}
+              />
+              <span className="truncate">{menu.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    ));
+  }
+
+  function brandBlock(compact = false) {
+    return (
+      <div className={cn("flex items-center gap-3", compact ? "px-4 py-4" : "px-5 py-5")}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/10 ring-1 ring-white/15">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icons/icon-192.png"
+            alt="Transjit Express"
+            className="h-9 w-9 object-contain"
+          />
+        </div>
+        <div className="min-w-0">
+          <h1 className="truncate font-heading text-base font-semibold leading-tight tracking-tight">
+            Transjit
+          </h1>
+          <p className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/55">
+            Express TMS
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  function userFooter(onSignOut: () => void, compact = false) {
+    return (
+      <div className={cn("border-t border-sidebar-border", compact ? "p-4" : "p-5")}>
+        <div className="flex items-center gap-3 rounded-xl bg-white/5 p-2.5 ring-1 ring-white/10">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-highlight text-sm font-semibold text-highlight-foreground">
+            {(profile?.displayName || "?").charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{profile?.displayName || "..."}</p>
+            <p className="text-xs text-sidebar-foreground/60">
+              {isAdmin ? "Administrator" : "Staff"}
+            </p>
+          </div>
+          <button
+            type="button"
+            title="Sign out"
+            onClick={onSignOut}
+            className="shrink-0 rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <>
-      {/* Desktop sidebar — unchanged at >=1024px (lg). Fully hidden
-       * below that so it never permanently eats into mobile content
-       * width; mobile navigation is the drawer below instead. */}
       <aside className="hidden min-h-screen w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
-        {/* Logo */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-sidebar-border px-6 py-5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/icons/icon-192.png"
-              alt="Transjit Express"
-              className="h-9 w-9 object-contain"
-            />
-          </div>
-
-          <div>
-            <h1 className="text-base font-semibold leading-tight">
-              Transjit
-            </h1>
-            <p className="text-xs text-sidebar-foreground/70">
-              Express TMS
-            </p>
-          </div>
-        </div>
-
-        {/* Menu — scrollable so Settings / Staff stay reachable when the
-         * viewport is shorter than the full menu list. */}
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {renderNavLinks()}
-        </nav>
-
-        {/* Footer */}
-        <div className="shrink-0 border-t border-sidebar-border p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-foreground/15 text-sm font-semibold">
-              {(profile?.displayName || "?").charAt(0).toUpperCase()}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
-                {profile?.displayName || "..."}
-              </p>
-              <p className="text-xs text-sidebar-foreground/70">
-                {isAdmin ? "Administrator" : "Staff"}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              title="Sign out"
-              onClick={handleSignOut}
-              className="shrink-0 rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <div className="shrink-0 border-b border-sidebar-border">{brandBlock()}</div>
+        <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2.5 py-2">{renderNavLinks()}</nav>
+        {userFooter(handleSignOut)}
       </aside>
 
-      {/* Mobile navigation drawer — same menu data/filtering as the
-       * desktop sidebar above, just presented as a slide-in panel so
-       * it takes zero width when closed. Only relevant below `lg`;
-       * `lg:hidden` on the popup is a defensive no-op at desktop
-       * widths where the drawer is never opened anyway. */}
       <DialogPrimitive.Root open={mobileOpen} onOpenChange={onMobileOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/40 lg:hidden data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
+          <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px] lg:hidden data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
 
-          <DialogPrimitive.Popup className="fixed inset-y-0 left-0 z-50 flex h-full w-72 max-w-[85vw] flex-col bg-sidebar text-sidebar-foreground shadow-xl outline-none lg:hidden data-open:animate-in data-open:slide-in-from-left data-closed:animate-out data-closed:slide-out-to-left">
-            <DialogPrimitive.Title className="sr-only">
-              Navigation menu
-            </DialogPrimitive.Title>
+          <DialogPrimitive.Popup className="fixed inset-y-0 left-0 z-50 flex h-full w-72 max-w-[85vw] flex-col bg-sidebar text-sidebar-foreground shadow-2xl outline-none lg:hidden data-open:animate-in data-open:slide-in-from-left data-closed:animate-out data-closed:slide-out-to-left">
+            <DialogPrimitive.Title className="sr-only">Navigation menu</DialogPrimitive.Title>
 
-            <div className="flex items-center justify-between gap-3 border-b border-sidebar-border px-4 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/icons/icon-192.png"
-                    alt="Transjit Express"
-                    className="h-9 w-9 object-contain"
-                  />
-                </div>
-
-                <div>
-                  <h1 className="text-base font-semibold leading-tight">
-                    Transjit
-                  </h1>
-                  <p className="text-xs text-sidebar-foreground/70">
-                    Express TMS
-                  </p>
-                </div>
-              </div>
-
+            <div className="flex items-center justify-between gap-3 border-b border-sidebar-border">
+              {brandBlock(true)}
               <DialogPrimitive.Close
-                className="shrink-0 rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="mr-3 shrink-0 rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 aria-label="Close menu"
               >
                 <X className="h-5 w-5" />
               </DialogPrimitive.Close>
             </div>
 
-            <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+            <nav className="flex-1 space-y-2 overflow-y-auto px-2.5 py-2">
               {renderNavLinks(closeMobileNav)}
             </nav>
 
-            <div className="border-t border-sidebar-border p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-foreground/15 text-sm font-semibold">
-                  {(profile?.displayName || "?").charAt(0).toUpperCase()}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {profile?.displayName || "..."}
-                  </p>
-                  <p className="text-xs text-sidebar-foreground/70">
-                    {isAdmin ? "Administrator" : "Staff"}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  title="Sign out"
-                  onClick={handleSignOut}
-                  className="shrink-0 rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                  <LogOut className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+            {userFooter(handleSignOut, true)}
           </DialogPrimitive.Popup>
         </DialogPrimitive.Portal>
       </DialogPrimitive.Root>

@@ -94,10 +94,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-sm">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-6">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,oklch(0.345_0.09_252_/_0.18),transparent_55%),radial-gradient(ellipse_at_bottom_right,oklch(0.72_0.13_70_/_0.16),transparent_50%)]" />
+      <div className="pointer-events-none absolute inset-y-0 left-0 hidden w-[42%] bg-primary lg:block" />
+      <div className="pointer-events-none absolute bottom-8 left-8 hidden max-w-sm text-primary-foreground lg:block">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-highlight">
+          Transjit Express
+        </p>
+        <p className="mt-2 font-heading text-3xl font-semibold tracking-tight">
+          Logistics control, built for the yard.
+        </p>
+        <p className="mt-2 text-sm text-primary-foreground/75">
+          LR · POD · Delivery · Financials — one operational console for the team on the move.
+        </p>
+      </div>
+
+      <Card className="relative z-10 w-full max-w-md border-border/70 shadow-xl shadow-primary/10">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl">
+          <div className="mb-2 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-primary/10 ring-1 ring-primary/20">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/icons/icon-192.png"
@@ -105,7 +119,7 @@ export default function LoginPage() {
               className="h-12 w-12 object-contain"
             />
           </div>
-          <CardTitle className="text-lg">Transjit Express TMS</CardTitle>
+          <CardTitle className="text-xl">Transjit Express TMS</CardTitle>
           <CardDescription>
             {tab === "sign-in" ? "Sign in to your staff account." : "Create your staff account."}
           </CardDescription>

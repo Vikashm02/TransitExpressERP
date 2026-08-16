@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     title: "Trans Jit ERP",
     statusBarStyle: "default",
   },
-  themeColor: "#0b3a6e",
+  themeColor: "#0B3A67",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

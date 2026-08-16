@@ -69,7 +69,7 @@ export default function SearchToolbar({
   return (
     <div className={cn("mb-6 space-y-3", className)}>
       {selectedCount > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-3">
           <span className="text-sm font-medium text-foreground">
             {selectedCount} selected
           </span>
@@ -104,7 +104,7 @@ export default function SearchToolbar({
         </div>
       )}
 
-      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 erp-panel p-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 flex-wrap items-center gap-3">
           <div className="relative w-full md:max-w-md">
             <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
