@@ -3,6 +3,7 @@
 import { Pencil, Wallet } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import StatusBadge from "@/components/ui/StatusBadge";
 import type { LorryExpenseRecord } from "@/components/services/lorryExpense.service";
 
 export interface LorryExpenseListRow extends LorryExpenseRecord {
@@ -41,6 +42,17 @@ export default function LorryExpenseTable({
   const columns: DataTableColumn<LorryExpenseListRow>[] = [
     { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
     { key: "lrDate", header: "LR Date", sortable: true },
+    {
+      key: "expenseStatus",
+      header: "Status",
+      sortable: true,
+      render: (row) => (
+        <StatusBadge
+          status={row.expenseStatus === "pending" ? "Pending" : "Completed"}
+          label={row.expenseStatus === "pending" ? "Pending" : "Completed"}
+        />
+      ),
+    },
     { key: "brokerName", header: "Broker", sortable: true },
     { key: "beneficiaryName", header: "Beneficiary", sortable: true },
     {

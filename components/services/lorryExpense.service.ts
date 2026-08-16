@@ -1,12 +1,19 @@
 import { supabase } from "@/lib/supabase";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
-import type { LorryExpense } from "@/components/lorryExpense/lorryExpense.schema";
+import type {
+  LorryExpense,
+  LorryExpenseStatus,
+} from "@/components/lorryExpense/lorryExpense.schema";
 import { emitNotificationEvent } from "@/components/services/notification.service";
 
 /** A persisted Financials / Lorry Expense row — one per LR (`lr_id` UNIQUE). */
 export interface LorryExpenseRecord extends LorryExpense {
   id: number;
   created_at?: string;
+}
+
+function normalizeExpenseStatus(value: unknown): LorryExpenseStatus {
+  return value === "pending" ? "pending" : "completed";
 }
 
 const TABLE = "lorry_expenses";
@@ -49,6 +56,7 @@ function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
   if (record.otherDeduction == null) record.otherDeduction = 0;
   if (record.finalAmountPaid == null) record.finalAmountPaid = 0;
   if (record.remarks == null) record.remarks = "";
+  record.expenseStatus = normalizeExpenseStatus(record.expenseStatus);
 
   return {
     ...(record as LorryExpense),

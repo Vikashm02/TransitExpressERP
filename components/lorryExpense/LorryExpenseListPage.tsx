@@ -9,12 +9,14 @@ import SearchToolbar from "@/components/common/SearchToolbar";
 import StatCard from "@/components/ui/StatCard";
 import FormField from "@/components/ui/FormField";
 import FormDatePicker from "@/components/ui/FormDatePicker";
+import FormSelect from "@/components/ui/FormSelect";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import LorryExpenseDialog from "./LorryExpenseDialog";
 import LorryExpenseBulkUploadDialog from "./LorryExpenseBulkUploadDialog";
 import LorryExpenseTable, { type LorryExpenseListRow } from "./LorryExpenseTable";
 import type { FinancialsLrCommercial, LorryExpense } from "./lorryExpense.schema";
+import { LORRY_EXPENSE_STATUS_SELECT_OPTIONS } from "./lorryExpense.schema";
 import { downloadLorryExpenseUploadTemplate } from "./lorryExpenseBulkUpload";
 
 import {
@@ -57,6 +59,9 @@ export default function LorryExpenseListPage() {
   const [toDate, setToDate] = useState("");
   const [brokerFilter, setBrokerFilter] = useState("");
   const [beneficiaryFilter, setBeneficiaryFilter] = useState("");
+  const [expenseStatusFilter, setExpenseStatusFilter] = useState<"all" | "pending" | "completed">(
+    "all"
+  );
   const [brokerSuggestions, setBrokerSuggestions] = useState<string[]>([]);
   const [beneficiarySuggestions, setBeneficiarySuggestions] = useState<string[]>([]);
 
@@ -147,12 +152,15 @@ export default function LorryExpenseListPage() {
       if (beneficiaryQ && !row.beneficiaryName.toLowerCase().includes(beneficiaryQ)) {
         return false;
       }
+      if (expenseStatusFilter !== "all" && row.expenseStatus !== expenseStatusFilter) {
+        return false;
+      }
       if (!query) return true;
       return [row.lrNumber, row.consignor, row.consignee, row.vehicleNumber, row.brokerName, row.beneficiaryName]
         .filter(Boolean)
         .some((field) => field.toLowerCase().includes(query));
     });
-  }, [rows, search, fromDate, toDate, brokerFilter, beneficiaryFilter]);
+  }, [rows, search, fromDate, toDate, brokerFilter, beneficiaryFilter, expenseStatusFilter]);
 
   const stats = useMemo(() => {
     const totalExpenses = filteredRows.reduce((sum, row) => sum + row.totalExpenses, 0);
@@ -253,6 +261,7 @@ export default function LorryExpenseListPage() {
     setToDate("");
     setBrokerFilter("");
     setBeneficiaryFilter("");
+    setExpenseStatusFilter("all");
   }
 
   return (
@@ -287,7 +296,7 @@ export default function LorryExpenseListPage() {
             Clear
           </Button>
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <FormDatePicker
             label="From Date (LR Date)"
             id="fin-from-date"
@@ -330,6 +339,21 @@ export default function LorryExpenseListPage() {
               ))}
             </datalist>
           </FormField>
+          <FormSelect
+            label="Expense Status"
+            id="fin-filter-expense-status"
+            value={expenseStatusFilter}
+            onValueChange={(value) =>
+              setExpenseStatusFilter(value as "all" | "pending" | "completed")
+            }
+            options={[
+              { value: "all", label: "All" },
+              ...LORRY_EXPENSE_STATUS_SELECT_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              })),
+            ]}
+          />
         </div>
 
         {partySummary && (

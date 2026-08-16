@@ -14,10 +14,12 @@ import { Textarea } from "@/components/ui/textarea";
 import BlankableNumberInput from "@/components/common/BlankableNumberInput";
 import LRLookup from "@/components/lookup/LRLookup";
 import {
+  LORRY_EXPENSE_STATUS_SELECT_OPTIONS,
   LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS,
   validateLorryExpense,
   type FinancialsLrCommercial,
   type LorryExpense,
+  type LorryExpenseStatus,
 } from "./lorryExpense.schema";
 import {
   getBeneficiaryNameSuggestions,
@@ -57,6 +59,7 @@ interface LorryExpenseDialogProps {
 
 const emptyExpense: LorryExpense = {
   lrId: 0,
+  expenseStatus: "pending",
   driverAdvance: 0,
   driverAdvance1Date: "",
   driverAdvance2: 0,
@@ -337,6 +340,24 @@ export default function LorryExpenseDialog({
                 <ReadOnlyField label="Unloading Weight" value={String(workingLr.unloadingWeight)} />
               </div>
             )}
+          </div>
+        </FormSection>
+
+        <FormSection title="Expense Status">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormSelect
+              label="Expense Status"
+              id="fin-expense-status"
+              required
+              value={values.expenseStatus}
+              onValueChange={(value) =>
+                updateExpense("expenseStatus", value as LorryExpenseStatus)
+              }
+              disabled={readOnly}
+              options={[...LORRY_EXPENSE_STATUS_SELECT_OPTIONS]}
+              error={errors.expenseStatus}
+              hint="Pending = saved but work is not finished. Completed = expense entry is finalized."
+            />
           </div>
         </FormSection>
 

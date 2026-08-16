@@ -9,6 +9,21 @@ function nonNegativeNumber(message: string) {
 /** Same closed NIL/1% choice as pods.tds_percentage (migration 017/026). */
 export const LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS = [0, 1] as const;
 
+/** Expense entry workflow status (migration 032). */
+export const LORRY_EXPENSE_STATUS_OPTIONS = ["pending", "completed"] as const;
+export type LorryExpenseStatus = (typeof LORRY_EXPENSE_STATUS_OPTIONS)[number];
+
+export const LORRY_EXPENSE_STATUS_SELECT_OPTIONS = [
+  {
+    value: "pending",
+    label: "Pending",
+  },
+  {
+    value: "completed",
+    label: "Completed",
+  },
+] as const;
+
 /**
  * Financials (lorry_expenses): expense/settlement per LR.
  * Billing/hire rates live on the linked LR and are edited via Financials UI
@@ -17,6 +32,7 @@ export const LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS = [0, 1] as const;
  */
 export const lorryExpenseSchema = z.object({
   lrId: z.number().int().positive("Select an LR."),
+  expenseStatus: z.enum(LORRY_EXPENSE_STATUS_OPTIONS),
   driverAdvance: nonNegativeNumber("Cannot be negative."),
   driverAdvance1Date: z.string().trim(),
   driverAdvance2: nonNegativeNumber("Cannot be negative."),

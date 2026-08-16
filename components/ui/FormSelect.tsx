@@ -63,6 +63,11 @@ export default function FormSelect({
         // Select's own onValueChange. `null` is Base UI's explicit
         // "controlled, no selection" value, so the field stays controlled
         // for its entire lifetime.
+        //
+        // `items` maps value → label so the closed trigger shows the
+        // user-facing label (e.g. "Pending") instead of the stored value
+        // (e.g. "pending").
+        items={options}
         value={value === "" ? null : value}
         onValueChange={(next) => onValueChange((next as string) ?? "")}
         disabled={disabled}
