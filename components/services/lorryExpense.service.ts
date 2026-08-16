@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { LorryExpense } from "@/components/lorryExpense/lorryExpense.schema";
+import { emitNotificationEvent } from "@/components/services/notification.service";
 
 /** A persisted Financials / Lorry Expense row — one per LR (`lr_id` UNIQUE). */
 export interface LorryExpenseRecord extends LorryExpense {
@@ -108,7 +109,15 @@ export async function createLorryExpense(values: LorryExpense): Promise<LorryExp
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+  void emitNotificationEvent({
+    ruleKey: "financials.created",
+    title: "Financials created",
+    body: `Financial entry for LR #${record.lrId}`,
+    href: "/lorry-expenses",
+    payload: { id: record.id, lrId: record.lrId },
+  });
+  return record;
 }
 
 export async function updateLorryExpense(id: number, values: LorryExpense): Promise<LorryExpenseRecord> {
@@ -123,7 +132,32 @@ export async function updateLorryExpense(id: number, values: LorryExpense): Prom
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+  void emitNotificationEvent({
+    ruleKey: "financials.updated",
+    title: "Financials updated",
+    body: `Financial entry for LR #${record.lrId}`,
+    href: "/lorry-expenses",
+    payload: { id: record.id, lrId: record.lrId },
+  });
+
+  if (
+    values.finalAmountPaid != null ||
+    values.stChalan != null ||
+    values.otherDeduction != null ||
+    values.tdsPercentage != null ||
+    values.balancePaidOn != null
+  ) {
+    void emitNotificationEvent({
+      ruleKey: "financials.settlement_updated",
+      title: "Settlement updated",
+      body: `Settlement fields changed for LR #${record.lrId}`,
+      href: "/lorry-expenses",
+      payload: { id: record.id, lrId: record.lrId },
+    });
+  }
+
+  return record;
 }
 
 export async function deleteLorryExpense(id: number): Promise<void> {

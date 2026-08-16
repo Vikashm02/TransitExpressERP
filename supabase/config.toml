@@ -1,0 +1,9 @@
+# Edge Function config
+# Deploy with: supabase functions deploy process-notifications
+#
+# Cron authenticates with a Secret API Key on the `apikey` header
+# (not a JWT). Platform JWT verification must be off so those calls
+# reach the function; authorization is enforced inside the handler.
+
+[functions.process-notifications]
+verify_jwt = false

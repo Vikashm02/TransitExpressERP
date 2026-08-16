@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { permissionKeyForPath } from "@/lib/permissions";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import AnnouncementBanner from "@/components/pwa/AnnouncementBanner";
+import PwaInstallBanner from "@/components/pwa/PwaInstallBanner";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -189,6 +191,26 @@ export default function DashboardLayout({
 
   const requiredPermissionKey = permissionKeyForPath(pathname ?? "");
 
+  // Admin-only Settings (no permission key — role gate).
+  if ((pathname ?? "").startsWith("/settings") && profile.role !== "admin") {
+    return (
+      <div className="flex h-screen overflow-hidden bg-muted/30">
+        <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Header onMenuClick={() => setMobileNavOpen(true)} />
+          <main className="flex flex-1 items-center justify-center overflow-y-auto p-4 sm:p-6 lg:p-8">
+            <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-sm">
+              <ShieldX className="h-10 w-10 text-muted-foreground/50" />
+              <p className="text-sm font-medium text-foreground">
+                Settings are available to Administrators only.
+              </p>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   if (requiredPermissionKey && !hasPermission(requiredPermissionKey, "view")) {
     return (
       <div className="flex h-screen overflow-hidden bg-muted/30">
@@ -221,8 +243,10 @@ export default function DashboardLayout({
         <Header onMenuClick={() => setMobileNavOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <AnnouncementBanner />
           {children}
         </main>
+        <PwaInstallBanner />
       </div>
     </div>
   );

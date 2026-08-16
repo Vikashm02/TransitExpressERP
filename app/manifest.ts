@@ -1,19 +1,20 @@
 import type { MetadataRoute } from "next";
 
 /**
- * Minimal web app manifest for Chrome "Install app" branding.
- * No service worker / offline behaviour — icons + identity only.
- * Name/description match existing root metadata in app/layout.tsx.
+ * Installable PWA manifest. Service worker is registered separately
+ * (see components/pwa/PwaRegister.tsx + public/sw.js).
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Transjit Software",
-    short_name: "Transjit Software",
+    name: "Trans Jit ERP",
+    short_name: "Trans Jit ERP",
     description: "Transjit Software — Transit Express ERP",
     start_url: "/",
+    scope: "/",
     display: "standalone",
-    background_color: "#ffffff",
-    theme_color: "#ffffff",
+    orientation: "any",
+    background_color: "#0b3a6e",
+    theme_color: "#0b3a6e",
     icons: [
       {
         src: "/icons/icon-192.png",
@@ -26,6 +27,12 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
+      },
+      {
+        src: "/icons/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
       },
     ],
   };

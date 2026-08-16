@@ -132,21 +132,21 @@ const menus: {
     icon: BarChart3,
     permissionKey: "reports",
   },
+];
+
+/** Admin-only — hidden entirely for staff. */
+const adminOnlyMenus = [
   {
     label: "Settings",
     href: "/settings",
     icon: Settings,
   },
+  {
+    label: "Staff",
+    href: "/staff",
+    icon: UserCog,
+  },
 ];
-
-/** Admin-only — hidden entirely for staff, both here and via
- * `app_users` RLS if a staff account somehow requested the route
- * directly (see migration 017). */
-const adminOnlyMenu = {
-  label: "Staff",
-  href: "/staff",
-  icon: UserCog,
-};
 
 interface SidebarProps {
   /** Controls the mobile slide-in drawer (rendered below the `lg`
@@ -164,7 +164,7 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
   const allowedMenus = menus.filter(
     (menu) => !menu.permissionKey || hasPermission(menu.permissionKey, "view")
   );
-  const visibleMenus = isAdmin ? [...allowedMenus, adminOnlyMenu] : allowedMenus;
+  const visibleMenus = isAdmin ? [...allowedMenus, ...adminOnlyMenus] : allowedMenus;
 
   async function handleSignOut() {
     onMobileOpenChange?.(false);

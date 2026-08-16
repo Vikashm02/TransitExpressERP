@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { Pod } from "@/components/pod/pod.schema";
+import { emitNotificationEvent } from "@/components/services/notification.service";
 
 /** A persisted POD row. Consignor/Consignee/Vehicle Number/Driver Name/
  * From/To are intentionally NOT part of this record — they are resolved
@@ -92,12 +93,15 @@ export async function createPod(values: Pod): Promise<PodRecord> {
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+  void emitNotificationEvent({
+    ruleKey: "pod.created",
+    title: `POD created for ${record.lrNumber}`,
+    href: "/pod",
+    payload: { podId: record.id, lrNumber: record.lrNumber },
+  });
+  return record;
 }
-
-/* ==========================================================
-   UPDATE POD
-========================================================== */
 
 export async function updatePod(id: number, values: Pod): Promise<PodRecord> {
   // `id`/`created_at` are server-owned and must never reach the update
@@ -114,7 +118,14 @@ export async function updatePod(id: number, values: Pod): Promise<PodRecord> {
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+  void emitNotificationEvent({
+    ruleKey: "pod.updated",
+    title: `POD updated for ${record.lrNumber}`,
+    href: "/pod",
+    payload: { podId: record.id, lrNumber: record.lrNumber },
+  });
+  return record;
 }
 
 /* ==========================================================
@@ -130,6 +141,14 @@ export async function deletePod(id: number): Promise<void> {
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
 
   if (error) throw error;
+
+  void emitNotificationEvent({
+    ruleKey: "pod.deleted",
+    title: "POD deleted",
+    body: `POD record #${id} was deleted.`,
+    href: "/pod",
+    payload: { podId: id },
+  });
 }
 
 /* ==========================================================
@@ -148,6 +167,13 @@ export async function uploadPodProof(file: File): Promise<string> {
   if (uploadError) throw uploadError;
 
   const { data } = supabase.storage.from(ASSETS_BUCKET).getPublicUrl(path);
+
+  void emitNotificationEvent({
+    ruleKey: "pod.proof_uploaded",
+    title: "POD proof uploaded",
+    body: "A Proof of POD file was uploaded.",
+    href: "/pod",
+  });
 
   return data.publicUrl;
 }

@@ -3,6 +3,7 @@ import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } f
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import type { LR } from "@/components/lr/lr.schema";
 import { syncDeliveryChallanFromLr } from "@/components/services/deliveryChallan.service";
+import { emitNotificationEvent } from "@/components/services/notification.service";
 
 /** A persisted LR row. `billAmount`/`lorryHireAmount`/`profitAmount` are
  * intentionally NOT part of the editable `LR` schema — they are always
@@ -162,12 +163,16 @@ export async function createLR(values: LR): Promise<LRRecord> {
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+  void emitNotificationEvent({
+    ruleKey: "lr.created",
+    title: `LR ${record.lrNumber} created`,
+    body: `${record.consignor} → ${record.consignee}`,
+    href: "/lr",
+    payload: { lrId: record.id, lrNumber: record.lrNumber },
+  });
+  return record;
 }
-
-/* ==========================================================
-   UPDATE LR
-========================================================== */
 
 export async function updateLR(id: number, values: LR): Promise<LRRecord> {
   // `id`/`created_at` are server-owned and must never reach the update
@@ -190,6 +195,14 @@ export async function updateLR(id: number, values: LR): Promise<LRRecord> {
   // LR-derived snapshot fields only: qty ← loadingWeight, po_number ←
   // poNumber. po_date / by_name / hsn and other DC fields stay untouched.
   await syncDeliveryChallanFromLr(record.lrNumber, record.loadingWeight, record.poNumber);
+
+  void emitNotificationEvent({
+    ruleKey: "lr.updated",
+    title: `LR ${record.lrNumber} updated`,
+    body: `${record.consignor} → ${record.consignee}`,
+    href: "/lr",
+    payload: { lrId: record.id, lrNumber: record.lrNumber },
+  });
 
   return record;
 }
@@ -224,4 +237,12 @@ export async function deleteLR(id: number): Promise<void> {
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
 
   if (error) throw error;
+
+  void emitNotificationEvent({
+    ruleKey: "lr.deleted",
+    title: "LR deleted",
+    body: `LR record #${id} was deleted.`,
+    href: "/lr",
+    payload: { lrId: id },
+  });
 }

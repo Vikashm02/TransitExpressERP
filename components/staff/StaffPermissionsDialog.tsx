@@ -143,14 +143,18 @@ export default function StaffPermissionsDialog({
               <p className="text-sm text-muted-foreground">Loading...</p>
             ) : (
               PERMISSION_MODULES.map((module) => (
-                <FormSelect
-                  key={module.key}
-                  label={module.label}
-                  value={levels[module.key] ?? "none"}
-                  onValueChange={(value) => handleLevelChange(module.key, value)}
-                  options={LEVEL_OPTIONS}
-                  disabled={fullAccess}
-                />
+                <div key={module.key} className="space-y-1">
+                  <FormSelect
+                    label={module.label}
+                    value={levels[module.key] ?? "none"}
+                    onValueChange={(value) => handleLevelChange(module.key, value)}
+                    options={LEVEL_OPTIONS}
+                    disabled={fullAccess}
+                  />
+                  {module.description ? (
+                    <p className="text-xs text-muted-foreground">{module.description}</p>
+                  ) : null}
+                </div>
               ))
             )}
           </div>

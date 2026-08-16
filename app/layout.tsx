@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
+import PwaRegister from "@/components/pwa/PwaRegister";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,8 +16,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Transjit Software",
+  title: "Trans Jit ERP",
   description: "Transjit Software — Transit Express ERP",
+  applicationName: "Trans Jit ERP",
+  appleWebApp: {
+    capable: true,
+    title: "Trans Jit ERP",
+    statusBarStyle: "default",
+  },
+  themeColor: "#0b3a6e",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -25,8 +33,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col">
         <AuthProvider>
+          <PwaRegister />
           {children}
           <Toaster />
         </AuthProvider>

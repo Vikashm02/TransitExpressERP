@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { DeliveryChallan } from "@/components/deliveryChallan/deliveryChallan.schema";
+import { emitNotificationEvent } from "@/components/services/notification.service";
 
 export interface DeliveryChallanRecord extends DeliveryChallan {
   id: number;
@@ -82,7 +83,14 @@ export async function createDeliveryChallan(
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+  void emitNotificationEvent({
+    ruleKey: "dc.created",
+    title: `Delivery Challan created for ${record.lrNumber}`,
+    href: "/delivery-challans",
+    payload: { id: record.id, lrNumber: record.lrNumber },
+  });
+  return record;
 }
 
 /* ==========================================================
@@ -104,7 +112,14 @@ export async function updateDeliveryChallan(
 
   if (error) throw error;
 
-  return fromRow(data);
+  const record = fromRow(data);
+  void emitNotificationEvent({
+    ruleKey: "dc.updated",
+    title: `Delivery Challan updated for ${record.lrNumber}`,
+    href: "/delivery-challans",
+    payload: { id: record.id, lrNumber: record.lrNumber },
+  });
+  return record;
 }
 
 /* ==========================================================

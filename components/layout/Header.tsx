@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import NotificationBell from "@/components/pwa/NotificationBell";
 
 interface HeaderProps {
   /** Opens the mobile navigation drawer (see Sidebar.tsx). The trigger
@@ -42,6 +43,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
+        <NotificationBell />
+
         <span className="hidden text-sm font-medium text-foreground sm:inline">
           {profile?.displayName || "..."} {isAdmin && "(Admin)"}
         </span>

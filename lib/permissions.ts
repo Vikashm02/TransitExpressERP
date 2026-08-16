@@ -64,9 +64,16 @@ export type PermissionKey =
   | "credit_notes"
   | "debit_notes"
   | "ledger"
-  | "reports";
+  | "reports"
+  | "notifications";
 
-export const PERMISSION_MODULES: { key: PermissionKey; label: string; routePrefix: string }[] = [
+export const PERMISSION_MODULES: {
+  key: PermissionKey;
+  label: string;
+  /** When set, DashboardLayout route-guards matching paths. Omit for feature-only permissions. */
+  routePrefix?: string;
+  description?: string;
+}[] = [
   { key: "company", label: "Company Master", routePrefix: "/company" },
   { key: "customers", label: "Customer Master", routePrefix: "/customers" },
   { key: "billing_parties", label: "Billing Party Master", routePrefix: "/billing-parties" },
@@ -82,6 +89,11 @@ export const PERMISSION_MODULES: { key: PermissionKey; label: string; routePrefi
   { key: "debit_notes", label: "Debit Note", routePrefix: "/debit-notes" },
   { key: "ledger", label: "Ledger", routePrefix: "/ledger" },
   { key: "reports", label: "Reports", routePrefix: "/reports" },
+  {
+    key: "notifications",
+    label: "Notifications",
+    description: "Receive and view operational ERP notifications.",
+  },
 ];
 
 /**
@@ -109,9 +121,10 @@ export function permissionKeyForPath(pathname: string): PermissionKey | null {
   let best: { key: PermissionKey; routePrefix: string } | null = null;
 
   for (const module of PERMISSION_MODULES) {
+    if (!module.routePrefix) continue;
     const matches = pathname === module.routePrefix || pathname.startsWith(`${module.routePrefix}/`);
     if (matches && (!best || module.routePrefix.length > best.routePrefix.length)) {
-      best = module;
+      best = { key: module.key, routePrefix: module.routePrefix };
     }
   }
 
