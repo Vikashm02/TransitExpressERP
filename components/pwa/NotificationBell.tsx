@@ -69,19 +69,33 @@ export default function NotificationBell() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-border/80 bg-card shadow-xl shadow-primary/10">
-          <div className="flex items-center justify-between border-b border-border/80 bg-surface-muted/60 px-3.5 py-2.5">
-            <div>
+        <div
+          className={cn(
+            "z-[60] overflow-hidden rounded-xl border border-border/80 bg-card shadow-xl shadow-primary/10",
+            // Mobile: pin to the viewport so the panel never clips off-screen
+            "fixed inset-x-3 top-[calc(3.5rem+0.25rem)] w-auto max-w-none",
+            // Desktop: keep the existing bell-anchored dropdown
+            "sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[min(22rem,calc(100vw-1.5rem))]"
+          )}
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-border/80 bg-surface-muted/60 px-3.5 py-2.5">
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">Notifications</p>
               <p className="text-[11px] text-muted-foreground">
                 {unread > 0 ? `${unread} unread` : "All caught up"}
               </p>
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setOpen(false)}
+            >
               Close
             </Button>
           </div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto overflow-x-hidden">
             {items.length === 0 ? (
               <p className="p-5 text-sm text-muted-foreground">No notifications yet.</p>
             ) : (
@@ -100,9 +114,9 @@ export default function NotificationBell() {
                       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-highlight" />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground">{item.title}</p>
+                      <p className="break-words text-sm font-medium text-foreground">{item.title}</p>
                       {item.body && (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                        <p className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">
                           {item.body}
                         </p>
                       )}
