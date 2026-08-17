@@ -64,11 +64,20 @@ export default function ShareLRDialog({ open, onOpenChange, lr }: ShareLRDialogP
         typeof nav.share === "function" &&
         (typeof nav.canShare !== "function" || nav.canShare({ files: [file] }));
 
+      const vehicle = (lr.vehicleNumber || "").trim();
+      const shareTitle = vehicle
+        ? `LR ${lr.lrNumber} - ${vehicle}`
+        : `LR ${lr.lrNumber}`;
+      const shareText = vehicle
+        ? `LR ${lr.lrNumber} | Vehicle: ${vehicle}`
+        : `LR ${lr.lrNumber}`;
+
       if (canFileShare) {
         try {
           await nav.share!({
             files: [file],
-            title: `Lorry Receipt ${lr.lrNumber}`,
+            title: shareTitle,
+            text: shareText,
           });
           onOpenChange(false);
           return;
@@ -102,7 +111,7 @@ export default function ShareLRDialog({ open, onOpenChange, lr }: ShareLRDialogP
 
         <p className="text-sm text-muted-foreground">
           Downloads the original LR stationery PDF with this LR Entry&apos;s
-          dynamic values filled in (filename e.g. LR 19182.pdf).
+          dynamic values filled in (filename e.g. LR 19182 - MH12AB1234.pdf).
         </p>
 
         <DialogFooter>

@@ -622,11 +622,21 @@ export async function loadLrStationeryTemplate(): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
-/** Filename: LR19182 → "LR 19182.pdf" (display number unchanged). */
-export function lrPdfFileName(lrNumber: string): string {
+/**
+ * Filename: LR19182 + MH12AB1234 → "LR 19182 - MH12AB1234.pdf".
+ * LR number cleaning unchanged; vehicle is raw business data (omitted if empty).
+ */
+export function lrPdfFileName(
+  lrNumber: string,
+  vehicleNumber?: string | null
+): string {
   const stripped = String(lrNumber || "")
     .trim()
     .replace(/^LR\s*/i, "");
+  const vehicle = String(vehicleNumber || "").trim();
+  if (vehicle) {
+    return `LR ${stripped} - ${vehicle}.pdf`;
+  }
   return `LR ${stripped}.pdf`;
 }
 
@@ -635,5 +645,7 @@ export async function generateLrPdfFile(lr: LRRecord): Promise<File> {
   const bytes = await generateLrPdfBytes(lr, template);
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
-  return new File([copy], lrPdfFileName(lr.lrNumber), { type: "application/pdf" });
+  return new File([copy], lrPdfFileName(lr.lrNumber, lr.vehicleNumber), {
+    type: "application/pdf",
+  });
 }

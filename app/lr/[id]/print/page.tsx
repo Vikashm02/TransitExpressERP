@@ -42,7 +42,7 @@ export default function LRPrintPage() {
         const file = await generateLrPdfFile(lrRecord);
         objectUrl = URL.createObjectURL(file);
         setPdfUrl(objectUrl);
-        setFileName(lrPdfFileName(lrRecord.lrNumber));
+        setFileName(lrPdfFileName(lrRecord.lrNumber, lrRecord.vehicleNumber));
         document.title = file.name.replace(/\.pdf$/i, "");
       } catch (err) {
         console.error(err);
