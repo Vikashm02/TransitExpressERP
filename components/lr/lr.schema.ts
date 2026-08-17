@@ -163,6 +163,8 @@ export const lrSchema = z
     // Status
     // ===========================
     status: z.enum(LR_STATUS_OPTIONS),
+    /** Draft vs finalized business entry (migration 034). */
+    entryStatus: z.enum(["draft", "final"]).default("final"),
   })
   .refine(
     (values) => values.billRateType !== "Guaranteed Weight" || values.guaranteedWeight > 0,

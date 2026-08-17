@@ -6,6 +6,7 @@ import { FileDown, IndianRupee, Upload, Wallet } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import StatCard from "@/components/ui/StatCard";
 import FormField from "@/components/ui/FormField";
 import FormDatePicker from "@/components/ui/FormDatePicker";
@@ -21,6 +22,7 @@ import { downloadLorryExpenseUploadTemplate } from "./lorryExpenseBulkUpload";
 
 import {
   createLorryExpense,
+  deleteLorryExpense,
   getBeneficiaryNameSuggestions,
   getBrokerNameSuggestions,
   getLorryExpenses,
@@ -35,6 +37,7 @@ import {
 } from "@/lib/calculations/lorrySettlement";
 import type { BillRateType, LorryHireType } from "@/components/lr/lr.schema";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { isDraftEntry } from "@/lib/entryStatus";
 
 const PAGE_SIZE = 10;
 
@@ -47,9 +50,12 @@ function money(value: number): string {
  * Broker, and Beneficiary. Permission key remains `lorry_expenses`.
  */
 export default function LorryExpenseListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lorry_expenses", "create_view");
-  const canEdit = hasPermission("lorry_expenses", "edit");
+  const canEdit =
+    hasPermission("lorry_expenses", "edit") || hasAction("lorry_expenses", "edit");
+  const canContinueDraft = canCreate || canEdit;
+  const canDelete = hasAction("lorry_expenses", "delete");
 
   const [expenses, setExpenses] = useState<LorryExpenseRecord[]>([]);
   const [lrs, setLrs] = useState<LRRecord[]>([]);
@@ -69,6 +75,8 @@ export default function LorryExpenseListPage() {
   const [editingExpense, setEditingExpense] = useState<LorryExpenseRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<LorryExpenseListRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -192,6 +200,22 @@ export default function LorryExpenseListPage() {
   }
 
   function handleEdit(row: LorryExpenseListRow) {
+    if (isDraftEntry(row.entryStatus)) return;
+    if (!canEdit) {
+      toast.error("You do not have permission to edit finalized Financials.");
+      return;
+    }
+    const expense = expenses.find((item) => item.id === row.id) ?? null;
+    setEditingExpense(expense);
+    setDialogOpen(true);
+  }
+
+  function handleContinueDraft(row: LorryExpenseListRow) {
+    if (!isDraftEntry(row.entryStatus)) return;
+    if (!canContinueDraft) {
+      toast.error("You do not have permission to continue this draft.");
+      return;
+    }
     const expense = expenses.find((item) => item.id === row.id) ?? null;
     setEditingExpense(expense);
     setDialogOpen(true);
@@ -200,6 +224,39 @@ export default function LorryExpenseListPage() {
   function handleDialogOpenChange(open: boolean) {
     setDialogOpen(open);
     if (!open) setEditingExpense(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+
+    try {
+      setDeleting(true);
+      await deleteLorryExpense(deleteTarget.id);
+      toast.success("Financials entry deleted successfully.");
+      setDeleteTarget(null);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to delete Financials entry.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleAutosave(
+    values: LorryExpense,
+    existingId: number | null
+  ): Promise<number | null> {
+    const draftValues = { ...values, entryStatus: "draft" as const };
+    if (existingId) {
+      const updated = await updateLorryExpense(existingId, draftValues);
+      setEditingExpense(updated);
+      return updated.id;
+    }
+    const created = await createLorryExpense(draftValues);
+    setEditingExpense(created);
+    await loadData();
+    return created.id;
   }
 
   async function handleSubmit(
@@ -227,10 +284,19 @@ export default function LorryExpenseListPage() {
       });
 
       if (existingId) {
-        await updateLorryExpense(existingId, values);
+        if (editingExpense && isDraftEntry(editingExpense.entryStatus)) {
+          if (!canContinueDraft) {
+            toast.error("You do not have permission to continue this draft.");
+            return;
+          }
+        } else if (!canEdit) {
+          toast.error("You do not have permission to edit finalized Financials.");
+          return;
+        }
+        await updateLorryExpense(existingId, { ...values, entryStatus: "final" });
         toast.success("Financials updated successfully.");
       } else {
-        await createLorryExpense(values);
+        await createLorryExpense({ ...values, entryStatus: "final" });
         toast.success("Financials saved successfully.");
       }
 
@@ -406,7 +472,11 @@ export default function LorryExpenseListPage() {
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
+        onContinueDraft={handleContinueDraft}
+        onDelete={setDeleteTarget}
         canEdit={canEdit}
+        canContinueDraft={canContinueDraft}
+        canDelete={canDelete}
       />
 
       <LorryExpenseDialog
@@ -416,6 +486,7 @@ export default function LorryExpenseListPage() {
         lr={editingLR}
         loading={saving}
         onSubmit={handleSubmit}
+        onAutosave={canContinueDraft ? handleAutosave : undefined}
       />
 
       <LorryExpenseBulkUploadDialog
@@ -424,6 +495,21 @@ export default function LorryExpenseListPage() {
         existingLRs={lrs}
         existingLorryExpenses={expenses}
         onImported={loadData}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete Financials entry"
+        description={
+          deleteTarget
+            ? `Are you sure you want to delete Financials for LR "${deleteTarget.lrNumber}"? This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );

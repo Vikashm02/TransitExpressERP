@@ -1,10 +1,16 @@
 "use client";
 
-import { Pencil, Wallet } from "lucide-react";
+import { Pencil, Trash2, Wallet } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type { LorryExpenseRecord } from "@/components/services/lorryExpense.service";
+import {
+  draftRowClassName,
+  entryStatusBadgeStatus,
+  entryStatusLabel,
+  isDraftEntry,
+} from "@/lib/entryStatus";
 
 export interface LorryExpenseListRow extends LorryExpenseRecord {
   lrNumber: string;
@@ -25,7 +31,11 @@ interface LorryExpenseTableProps {
   loading?: boolean;
   pageSize?: number;
   onEdit: (row: LorryExpenseListRow) => void;
+  onContinueDraft: (row: LorryExpenseListRow) => void;
+  onDelete: (row: LorryExpenseListRow) => void;
   canEdit?: boolean;
+  canContinueDraft?: boolean;
+  canDelete?: boolean;
 }
 
 function money(value: number): string {
@@ -37,7 +47,11 @@ export default function LorryExpenseTable({
   loading,
   pageSize,
   onEdit,
+  onContinueDraft,
+  onDelete,
   canEdit = true,
+  canContinueDraft = true,
+  canDelete = true,
 }: LorryExpenseTableProps) {
   const columns: DataTableColumn<LorryExpenseListRow>[] = [
     { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
@@ -52,6 +66,18 @@ export default function LorryExpenseTable({
           label={row.expenseStatus === "pending" ? "Pending" : "Completed"}
         />
       ),
+    },
+    {
+      key: "entryStatus",
+      header: "Entry",
+      sortable: true,
+      render: (row) =>
+        isDraftEntry(row.entryStatus) ? (
+          <StatusBadge
+            status={entryStatusBadgeStatus(row.entryStatus)}
+            label={entryStatusLabel(row.entryStatus)}
+          />
+        ) : null,
     },
     { key: "brokerName", header: "Broker", sortable: true },
     { key: "beneficiaryName", header: "Beneficiary", sortable: true },
@@ -95,6 +121,14 @@ export default function LorryExpenseTable({
     },
   ];
 
+  function handleRowClick(row: LorryExpenseListRow) {
+    if (isDraftEntry(row.entryStatus)) {
+      if (canContinueDraft) onContinueDraft(row);
+      return;
+    }
+    if (canEdit) onEdit(row);
+  }
+
   return (
     <DataTable
       columns={columns}
@@ -107,13 +141,29 @@ export default function LorryExpenseTable({
       sortable
       defaultSort={{ key: "lrNumber", direction: "desc" }}
       pageSize={pageSize}
+      getRowClassName={(row) => draftRowClassName(row.entryStatus)}
+      onRowClick={handleRowClick}
       actions={[
+        {
+          label: "Continue",
+          icon: Pencil,
+          variant: "outline",
+          onClick: onContinueDraft,
+          hidden: (row) => !isDraftEntry(row.entryStatus) || !canContinueDraft,
+        },
         {
           label: "Edit",
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: () => !canEdit,
+          hidden: (row) => isDraftEntry(row.entryStatus) || !canEdit,
+        },
+        {
+          label: "Delete",
+          icon: Trash2,
+          variant: "destructive",
+          onClick: onDelete,
+          hidden: () => !canDelete,
         },
       ]}
     />

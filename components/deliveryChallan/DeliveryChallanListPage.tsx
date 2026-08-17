@@ -23,9 +23,12 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function DeliveryChallanListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("delivery_challans", "create_view");
-  const canEdit = hasPermission("delivery_challans", "edit");
+  const canEdit =
+    hasPermission("delivery_challans", "edit") || hasAction("delivery_challans", "edit");
+  const canPrint = hasAction("delivery_challans", "print");
+  const canShare = hasAction("delivery_challans", "share");
 
   const [challans, setChallans] = useState<DeliveryChallanRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -206,6 +209,8 @@ export default function DeliveryChallanListPage() {
         onPrint={handlePrint}
         onShare={handleShare}
         canEdit={canEdit}
+        canPrint={canPrint}
+        canShare={canShare}
       />
 
       <DeliveryChallanDialog

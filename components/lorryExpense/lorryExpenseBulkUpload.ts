@@ -232,6 +232,7 @@ export async function parseAndValidateLorryExpenseUpload(
     const candidate: LorryExpense = {
       lrId: matchingLR?.id ?? 0,
       expenseStatus: "completed",
+      entryStatus: "final",
       driverAdvance,
       driverAdvance1Date: "",
       driverAdvance2: 0,

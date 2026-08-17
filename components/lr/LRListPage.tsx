@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Banknote, FileDown, FileText, PackageCheck, Truck, Upload } from "lucide-react";
 
@@ -26,16 +26,26 @@ import {
   updateLR,
   type LRRecord,
 } from "@/components/services/lr.service";
-import { getCompany, saveCompany } from "@/components/services/company.service";
+import { allocateNextLrNumber } from "@/components/services/company.service";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import {
+  canContinueDraftEntry,
+  isDraftEntry,
+  isDraftLrNumber,
+} from "@/lib/entryStatus";
+import { normalizeLrForDraftPersist } from "@/lib/draftPersistence";
 
 const PAGE_SIZE = 10;
 
 export default function LRListPage() {
-  const { isAdmin, hasPermission } = useAuth();
+  const { isAdmin, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lr", "create_view");
-  const canEdit = hasPermission("lr", "edit");
+  const canEdit = hasPermission("lr", "edit") || hasAction("lr", "edit");
+  const canContinueDraft = canContinueDraftEntry({ canCreate, canEdit });
+  const canDelete = hasAction("lr", "delete");
+  const canPrint = hasAction("lr", "print");
+  const canShare = hasAction("lr", "share");
 
   const [lrs, setLRs] = useState<LRRecord[]>([]);
   const [staff, setStaff] = useState<AppUserProfile[]>([]);
@@ -60,6 +70,8 @@ export default function LRListPage() {
   const [reassigning, setReassigning] = useState(false);
 
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  /** Prevents overlapping autosaves from reserving two numbers for one draft. */
+  const autosaveInFlightRef = useRef(false);
 
   useEffect(() => {
     loadLRs();
@@ -144,6 +156,21 @@ export default function LRListPage() {
   }
 
   function handleEdit(lr: LRRecord) {
+    if (isDraftEntry(lr.entryStatus)) return;
+    if (!canEdit) {
+      toast.error("You do not have permission to edit finalized LRs.");
+      return;
+    }
+    setEditingLR(lr);
+    setDialogOpen(true);
+  }
+
+  function handleContinueDraft(lr: LRRecord) {
+    if (!isDraftEntry(lr.entryStatus)) return;
+    if (!canContinueDraft) {
+      toast.error("You do not have permission to continue this draft.");
+      return;
+    }
     setEditingLR(lr);
     setDialogOpen(true);
   }
@@ -167,29 +194,41 @@ export default function LRListPage() {
       setSaving(true);
 
       if (editingLR) {
-        await updateLR(editingLR.id, values);
-        toast.success("LR updated successfully.");
-      } else {
-        // Automatic LR Number Generation: LR Prefix + zero-padded next
-        // running number, both from Company Master Document Settings. The
-        // running number only advances after `createLR` actually succeeds
-        // (see below) — a failed save never consumes a number.
-        const company = await getCompany();
+        if (editingLR.entryStatus === "draft" || isDraftLrNumber(editingLR.lrNumber)) {
+          if (!canContinueDraft) {
+            toast.error("You do not have permission to continue this draft.");
+            return;
+          }
 
-        if (!company) {
-          toast.error("Configure Company Settings (LR Prefix) before creating an LR.");
-          return;
+          // Number was reserved when the draft was first persisted.
+          // Legacy DRAFT-* rows (pre-036) get one atomic allocation on finalize.
+          let lrNumber = editingLR.lrNumber;
+          if (isDraftLrNumber(lrNumber) || !lrNumber.trim()) {
+            lrNumber = await allocateNextLrNumber();
+          }
+
+          await updateLR(editingLR.id, {
+            ...values,
+            lrNumber,
+            entryStatus: "final",
+          });
+          toast.success(`LR ${lrNumber} saved successfully.`);
+        } else {
+          if (!canEdit) {
+            toast.error("You do not have permission to edit finalized LRs.");
+            return;
+          }
+          await updateLR(editingLR.id, {
+            ...values,
+            lrNumber: editingLR.lrNumber,
+            entryStatus: "final",
+          });
+          toast.success("LR updated successfully.");
         }
-
-        const nextRunningNumber = (company.lrRunningNumber ?? 0) + 1;
-        const lrNumber = `${company.lrPrefix}${String(nextRunningNumber).padStart(
-          company.lrPrefixLength || 4,
-          "0"
-        )}`;
-
-        await createLR({ ...values, lrNumber });
-        await saveCompany({ ...company, lrRunningNumber: nextRunningNumber }, company.id);
-
+      } else {
+        // Direct final create (no prior draft) — reserve atomically once.
+        const lrNumber = await allocateNextLrNumber();
+        await createLR({ ...values, lrNumber, entryStatus: "final" });
         toast.success(`LR ${lrNumber} created successfully.`);
       }
 
@@ -205,6 +244,45 @@ export default function LRListPage() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleAutosave(values: LR) {
+    // First persist reserves a real LR number atomically. Later autosaves
+    // keep that number. Opening the form alone does not consume a number.
+    if (autosaveInFlightRef.current) return;
+    autosaveInFlightRef.current = true;
+
+    try {
+      const draftValues = normalizeLrForDraftPersist(values);
+
+      if (editingLR) {
+        const reservedNumber =
+          editingLR.lrNumber && !isDraftLrNumber(editingLR.lrNumber)
+            ? editingLR.lrNumber
+            : draftValues.lrNumber && !isDraftLrNumber(draftValues.lrNumber)
+              ? draftValues.lrNumber
+              : await allocateNextLrNumber();
+
+        const updated = await updateLR(editingLR.id, {
+          ...draftValues,
+          lrNumber: reservedNumber,
+        });
+        setEditingLR(updated);
+        return;
+      }
+
+      if (!values.consignor.trim() && !values.customer.trim()) return;
+
+      const lrNumber = await allocateNextLrNumber();
+      const created = await createLR({
+        ...draftValues,
+        lrNumber,
+      });
+      setEditingLR(created);
+      await loadLRs();
+    } finally {
+      autosaveInFlightRef.current = false;
     }
   }
 
@@ -401,6 +479,7 @@ export default function LRListPage() {
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
+        onContinueDraft={handleContinueDraft}
         onDelete={setDeleteTarget}
         onPrint={handlePrint}
         onShare={handleShare}
@@ -408,6 +487,10 @@ export default function LRListPage() {
         onReassign={handleReassign}
         resolveAssignedName={resolveAssignedName}
         canEdit={canEdit}
+        canContinueDraft={canContinueDraft}
+        canDelete={canDelete}
+        canPrint={canPrint}
+        canShare={canShare}
       />
 
       <LRDialog
@@ -416,6 +499,7 @@ export default function LRListPage() {
         lr={editingLR}
         loading={saving}
         onSubmit={handleSubmit}
+        onAutosave={canContinueDraft ? handleAutosave : undefined}
       />
 
       <ConfirmDialog

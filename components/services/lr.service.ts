@@ -24,8 +24,12 @@ export interface LRRecord extends LR {
   lorryHireAmount: number;
   profitAmount: number;
   createdBy: string | null;
+  updatedBy: string | null;
   assignedTo: string | null;
+  /** Draft vs finalized entry (migration 034). Defaults to final. */
+  entryStatus: "draft" | "final";
   created_at?: string;
+  updated_at?: string;
 }
 
 const TABLE = "lrs";
@@ -90,7 +94,19 @@ function toRow(values: LR) {
  * computed commercial columns pass through explicitly since they live
  * outside the `LR` domain type. */
 function fromRow(row: Record<string, unknown>): LRRecord {
-  const { id, created_at, bill_amount, lorry_hire_amount, profit_amount, created_by, assigned_to, ...rest } = row;
+  const {
+    id,
+    created_at,
+    updated_at,
+    bill_amount,
+    lorry_hire_amount,
+    profit_amount,
+    created_by,
+    updated_by,
+    assigned_to,
+    entry_status,
+    ...rest
+  } = row;
 
   for (const [dbColumn, correctKey] of Object.entries(REVERSE_COLUMN_RENAMES)) {
     if (dbColumn in rest) {
@@ -114,8 +130,11 @@ function fromRow(row: Record<string, unknown>): LRRecord {
     lorryHireAmount: (lorry_hire_amount as number | null) ?? 0,
     profitAmount: (profit_amount as number | null) ?? 0,
     createdBy: (created_by as string | null) ?? null,
+    updatedBy: (updated_by as string | null) ?? null,
     assignedTo: (assigned_to as string | null) ?? null,
+    entryStatus: entry_status === "draft" ? "draft" : "final",
     created_at: created_at as string | undefined,
+    updated_at: updated_at as string | undefined,
   };
 }
 
@@ -164,13 +183,15 @@ export async function createLR(values: LR): Promise<LRRecord> {
   if (error) throw error;
 
   const record = fromRow(data);
-  void emitNotificationEvent({
-    ruleKey: "lr.created",
-    title: `LR ${record.lrNumber} created`,
-    body: `${record.consignor} → ${record.consignee}`,
-    href: "/lr",
-    payload: { lrId: record.id, lrNumber: record.lrNumber },
-  });
+  if (record.entryStatus !== "draft") {
+    void emitNotificationEvent({
+      ruleKey: "lr.created",
+      title: `LR ${record.lrNumber} created`,
+      body: `${record.consignor} → ${record.consignee}`,
+      href: "/lr",
+      payload: { lrId: record.id, lrNumber: record.lrNumber },
+    });
+  }
   return record;
 }
 
@@ -190,6 +211,10 @@ export async function updateLR(id: number, values: LR): Promise<LRRecord> {
   if (error) throw error;
 
   const record = fromRow(data);
+
+  if (record.entryStatus === "draft") {
+    return record;
+  }
 
   // Keep linked Delivery Challans (matched by `lr_number`) in sync for
   // LR-derived snapshot fields only: qty ← loadingWeight, po_number ←

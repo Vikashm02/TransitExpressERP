@@ -24,10 +24,9 @@ interface LookupDialogProps<T> {
 }
 
 /**
- * Generic master-data lookup, built on the shared `FormDialog` + `DataTable`
- * framework instead of a bespoke `Dialog` + raw `<table>`. Carries no
- * domain-specific logic — callers (CustomerLookup, VehicleLookup, etc.)
- * own the data source, search filtering, and column definitions.
+ * Generic master-data lookup. Entire rows are clickable for selection
+ * (desktop + mobile). A Select action remains as a keyboard-friendly
+ * secondary control.
  */
 export default function LookupDialog<T extends Record<string, any>>({
   open,
@@ -46,6 +45,11 @@ export default function LookupDialog<T extends Record<string, any>>({
     render: (row) => String(row[column.key] ?? ""),
   }));
 
+  function selectAndClose(item: T) {
+    onSelect(item);
+    onClose();
+  }
+
   return (
     <FormDialog
       open={open}
@@ -53,6 +57,7 @@ export default function LookupDialog<T extends Record<string, any>>({
         if (!next) onClose();
       }}
       title={title}
+      description="Click a row to select. Type to filter results."
       size="lg"
     >
       <DataTable
@@ -63,12 +68,14 @@ export default function LookupDialog<T extends Record<string, any>>({
         searchable
         searchValue={search}
         onSearchChange={onSearchChange}
-        searchPlaceholder="Search..."
-        emptyTitle="No records found"
+        searchPlaceholder="Type to search..."
+        emptyTitle="No matching records"
+        emptyDescription="Try a different search, or add the record in Master data first."
+        onRowClick={selectAndClose}
         actions={[
           {
             label: "Select",
-            onClick: onSelect,
+            onClick: selectAndClose,
           },
         ]}
       />

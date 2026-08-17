@@ -215,7 +215,17 @@ export async function parseAndValidateCustomerUpload(
       }
     }
 
-    const candidate: Customer = { code, name, gst, mobile, email, city, address, status };
+    const candidate: Customer = {
+      code,
+      name,
+      gst,
+      mobile,
+      email,
+      city,
+      address,
+      status,
+      entryStatus: "final",
+    };
 
     for (const message of Object.values(validateCustomer(candidate))) {
       if (message) messages.push(message);

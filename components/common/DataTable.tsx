@@ -66,6 +66,13 @@ interface DataTableProps<T> {
   /** Right-aligned per-row action buttons (Edit / Delete / etc). */
   actions?: DataTableAction<T>[];
 
+  /** Clicking the row (desktop table or mobile card) selects/opens it. */
+  onRowClick?: (row: T) => void;
+  /** Optional className for each data row (e.g. draft highlight). */
+  getRowClassName?: (row: T) => string | undefined;
+  /** Highlight the currently selected row when using row selection. */
+  selectedRowKey?: string | number | null;
+
   /** Optional built-in search box, for standalone usage (e.g. lookup dialogs)
    *  that don't already sit below a `SearchToolbar`. */
   searchable?: boolean;
@@ -106,6 +113,9 @@ export default function DataTable<T extends Record<string, any>>({
   emptyDescription,
   emptyIcon: EmptyIcon = Inbox,
   actions,
+  onRowClick,
+  getRowClassName,
+  selectedRowKey = null,
   searchable = false,
   searchValue = "",
   onSearchChange,
@@ -309,8 +319,31 @@ export default function DataTable<T extends Record<string, any>>({
                 </TableCell>
               </TableRow>
             ) : (
-              pagedData.map((row, index) => (
-                <TableRow key={rowKey ? rowKey(row, index) : index}>
+              pagedData.map((row, index) => {
+                const key = rowKey ? rowKey(row, index) : index;
+                const selected = selectedRowKey != null && selectedRowKey === key;
+                return (
+                <TableRow
+                  key={key}
+                  className={cn(
+                    onRowClick && "cursor-pointer hover:bg-muted/60",
+                    selected && "bg-primary/8 ring-1 ring-inset ring-primary/25",
+                    getRowClassName?.(row)
+                  )}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  onKeyDown={
+                    onRowClick
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onRowClick(row);
+                          }
+                        }
+                      : undefined
+                  }
+                  tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? "button" : undefined}
+                >
                   {columns.map((column) => (
                     <TableCell
                       key={column.key}
@@ -329,7 +362,7 @@ export default function DataTable<T extends Record<string, any>>({
                   ))}
 
                   {hasActions && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-2">
                         {actions!.map((action) => {
                           if (action.hidden?.(row)) return null;
@@ -352,7 +385,8 @@ export default function DataTable<T extends Record<string, any>>({
                     </TableCell>
                   )}
                 </TableRow>
-              ))
+              );
+              })
             )}
           </TableBody>
         </Table>
@@ -385,8 +419,32 @@ export default function DataTable<T extends Record<string, any>>({
             )}
           </div>
         ) : (
-          pagedData.map((row, index) => (
-            <div key={rowKey ? rowKey(row, index) : index} className="space-y-3 p-4">
+          pagedData.map((row, index) => {
+            const key = rowKey ? rowKey(row, index) : index;
+            const selected = selectedRowKey != null && selectedRowKey === key;
+            return (
+            <div
+              key={key}
+              className={cn(
+                "space-y-3 p-4",
+                onRowClick && "cursor-pointer hover:bg-muted/40",
+                selected && "bg-primary/8 ring-1 ring-inset ring-primary/25",
+                getRowClassName?.(row)
+              )}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onRowClick(row);
+                      }
+                    }
+                  : undefined
+              }
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? "button" : undefined}
+            >
               <div className="flex items-start justify-between gap-3">
                 <p className="min-w-0 truncate text-sm font-semibold text-foreground">
                   {renderCellValue(titleColumn, row, index)}
@@ -420,7 +478,10 @@ export default function DataTable<T extends Record<string, any>>({
               )}
 
               {hasActions && (
-                <div className="flex flex-wrap gap-2 border-t pt-3">
+                <div
+                  className="flex flex-wrap gap-2 border-t pt-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {actions!.map((action) => {
                     if (action.hidden?.(row)) return null;
 
@@ -441,7 +502,8 @@ export default function DataTable<T extends Record<string, any>>({
                 </div>
               )}
             </div>
-          ))
+          );
+          })
         )}
       </div>
 

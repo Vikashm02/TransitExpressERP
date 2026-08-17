@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, IndianRupee, type LucideIcon } from "lucide-react";
+import { Activity, FileText, IndianRupee, type LucideIcon } from "lucide-react";
 
 interface ReportLink {
   title: string;
@@ -28,6 +28,12 @@ const REPORTS: ReportLink[] = [
     description: "Number of Bills, Total Billing Amount, Amount Received, and Outstanding for every Billing Party.",
     href: "/reports/billing-summary",
     icon: IndianRupee,
+  },
+  {
+    title: "Staff Operations Activity",
+    description: "Counts of LR, POD, Delivery Challan, and ASN records created or edited by a staff member.",
+    href: "/reports/staff-activity",
+    icon: Activity,
   },
 ];
 

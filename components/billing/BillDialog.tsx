@@ -10,10 +10,12 @@ import { Input } from "@/components/ui/input";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import BillingPartyLookup from "@/components/lookup/BillingPartyLookup";
 import type { BillingPartyRecord } from "@/components/services/billingParty.service";
+import { getCompany } from "@/components/services/company.service";
 import { getLRs, type LRRecord } from "@/components/services/lr.service";
 import { getPods, type PodRecord } from "@/components/services/pod.service";
 import { computeBillingLine } from "@/lib/calculations/billingCalculations";
 import { amountInWords } from "@/lib/numberToWords";
+import { formatNextDocumentNumber } from "@/lib/permissions";
 import { validateBill, type Bill } from "./billing.schema";
 import type { BillLineInput } from "@/components/services/billing.service";
 
@@ -59,6 +61,7 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
   const [selectedLrIds, setSelectedLrIds] = useState<Set<string>>(new Set());
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [nextBillNumberPreview, setNextBillNumberPreview] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -68,15 +71,26 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
     setBillDate("");
     setSelectedLrIds(new Set());
     setFormError(null);
+    setNextBillNumberPreview("");
 
     let cancelled = false;
     setDataLoading(true);
 
-    Promise.all([getLRs(), getPods()])
-      .then(([lrData, podData]) => {
+    Promise.all([getLRs(), getPods(), getCompany()])
+      .then(([lrData, podData, company]) => {
         if (cancelled) return;
         setLrs(lrData);
         setPods(podData);
+        if (company) {
+          // Preview only — does not allocate / increment the running number.
+          setNextBillNumberPreview(
+            formatNextDocumentNumber(
+              company.invoicePrefix,
+              company.invoicePrefixLength,
+              company.invoiceRunningNumber
+            )
+          );
+        }
       })
       .catch((error) => {
         console.error(error);
@@ -290,15 +304,15 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
             </FormField>
 
             <FormField
-              label="Bill Number"
+              label="Next Bill Number"
               htmlFor="bill-number"
-              hint="Auto-generated from Company Master Document Settings on save."
+              hint="Preview from Company Master Document Settings — allocated on save."
             >
               <Input
                 id="bill-number"
                 readOnly
                 placeholder="Auto-generated on save"
-                value=""
+                value={nextBillNumberPreview}
               />
             </FormField>
 

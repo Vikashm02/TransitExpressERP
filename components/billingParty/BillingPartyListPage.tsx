@@ -25,9 +25,12 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function BillingPartyListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("billing_parties", "create_view");
-  const canEdit = hasPermission("billing_parties", "edit");
+  const canEdit =
+    hasPermission("billing_parties", "edit") || hasAction("billing_parties", "edit");
+  const canContinueDraft = canCreate || canEdit;
+  const canDelete = hasAction("billing_parties", "delete");
 
   const [billingParties, setBillingParties] = useState<BillingPartyRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +86,21 @@ export default function BillingPartyListPage() {
   }
 
   function handleEdit(billingParty: BillingPartyRecord) {
+    if (billingParty.entryStatus === "draft") return;
+    if (!canEdit) {
+      toast.error("You do not have permission to edit finalized billing parties.");
+      return;
+    }
+    setEditingBillingParty(billingParty);
+    setDialogOpen(true);
+  }
+
+  function handleContinueDraft(billingParty: BillingPartyRecord) {
+    if (billingParty.entryStatus !== "draft") return;
+    if (!canContinueDraft) {
+      toast.error("You do not have permission to continue this draft.");
+      return;
+    }
     setEditingBillingParty(billingParty);
     setDialogOpen(true);
   }
@@ -97,10 +115,19 @@ export default function BillingPartyListPage() {
       setSaving(true);
 
       if (editingBillingParty) {
-        await updateBillingParty(editingBillingParty.id, values);
+        if (editingBillingParty.entryStatus === "draft") {
+          if (!canContinueDraft) {
+            toast.error("You do not have permission to continue this draft.");
+            return;
+          }
+        } else if (!canEdit) {
+          toast.error("You do not have permission to edit finalized billing parties.");
+          return;
+        }
+        await updateBillingParty(editingBillingParty.id, { ...values, entryStatus: "final" });
         toast.success("Billing party updated successfully.");
       } else {
-        await createBillingParty(values);
+        await createBillingParty({ ...values, entryStatus: "final" });
         toast.success("Billing party created successfully.");
       }
 
@@ -117,6 +144,18 @@ export default function BillingPartyListPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleAutosave(values: BillingPartyMaster) {
+    const draftValues = { ...values, entryStatus: "draft" as const };
+    if (editingBillingParty) {
+      const updated = await updateBillingParty(editingBillingParty.id, draftValues);
+      setEditingBillingParty(updated);
+      return;
+    }
+    const created = await createBillingParty(draftValues);
+    setEditingBillingParty(created);
+    await loadBillingParties();
   }
 
   async function handleConfirmDelete() {
@@ -222,8 +261,11 @@ export default function BillingPartyListPage() {
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
+        onContinueDraft={handleContinueDraft}
         onDelete={setDeleteTarget}
         canEdit={canEdit}
+        canContinueDraft={canContinueDraft}
+        canDelete={canDelete}
       />
 
       <BillingPartyDialog
@@ -232,6 +274,7 @@ export default function BillingPartyListPage() {
         billingParty={editingBillingParty}
         loading={saving}
         onSubmit={handleSubmit}
+        onAutosave={canContinueDraft ? handleAutosave : undefined}
       />
 
       <BillingPartyBulkUploadDialog

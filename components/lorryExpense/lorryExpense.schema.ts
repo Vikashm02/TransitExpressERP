@@ -33,6 +33,8 @@ export const LORRY_EXPENSE_STATUS_SELECT_OPTIONS = [
 export const lorryExpenseSchema = z.object({
   lrId: z.number().int().positive("Select an LR."),
   expenseStatus: z.enum(LORRY_EXPENSE_STATUS_OPTIONS),
+  /** Draft vs finalized Financials entry (migration 034). */
+  entryStatus: z.enum(["draft", "final"]).default("final"),
   driverAdvance: nonNegativeNumber("Cannot be negative."),
   driverAdvance1Date: z.string().trim(),
   driverAdvance2: nonNegativeNumber("Cannot be negative."),

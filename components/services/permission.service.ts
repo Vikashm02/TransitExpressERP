@@ -1,15 +1,16 @@
 import { supabase } from "@/lib/supabase";
-import type { PermissionKey, PermissionLevel } from "@/lib/permissions";
+import {
+  actionsToLevel,
+  levelToActions,
+  type ModuleActions,
+  type PermissionAction,
+  type PermissionKey,
+  type PermissionLevel,
+  EMPTY_MODULE_ACTIONS,
+} from "@/lib/permissions";
 
 /**
- * CRUD for `app_user_permissions` (migration 019) — the per-module,
- * per-staff-member permission rows behind the Staff / Sub-User Access
- * Control system. `getMyPermissions()` is called once per session by
- * `AuthProvider` (alongside the profile fetch); `getUserPermissions()`
- * + `setUserPermission()` back the Admin-only Edit Permissions dialog
- * on the Staff page. Reads/writes are additionally protected by RLS
- * (a staff member can only ever read their own row; only an Admin can
- * write any row) — see that migration for details.
+ * CRUD for `app_user_permissions` (migrations 019 + 033).
  */
 
 const TABLE = "app_user_permissions";
@@ -17,57 +18,122 @@ const TABLE = "app_user_permissions";
 interface AppUserPermissionRow {
   permission_key: string;
   permission_level: string | null;
+  can_view?: boolean | null;
+  can_create?: boolean | null;
+  can_edit?: boolean | null;
+  can_delete?: boolean | null;
+  can_print?: boolean | null;
+  can_share?: boolean | null;
 }
 
 function normalizeLevel(level: string | null): PermissionLevel {
   return level === "view" || level === "create_view" || level === "edit" ? level : "none";
 }
 
-export type PermissionMap = Partial<Record<PermissionKey, PermissionLevel>>;
+function rowToActions(row: AppUserPermissionRow): ModuleActions {
+  const hasFlags =
+    row.can_view != null ||
+    row.can_create != null ||
+    row.can_edit != null ||
+    row.can_delete != null ||
+    row.can_print != null ||
+    row.can_share != null;
 
-async function fetchPermissions(userId: string): Promise<PermissionMap> {
+  if (hasFlags) {
+    return {
+      view: Boolean(row.can_view),
+      create: Boolean(row.can_create),
+      edit: Boolean(row.can_edit),
+      delete: Boolean(row.can_delete),
+      print: Boolean(row.can_print),
+      share: Boolean(row.can_share),
+    };
+  }
+
+  return levelToActions(normalizeLevel(row.permission_level));
+}
+
+export type PermissionMap = Partial<Record<PermissionKey, PermissionLevel>>;
+export type PermissionActionsMap = Partial<Record<PermissionKey, ModuleActions>>;
+
+async function fetchPermissionActions(userId: string): Promise<PermissionActionsMap> {
   const { data, error } = await supabase
     .from(TABLE)
-    .select("permission_key, permission_level")
+    .select(
+      "permission_key, permission_level, can_view, can_create, can_edit, can_delete, can_print, can_share"
+    )
     .eq("user_id", userId);
 
   if (error) throw error;
 
-  const map: PermissionMap = {};
+  const map: PermissionActionsMap = {};
   for (const row of (data ?? []) as AppUserPermissionRow[]) {
-    map[row.permission_key as PermissionKey] = normalizeLevel(row.permission_level);
+    map[row.permission_key as PermissionKey] = rowToActions(row);
+  }
+  return map;
+}
+
+function actionsMapToLevelMap(actions: PermissionActionsMap): PermissionMap {
+  const map: PermissionMap = {};
+  for (const [key, value] of Object.entries(actions)) {
+    map[key as PermissionKey] = actionsToLevel(value ?? EMPTY_MODULE_ACTIONS);
   }
   return map;
 }
 
 /** Used by AuthProvider right after sign-in, for the current user. */
+export async function getMyPermissionActions(userId: string): Promise<PermissionActionsMap> {
+  return fetchPermissionActions(userId);
+}
+
+/** @deprecated Prefer getMyPermissionActions — kept for transitional callers. */
 export async function getMyPermissions(userId: string): Promise<PermissionMap> {
-  return fetchPermissions(userId);
+  return actionsMapToLevelMap(await fetchPermissionActions(userId));
+}
+
+export async function getUserPermissionActions(userId: string): Promise<PermissionActionsMap> {
+  return fetchPermissionActions(userId);
 }
 
 /** Used by the Staff page's Edit Permissions dialog for any user. */
 export async function getUserPermissions(userId: string): Promise<PermissionMap> {
-  return fetchPermissions(userId);
+  return actionsMapToLevelMap(await fetchPermissionActions(userId));
+}
+
+export async function setUserModuleActions(
+  userId: string,
+  key: PermissionKey,
+  actions: ModuleActions
+): Promise<void> {
+  const level = actionsToLevel(actions);
+  const { error } = await supabase.from(TABLE).upsert(
+    {
+      user_id: userId,
+      permission_key: key,
+      permission_level: level,
+      can_view: actions.view,
+      can_create: actions.create,
+      can_edit: actions.edit,
+      can_delete: actions.delete,
+      can_print: actions.print,
+      can_share: actions.share,
+    },
+    { onConflict: "user_id,permission_key" }
+  );
+
+  if (error) throw error;
 }
 
 /**
  * Admin-only: set a single module's permission level for a staff
- * member. Setting `"none"` still leaves a row behind (rather than
- * deleting it) so the Edit Permissions dialog has an explicit value
- * to show — `getMyPermissions()` treats a missing row the same as
- * `"none"` either way.
+ * member (expands into action flags for migration 033 columns).
  */
 export async function setUserPermission(
   userId: string,
   key: PermissionKey,
   level: PermissionLevel
 ): Promise<void> {
-  const { error } = await supabase
-    .from(TABLE)
-    .upsert(
-      { user_id: userId, permission_key: key, permission_level: level },
-      { onConflict: "user_id,permission_key" }
-    );
-
-  if (error) throw error;
+  await setUserModuleActions(userId, key, levelToActions(level));
 }
+
+export type { PermissionAction };

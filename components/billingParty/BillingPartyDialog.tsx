@@ -9,15 +9,15 @@ import { validateBillingParty, type BillingPartyMaster } from "./billingParty.sc
 import type { FieldErrors } from "@/lib/validation";
 import type { BillingPartyRecord } from "@/components/services/billingParty.service";
 import { pickFields } from "@/lib/utils";
+import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 
 interface BillingPartyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Pass a record to edit; omit/null to add a new billing party. */
   billingParty?: BillingPartyRecord | null;
-  /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
   loading?: boolean;
   onSubmit: (values: BillingPartyMaster) => void | Promise<void>;
+  onAutosave?: (values: BillingPartyMaster) => void | Promise<void>;
 }
 
 const emptyBillingParty: BillingPartyMaster = {
@@ -29,15 +29,13 @@ const emptyBillingParty: BillingPartyMaster = {
   city: "",
   address: "",
   status: "Active",
+  entryStatus: "final",
   poNumber: "",
   concernPerson: "",
   shortCode: "",
   paymentCycleDays: 0,
 };
 
-/** Picks only the `BillingPartyMaster` schema fields off a `BillingPartyRecord`,
- * dropping server-owned columns (`id`, `created_at`) so they never enter
- * editable form state — and therefore never reach `updateBillingParty()`'s payload. */
 function toEditableBillingParty(record: BillingPartyRecord): BillingPartyMaster {
   return pickFields(record, Object.keys(emptyBillingParty) as (keyof BillingPartyMaster)[]);
 }
@@ -48,9 +46,11 @@ export default function BillingPartyDialog({
   billingParty,
   loading = false,
   onSubmit,
+  onAutosave,
 }: BillingPartyDialogProps) {
   const [values, setValues] = useState<BillingPartyMaster>(emptyBillingParty);
   const [errors, setErrors] = useState<FieldErrors<BillingPartyMaster>>({});
+  const [draftHint, setDraftHint] = useState<string | null>(null);
 
   const isEditing = Boolean(billingParty);
 
@@ -62,23 +62,37 @@ export default function BillingPartyDialog({
           : emptyBillingParty
       );
       setErrors({});
+      setDraftHint(
+        billingParty?.entryStatus === "draft"
+          ? "Incomplete draft — continue editing, then Save."
+          : null
+      );
     }
   }, [open, billingParty]);
 
+  useDebouncedAutosave({
+    values,
+    enabled: open && Boolean(onAutosave) && !loading && values.name.trim().length > 0,
+    delayMs: 2000,
+    onSave: async (next) => {
+      if (!onAutosave) return;
+      try {
+        await onAutosave({ ...next, entryStatus: "draft" });
+        setDraftHint("Draft saved");
+      } catch {
+        // Quiet — final Save still validates.
+      }
+    },
+  });
+
   function handleSave() {
     const fieldErrors = validateBillingParty(values);
-
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
       return;
     }
-
     setErrors({});
-    onSubmit(values);
-  }
-
-  function handleCancel() {
-    onOpenChange(false);
+    onSubmit({ ...values, entryStatus: "final" });
   }
 
   return (
@@ -89,34 +103,25 @@ export default function BillingPartyDialog({
       description={
         isEditing
           ? "Update the billing party details below."
-          : "Enter the billing party details below."
+          : "Enter details below. Progress autosaves as an Incomplete draft."
       }
       loading={loading}
       loadingText="Saving billing party..."
       footer={
         <>
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={loading}
-          >
+          {draftHint ? (
+            <p className="mr-auto text-xs text-muted-foreground">{draftHint}</p>
+          ) : null}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
-
-          <Button
-            onClick={handleSave}
-            disabled={loading}
-          >
+          <Button onClick={handleSave} disabled={loading}>
             {loading ? "Saving..." : "Save Billing Party"}
           </Button>
         </>
       }
     >
-      <BillingPartyForm
-        billingParty={values}
-        errors={errors}
-        onChange={setValues}
-      />
+      <BillingPartyForm billingParty={values} errors={errors} onChange={setValues} />
     </FormDialog>
   );
 }

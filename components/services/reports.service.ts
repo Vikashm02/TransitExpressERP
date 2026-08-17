@@ -1,5 +1,6 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
 
+import { supabase } from "@/lib/supabase";
 import { getBillingParties, type BillingPartyRecord } from "./billingParty.service";
 import { getBills } from "./billing.service";
 import { getCreditNotes } from "./creditNote.service";
@@ -346,5 +347,125 @@ export async function getBillingSummaryReport(
     totalBillingAmount: rows.reduce((sum, row) => sum + row.totalBillingAmount, 0),
     totalAmountReceived: rows.reduce((sum, row) => sum + row.amountReceived, 0),
     totalOutstanding: rows.reduce((sum, row) => sum + row.outstandingAmount, 0),
+  };
+}
+
+/* ==========================================================
+   REPORT 4 — STAFF OPERATIONS ACTIVITY
+
+   Counts LR / POD / Delivery Challan / ASN rows created (and edited)
+   by a given app user within a date range. Uses the anon Supabase
+   client only — never the service role.
+========================================================== */
+
+export type StaffActivityModuleKey = "all" | "lr" | "pod" | "dc" | "asn";
+
+export interface StaffActivityRow {
+  module: string;
+  moduleKey: Exclude<StaffActivityModuleKey, "all">;
+  createdCount: number;
+  editedCount: number;
+}
+
+export interface StaffActivityReport {
+  staffUserId: string;
+  fromDate: string;
+  toDate: string;
+  moduleFilter: StaffActivityModuleKey;
+  rows: StaffActivityRow[];
+  totalCreated: number;
+  totalEdited: number;
+}
+
+export interface StaffActivityFilters {
+  staffUserId: string;
+  fromDate?: string;
+  toDate?: string;
+  module?: StaffActivityModuleKey;
+}
+
+const STAFF_ACTIVITY_MODULES: Array<{
+  key: Exclude<StaffActivityModuleKey, "all">;
+  label: string;
+  table: string;
+}> = [
+  { key: "lr", label: "LR", table: "lrs" },
+  { key: "pod", label: "POD", table: "pods" },
+  { key: "dc", label: "Delivery Challan", table: "delivery_challans" },
+  { key: "asn", label: "ASN", table: "asn_creations" },
+];
+
+async function countStaffOps(
+  table: string,
+  staffColumn: "created_by" | "updated_by",
+  dateColumn: "created_at" | "updated_at",
+  staffUserId: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<number> {
+  let query = supabase
+    .from(table)
+    .select("*", { count: "exact", head: true })
+    .eq(staffColumn, staffUserId);
+
+  if (fromDate) {
+    query = query.gte(dateColumn, `${fromDate}T00:00:00`);
+  }
+  if (toDate) {
+    query = query.lte(dateColumn, `${toDate}T23:59:59.999`);
+  }
+
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function getStaffActivityReport(
+  filters: StaffActivityFilters
+): Promise<StaffActivityReport> {
+  const moduleFilter = filters.module ?? "all";
+  const modules =
+    moduleFilter === "all"
+      ? STAFF_ACTIVITY_MODULES
+      : STAFF_ACTIVITY_MODULES.filter((module) => module.key === moduleFilter);
+
+  const rows: StaffActivityRow[] = await Promise.all(
+    modules.map(async (module) => {
+      const [createdCount, editedCount] = await Promise.all([
+        countStaffOps(
+          module.table,
+          "created_by",
+          "created_at",
+          filters.staffUserId,
+          filters.fromDate,
+          filters.toDate
+        ),
+        countStaffOps(
+          module.table,
+          "updated_by",
+          "updated_at",
+          filters.staffUserId,
+          filters.fromDate,
+          filters.toDate
+        ),
+      ]);
+
+      return {
+        module: module.label,
+        moduleKey: module.key,
+        createdCount,
+        editedCount,
+      };
+    })
+  );
+
+  return {
+    staffUserId: filters.staffUserId,
+    fromDate: filters.fromDate ?? "",
+    toDate: filters.toDate ?? "",
+    moduleFilter,
+    rows,
+    totalCreated: rows.reduce((sum, row) => sum + row.createdCount, 0),
+    totalEdited: rows.reduce((sum, row) => sum + row.editedCount, 0),
   };
 }

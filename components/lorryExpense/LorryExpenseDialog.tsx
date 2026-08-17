@@ -42,6 +42,8 @@ import {
 } from "@/lib/calculations/lorrySettlement";
 import type { FieldErrors } from "@/lib/validation";
 import { pickFields } from "@/lib/utils";
+import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
+import { isDraftEntry } from "@/lib/entryStatus";
 
 interface LorryExpenseDialogProps {
   open: boolean;
@@ -55,11 +57,17 @@ interface LorryExpenseDialogProps {
     existingId: number | null,
     commercial: FinancialsLrCommercial
   ) => void | Promise<void>;
+  /** Draft autosave — expense row only; does not finalize or notify. */
+  onAutosave?: (
+    values: LorryExpense,
+    existingId: number | null
+  ) => void | Promise<number | null>;
 }
 
 const emptyExpense: LorryExpense = {
   lrId: 0,
   expenseStatus: "pending",
+  entryStatus: "final",
   driverAdvance: 0,
   driverAdvance1Date: "",
   driverAdvance2: 0,
@@ -157,6 +165,7 @@ export default function LorryExpenseDialog({
   loading = false,
   readOnly = false,
   onSubmit,
+  onAutosave,
 }: LorryExpenseDialogProps) {
   const [values, setValues] = useState<LorryExpense>(emptyExpense);
   const [errors, setErrors] = useState<FieldErrors<LorryExpense>>({});
@@ -167,9 +176,34 @@ export default function LorryExpenseDialog({
   const [lookupOpen, setLookupOpen] = useState(false);
   const [brokerSuggestions, setBrokerSuggestions] = useState<string[]>([]);
   const [beneficiarySuggestions, setBeneficiarySuggestions] = useState<string[]>([]);
+  const [draftHint, setDraftHint] = useState<string | null>(null);
 
   const isEditing = Boolean(lorryExpense);
   const lrLocked = isEditing;
+
+  useDebouncedAutosave({
+    values: { values, existingId },
+    enabled:
+      open &&
+      !readOnly &&
+      Boolean(onAutosave) &&
+      !loading &&
+      values.lrId > 0,
+    delayMs: 2500,
+    onSave: async ({ values: next, existingId: id }) => {
+      if (!onAutosave) return;
+      try {
+        const savedId = await onAutosave(
+          { ...next, entryStatus: "draft" },
+          id
+        );
+        if (savedId && !id) setExistingId(savedId);
+        setDraftHint("Draft saved");
+      } catch {
+        // Quiet — final Save still validates.
+      }
+    },
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -180,6 +214,11 @@ export default function LorryExpenseDialog({
     setExistingId(lorryExpense?.id ?? null);
     setSelectedLR(lr ?? null);
     setWorkingLr(lr ? { ...lr } : null);
+    setDraftHint(
+      lorryExpense && isDraftEntry(lorryExpense.entryStatus)
+        ? "Incomplete draft — continue editing, then Save."
+        : null
+    );
 
     Promise.all([getBrokerNameSuggestions(), getBeneficiaryNameSuggestions()])
       .then(([brokers, beneficiaries]) => {
@@ -302,6 +341,9 @@ export default function LorryExpenseDialog({
             <Button onClick={handleClose}>Close</Button>
           ) : (
             <>
+              {draftHint ? (
+                <p className="mr-auto text-xs text-muted-foreground">{draftHint}</p>
+              ) : null}
               <Button variant="outline" onClick={handleClose} disabled={loading}>
                 Cancel
               </Button>

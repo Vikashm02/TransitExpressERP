@@ -14,10 +14,12 @@ interface AsnTableProps {
   onEdit: (asn: AsnRecord) => void;
   onPrint: (asn: AsnRecord) => void;
   onDelete: (asn: AsnRecord) => void;
-  /** Staff / Sub-User Access Control — hides Edit and Delete when the
-   * caller lacks "asn_creations" edit permission (Delete rides on
-   * "edit" — no separate Delete level). Defaults to `true`. */
+  /** Hides Edit when the caller lacks asn_creations edit permission. */
   canEdit?: boolean;
+  /** Hides Delete when the caller lacks asn_creations delete action. */
+  canDelete?: boolean;
+  /** Hides Print when the caller lacks asn_creations print action. */
+  canPrint?: boolean;
 }
 
 function formatEta(value: string): string {
@@ -39,6 +41,8 @@ export default function AsnTable({
   onPrint,
   onDelete,
   canEdit = true,
+  canDelete = true,
+  canPrint = true,
 }: AsnTableProps) {
   const columns: DataTableColumn<AsnRecord>[] = [
     { key: "asnNumber", header: "ASN Number", sortable: true, className: "font-medium" },
@@ -84,13 +88,14 @@ export default function AsnTable({
           icon: Printer,
           variant: "outline",
           onClick: onPrint,
+          hidden: () => !canPrint,
         },
         {
           label: "Delete",
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
-          hidden: () => !canEdit,
+          hidden: () => !canDelete,
         },
       ]}
     />

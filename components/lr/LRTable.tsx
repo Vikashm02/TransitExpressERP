@@ -1,29 +1,36 @@
 "use client";
 
-import { FileText, Pencil, Printer, Share2, UserCog } from "lucide-react";
+import { FileText, Pencil, Printer, Share2, Trash2, UserCog } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import StatusBadge from "@/components/ui/StatusBadge";
 import type { LRRecord } from "@/components/services/lr.service";
+import {
+  draftRowClassName,
+  entryStatusBadgeStatus,
+  entryStatusLabel,
+  isDraftEntry,
+} from "@/lib/entryStatus";
 
 interface LRTableProps {
   lrs: LRRecord[];
   loading?: boolean;
   pageSize?: number;
   onEdit: (lr: LRRecord) => void;
+  /** Resume incomplete draft — must NOT require Edit permission. */
+  onContinueDraft: (lr: LRRecord) => void;
   onDelete: (lr: LRRecord) => void;
   onPrint: (lr: LRRecord) => void;
   onShare: (lr: LRRecord) => void;
-  /** Admin-only — shows the "Assigned To" column and Reassign action.
-   * Staff never see either, matching the read-side RLS restriction
-   * (they can only ever see their own LRs anyway). */
   isAdmin?: boolean;
   onReassign?: (lr: LRRecord) => void;
-  /** Resolves an `assignedTo` uuid to a display name for the column. */
   resolveAssignedName?: (assignedTo: string | null) => string;
-  /** Staff / Sub-User Access Control — hides Edit (and Reassign) when
-   * the caller lacks "lr" edit permission. Defaults to `true` so every
-   * existing call site keeps its current behavior. */
   canEdit?: boolean;
+  /** Create or Edit — required to open/continue a draft row. */
+  canContinueDraft?: boolean;
+  canDelete?: boolean;
+  canPrint?: boolean;
+  canShare?: boolean;
 }
 
 export default function LRTable({
@@ -31,6 +38,7 @@ export default function LRTable({
   loading,
   pageSize,
   onEdit,
+  onContinueDraft,
   onDelete,
   onPrint,
   onShare,
@@ -38,6 +46,10 @@ export default function LRTable({
   onReassign,
   resolveAssignedName,
   canEdit = true,
+  canContinueDraft = true,
+  canDelete = true,
+  canPrint = true,
+  canShare = true,
 }: LRTableProps) {
   const columns: DataTableColumn<LRRecord>[] = [
     { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
@@ -60,14 +72,42 @@ export default function LRTable({
       render: (row) => `₹ ${row.billAmount.toFixed(2)}`,
     },
     { key: "status", header: "Status", type: "status", sortable: true },
+    {
+      key: "entryStatus",
+      header: "Entry",
+      sortable: true,
+      render: (row) =>
+        isDraftEntry(row.entryStatus) ? (
+          <StatusBadge
+            status={entryStatusBadgeStatus(row.entryStatus)}
+            label={entryStatusLabel(row.entryStatus)}
+          />
+        ) : null,
+    },
   ];
 
   if (isAdmin) {
+    columns.push({
+      key: "createdBy",
+      header: "Created By",
+      render: (row) =>
+        row.createdBy
+          ? resolveAssignedName?.(row.createdBy) ?? "Unknown"
+          : "—",
+    });
     columns.push({
       key: "assignedTo",
       header: "Assigned To",
       render: (row) => resolveAssignedName?.(row.assignedTo) ?? "Unassigned",
     });
+  }
+
+  function handleRowClick(row: LRRecord) {
+    if (isDraftEntry(row.entryStatus)) {
+      if (canContinueDraft) onContinueDraft(row);
+      return;
+    }
+    if (canEdit) onEdit(row);
   }
 
   return (
@@ -82,25 +122,43 @@ export default function LRTable({
       sortable
       defaultSort={{ key: "lrDate", direction: "desc" }}
       pageSize={pageSize}
+      getRowClassName={(row) => draftRowClassName(row.entryStatus)}
+      onRowClick={handleRowClick}
       actions={[
         {
           label: "Print",
           icon: Printer,
           variant: "outline",
           onClick: onPrint,
+          hidden: (row) => !canPrint || isDraftEntry(row.entryStatus),
         },
         {
           label: "Share",
           icon: Share2,
           variant: "outline",
           onClick: onShare,
+          hidden: (row) => !canShare || isDraftEntry(row.entryStatus),
+        },
+        {
+          label: "Continue",
+          icon: Pencil,
+          variant: "outline",
+          onClick: onContinueDraft,
+          hidden: (row) => !isDraftEntry(row.entryStatus) || !canContinueDraft,
         },
         {
           label: "Edit",
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: () => !canEdit,
+          hidden: (row) => isDraftEntry(row.entryStatus) || !canEdit,
+        },
+        {
+          label: "Delete",
+          icon: Trash2,
+          variant: "destructive",
+          onClick: onDelete,
+          hidden: () => !canDelete,
         },
         ...(isAdmin && onReassign
           ? [
@@ -109,7 +167,7 @@ export default function LRTable({
                 icon: UserCog,
                 variant: "outline" as const,
                 onClick: onReassign,
-                hidden: () => !canEdit,
+                hidden: (row: LRRecord) => isDraftEntry(row.entryStatus) || !canEdit,
               },
             ]
           : []),

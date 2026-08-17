@@ -38,6 +38,7 @@ export const billingPartySchema = z.object({
   city: z.string().trim(),
   address: z.string().trim(),
   status: z.enum(BILLING_PARTY_STATUS_OPTIONS),
+  entryStatus: z.enum(["draft", "final"]).default("final"),
   // Used by the Billing module: auto-filled onto a new Bill when this
   // Billing Party is selected (see components/billing).
   poNumber: z.string().trim(),

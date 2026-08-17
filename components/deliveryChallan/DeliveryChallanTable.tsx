@@ -14,6 +14,8 @@ interface DeliveryChallanTableProps {
   onPrint: (challan: DeliveryChallanRecord) => void;
   onShare: (challan: DeliveryChallanRecord) => void;
   canEdit?: boolean;
+  canPrint?: boolean;
+  canShare?: boolean;
 }
 
 export default function DeliveryChallanTable({
@@ -25,6 +27,8 @@ export default function DeliveryChallanTable({
   onPrint,
   onShare,
   canEdit = true,
+  canPrint = true,
+  canShare = true,
 }: DeliveryChallanTableProps) {
   const columns: DataTableColumn<DeliveryChallanRecord>[] = [
     { key: "lrNumber", header: "LR Number", sortable: true, className: "font-medium" },
@@ -73,12 +77,14 @@ export default function DeliveryChallanTable({
           icon: Printer,
           variant: "outline",
           onClick: onPrint,
+          hidden: () => !canPrint,
         },
         {
           label: "Share",
           icon: Share2,
           variant: "outline",
           onClick: onShare,
+          hidden: () => !canShare,
         },
       ]}
     />

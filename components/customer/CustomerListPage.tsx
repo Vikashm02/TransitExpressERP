@@ -25,9 +25,11 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function CustomerListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("customers", "create_view");
-  const canEdit = hasPermission("customers", "edit");
+  const canEdit = hasPermission("customers", "edit") || hasAction("customers", "edit");
+  const canContinueDraft = canCreate || canEdit;
+  const canDelete = hasAction("customers", "delete");
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,21 @@ export default function CustomerListPage() {
   }
 
   function handleEdit(customer: CustomerRecord) {
+    if (customer.entryStatus === "draft") return;
+    if (!canEdit) {
+      toast.error("You do not have permission to edit finalized customers.");
+      return;
+    }
+    setEditingCustomer(customer);
+    setDialogOpen(true);
+  }
+
+  function handleContinueDraft(customer: CustomerRecord) {
+    if (customer.entryStatus !== "draft") return;
+    if (!canContinueDraft) {
+      toast.error("You do not have permission to continue this draft.");
+      return;
+    }
     setEditingCustomer(customer);
     setDialogOpen(true);
   }
@@ -97,10 +114,19 @@ export default function CustomerListPage() {
       setSaving(true);
 
       if (editingCustomer) {
-        await updateCustomer(editingCustomer.id, values);
+        if (editingCustomer.entryStatus === "draft") {
+          if (!canContinueDraft) {
+            toast.error("You do not have permission to continue this draft.");
+            return;
+          }
+        } else if (!canEdit) {
+          toast.error("You do not have permission to edit finalized customers.");
+          return;
+        }
+        await updateCustomer(editingCustomer.id, { ...values, entryStatus: "final" });
         toast.success("Customer updated successfully.");
       } else {
-        await createCustomer(values);
+        await createCustomer({ ...values, entryStatus: "final" });
         toast.success("Customer created successfully.");
       }
 
@@ -117,6 +143,18 @@ export default function CustomerListPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleAutosave(values: Customer) {
+    const draftValues = { ...values, entryStatus: "draft" as const };
+    if (editingCustomer) {
+      const updated = await updateCustomer(editingCustomer.id, draftValues);
+      setEditingCustomer(updated);
+      return;
+    }
+    const created = await createCustomer(draftValues);
+    setEditingCustomer(created);
+    await loadCustomers();
   }
 
   async function handleConfirmDelete() {
@@ -222,8 +260,11 @@ export default function CustomerListPage() {
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
+        onContinueDraft={handleContinueDraft}
         onDelete={setDeleteTarget}
         canEdit={canEdit}
+        canContinueDraft={canContinueDraft}
+        canDelete={canDelete}
       />
 
       <CustomerDialog
@@ -232,6 +273,7 @@ export default function CustomerListPage() {
         customer={editingCustomer}
         loading={saving}
         onSubmit={handleSubmit}
+        onAutosave={canContinueDraft ? handleAutosave : undefined}
       />
 
       <CustomerBulkUploadDialog

@@ -9,15 +9,16 @@ import { validateCustomer, type Customer } from "./customer.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { CustomerRecord } from "@/components/services/customer.service";
 import { pickFields } from "@/lib/utils";
+import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 
 interface CustomerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Pass a record to edit; omit/null to add a new customer. */
   customer?: CustomerRecord | null;
-  /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
   loading?: boolean;
   onSubmit: (values: Customer) => void | Promise<void>;
+  /** Debounced draft save — must not finalize the record. */
+  onAutosave?: (values: Customer) => void | Promise<void>;
 }
 
 const emptyCustomer: Customer = {
@@ -29,11 +30,9 @@ const emptyCustomer: Customer = {
   city: "",
   address: "",
   status: "Active",
+  entryStatus: "final",
 };
 
-/** Picks only the `Customer` schema fields off a `CustomerRecord`, dropping
- * server-owned columns (`id`, `created_at`) so they never enter editable
- * form state — and therefore never reach `updateCustomer()`'s payload. */
 function toEditableCustomer(record: CustomerRecord): Customer {
   return pickFields(record, Object.keys(emptyCustomer) as (keyof Customer)[]);
 }
@@ -44,23 +43,38 @@ export default function CustomerDialog({
   customer,
   loading = false,
   onSubmit,
+  onAutosave,
 }: CustomerDialogProps) {
   const [values, setValues] = useState<Customer>(emptyCustomer);
   const [errors, setErrors] = useState<FieldErrors<Customer>>({});
+  const [draftHint, setDraftHint] = useState<string | null>(null);
 
   const isEditing = Boolean(customer);
 
   useEffect(() => {
     if (open) {
-      // Deliberately does NOT spread `customer` wholesale: it's a
-      // `CustomerRecord`, which carries server-owned `id`/`created_at`
-      // alongside the editable fields. Picking only the known `Customer`
-      // keys keeps those server columns out of `values` — and therefore
-      // out of the eventual `updateCustomer()` payload — at the source.
       setValues(customer ? { ...emptyCustomer, ...toEditableCustomer(customer) } : emptyCustomer);
       setErrors({});
+      setDraftHint(
+        customer?.entryStatus === "draft" ? "Incomplete draft — continue editing, then Save." : null
+      );
     }
   }, [open, customer]);
+
+  useDebouncedAutosave({
+    values,
+    enabled: open && Boolean(onAutosave) && !loading && values.name.trim().length > 0,
+    delayMs: 2000,
+    onSave: async (next) => {
+      if (!onAutosave) return;
+      try {
+        await onAutosave({ ...next, entryStatus: "draft" });
+        setDraftHint("Draft saved");
+      } catch {
+        // Keep UI quiet — final Save still validates.
+      }
+    },
+  });
 
   function handleSave() {
     const fieldErrors = validateCustomer(values);
@@ -71,7 +85,7 @@ export default function CustomerDialog({
     }
 
     setErrors({});
-    onSubmit(values);
+    onSubmit({ ...values, entryStatus: "final" });
   }
 
   function handleCancel() {
@@ -86,34 +100,25 @@ export default function CustomerDialog({
       description={
         isEditing
           ? "Update the customer details below."
-          : "Enter the customer details below."
+          : "Enter the customer details below. Progress autosaves as an Incomplete draft."
       }
       loading={loading}
       loadingText="Saving customer..."
       footer={
         <>
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={loading}
-          >
+          {draftHint ? (
+            <p className="mr-auto text-xs text-muted-foreground">{draftHint}</p>
+          ) : null}
+          <Button variant="outline" onClick={handleCancel} disabled={loading}>
             Cancel
           </Button>
-
-          <Button
-            onClick={handleSave}
-            disabled={loading}
-          >
+          <Button onClick={handleSave} disabled={loading}>
             {loading ? "Saving..." : "Save Customer"}
           </Button>
         </>
       }
     >
-      <CustomerForm
-        customer={values}
-        errors={errors}
-        onChange={setValues}
-      />
+      <CustomerForm customer={values} errors={errors} onChange={setValues} />
     </FormDialog>
   );
 }

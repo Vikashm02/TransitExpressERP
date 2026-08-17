@@ -15,12 +15,14 @@ interface LRFormProps {
   lr: LR;
   errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
+  nextLrNumberPreview?: string;
 }
 
 export default function LRForm({
   lr,
   errors = {},
   onChange,
+  nextLrNumberPreview,
 }: LRFormProps) {
   return (
     <div className="space-y-6">
@@ -28,6 +30,7 @@ export default function LRForm({
         lr={lr}
         errors={errors}
         onChange={onChange}
+        nextLrNumberPreview={nextLrNumberPreview}
       />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

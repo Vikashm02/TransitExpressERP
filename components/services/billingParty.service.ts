@@ -13,11 +13,13 @@ const TABLE = "billing_parties";
 /** Supabase returns raw snake_case columns; `id`/`created_at` pass through unchanged. */
 function fromRow(row: Record<string, unknown>): BillingPartyRecord {
   const { id, created_at, ...rest } = row;
+  const mapped = objectToCamelCase<BillingPartyMaster>(rest);
 
   return {
     id: id as number,
     created_at: created_at as string | undefined,
-    ...objectToCamelCase<BillingPartyMaster>(rest),
+    ...mapped,
+    entryStatus: mapped.entryStatus === "draft" ? "draft" : "final",
   };
 }
 

@@ -244,6 +244,7 @@ export async function parseAndValidateBillingPartyUpload(
       city,
       address,
       status,
+      entryStatus: "final",
       poNumber,
       concernPerson,
       shortCode,

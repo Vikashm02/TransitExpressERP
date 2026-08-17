@@ -9,6 +9,8 @@ import { emitNotificationEvent } from "@/components/services/notification.servic
 /** A persisted Financials / Lorry Expense row — one per LR (`lr_id` UNIQUE). */
 export interface LorryExpenseRecord extends LorryExpense {
   id: number;
+  /** Draft vs finalized entry (migration 034). Defaults to final. */
+  entryStatus: "draft" | "final";
   created_at?: string;
 }
 
@@ -38,7 +40,7 @@ function toRow(values: LorryExpense) {
 }
 
 function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
-  const { id, created_at, updated_at: _updated_at, ...rest } = row;
+  const { id, created_at, updated_at: _updated_at, entry_status, ...rest } = row;
 
   const expense = objectToCamelCase<LorryExpense>(rest);
   const record = expense as Record<string, unknown>;
@@ -61,6 +63,7 @@ function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
   return {
     ...(record as LorryExpense),
     id: id as number,
+    entryStatus: entry_status === "draft" ? "draft" : "final",
     created_at: created_at as string | undefined,
   };
 }
@@ -118,13 +121,15 @@ export async function createLorryExpense(values: LorryExpense): Promise<LorryExp
   if (error) throw error;
 
   const record = fromRow(data);
-  void emitNotificationEvent({
-    ruleKey: "financials.created",
-    title: "Financials created",
-    body: `Financial entry for LR #${record.lrId}`,
-    href: "/lorry-expenses",
-    payload: { id: record.id, lrId: record.lrId },
-  });
+  if (record.entryStatus !== "draft") {
+    void emitNotificationEvent({
+      ruleKey: "financials.created",
+      title: "Financials created",
+      body: `Financial entry for LR #${record.lrId}`,
+      href: "/lorry-expenses",
+      payload: { id: record.id, lrId: record.lrId },
+    });
+  }
   return record;
 }
 
@@ -141,28 +146,30 @@ export async function updateLorryExpense(id: number, values: LorryExpense): Prom
   if (error) throw error;
 
   const record = fromRow(data);
-  void emitNotificationEvent({
-    ruleKey: "financials.updated",
-    title: "Financials updated",
-    body: `Financial entry for LR #${record.lrId}`,
-    href: "/lorry-expenses",
-    payload: { id: record.id, lrId: record.lrId },
-  });
-
-  if (
-    values.finalAmountPaid != null ||
-    values.stChalan != null ||
-    values.otherDeduction != null ||
-    values.tdsPercentage != null ||
-    values.balancePaidOn != null
-  ) {
+  if (record.entryStatus !== "draft") {
     void emitNotificationEvent({
-      ruleKey: "financials.settlement_updated",
-      title: "Settlement updated",
-      body: `Settlement fields changed for LR #${record.lrId}`,
+      ruleKey: "financials.updated",
+      title: "Financials updated",
+      body: `Financial entry for LR #${record.lrId}`,
       href: "/lorry-expenses",
       payload: { id: record.id, lrId: record.lrId },
     });
+
+    if (
+      values.finalAmountPaid != null ||
+      values.stChalan != null ||
+      values.otherDeduction != null ||
+      values.tdsPercentage != null ||
+      values.balancePaidOn != null
+    ) {
+      void emitNotificationEvent({
+        ruleKey: "financials.settlement_updated",
+        title: "Settlement updated",
+        body: `Settlement fields changed for LR #${record.lrId}`,
+        href: "/lorry-expenses",
+        payload: { id: record.id, lrId: record.lrId },
+      });
+    }
   }
 
   return record;

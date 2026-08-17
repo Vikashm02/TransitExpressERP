@@ -10,6 +10,9 @@ import type { FieldErrors } from "@/lib/validation";
 import type { LRRecord } from "@/components/services/lr.service";
 import { getCompany } from "@/components/services/company.service";
 import { pickFields } from "@/lib/utils";
+import { formatNextDocumentNumber } from "@/lib/permissions";
+import { isDraftLrNumber } from "@/lib/entryStatus";
+import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 
 interface LRDialogProps {
   open: boolean;
@@ -19,6 +22,8 @@ interface LRDialogProps {
   /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
   loading?: boolean;
   onSubmit: (values: LR) => void | Promise<void>;
+  /** Optional draft autosave — does not finalize numbering. */
+  onAutosave?: (values: LR) => void | Promise<void>;
 }
 
 const emptyLR: LR = {
@@ -90,6 +95,7 @@ const emptyLR: LR = {
 
   // Status
   status: "Open",
+  entryStatus: "final",
 };
 
 /** Picks only the `LR` schema fields off an `LRRecord`, dropping
@@ -107,32 +113,63 @@ export default function LRDialog({
   lr,
   loading = false,
   onSubmit,
+  onAutosave,
 }: LRDialogProps) {
   const [values, setValues] = useState<LR>(emptyLR);
   const [errors, setErrors] = useState<FieldErrors<LR>>({});
+  const [nextLrNumberPreview, setNextLrNumberPreview] = useState("");
+  const [draftHint, setDraftHint] = useState<string | null>(null);
 
   const isEditing = Boolean(lr);
+
+  useDebouncedAutosave({
+    values,
+    enabled:
+      open &&
+      Boolean(onAutosave) &&
+      !loading &&
+      (values.consignor.trim().length > 0 || values.customer.trim().length > 0),
+    delayMs: 2500,
+    onSave: async (next) => {
+      if (!onAutosave) return;
+      try {
+        await onAutosave({ ...next, entryStatus: "draft" });
+        setDraftHint("Draft saved");
+      } catch {
+        // Quiet
+      }
+    },
+  });
 
   useEffect(() => {
     if (!open) return;
 
     setErrors({});
+    setDraftHint(lr?.entryStatus === "draft" ? "Incomplete draft — continue editing, then Save." : null);
 
     if (lr) {
       setValues({ ...emptyLR, ...toEditableLR(lr) });
-      return;
+      if (!isDraftLrNumber(lr.lrNumber)) {
+        setNextLrNumberPreview("");
+        return;
+      }
+    } else {
+      setValues(emptyLR);
     }
-
-    // New LR: default Freight Type from Company Settings, falling back to
-    // the module's historical default when Company Master isn't configured
-    // yet. The user can still change it before saving.
-    setValues(emptyLR);
 
     let cancelled = false;
 
     getCompany()
       .then((company) => {
-        if (!cancelled && company?.defaultFreightType) {
+        if (cancelled || !company) return;
+        setNextLrNumberPreview(
+          formatNextDocumentNumber(
+            company.lrPrefix,
+            company.lrPrefixLength,
+            company.lrRunningNumber
+          )
+        );
+        if (!lr && company.defaultFreightType) {
           setValues((current) => ({ ...current, freightType: company.defaultFreightType }));
         }
       })
@@ -154,7 +191,7 @@ export default function LRDialog({
     }
 
     setErrors({});
-    onSubmit(values);
+    onSubmit({ ...values, entryStatus: "final" });
   }
 
   function handleCancel() {
@@ -172,6 +209,9 @@ export default function LRDialog({
       loadingText="Saving Lorry Receipt..."
       footer={
         <>
+          {draftHint ? (
+            <p className="mr-auto text-xs text-muted-foreground">{draftHint}</p>
+          ) : null}
           <Button
             variant="outline"
             onClick={handleCancel}
@@ -193,6 +233,7 @@ export default function LRDialog({
         lr={values}
         errors={errors}
         onChange={setValues}
+        nextLrNumberPreview={nextLrNumberPreview}
       />
     </FormDialog>
   );

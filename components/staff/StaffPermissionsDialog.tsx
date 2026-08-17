@@ -13,22 +13,22 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import FormSelect from "@/components/ui/FormSelect";
 import {
+  MODULE_SUPPORTED_ACTIONS,
+  PERMISSION_ACTION_LABELS,
   PERMISSION_MODULES,
-  PERMISSION_LEVEL_LABELS,
-  PERMISSION_LEVELS,
+  EMPTY_MODULE_ACTIONS,
+  type ModuleActions,
+  type PermissionAction,
   type PermissionKey,
-  type PermissionLevel,
 } from "@/lib/permissions";
 import type { AppUserProfile } from "@/components/services/appUser.service";
 import { updateAppUserFullAccess } from "@/components/services/appUser.service";
-import { getUserPermissions, setUserPermission, type PermissionMap } from "@/components/services/permission.service";
-
-const LEVEL_OPTIONS = PERMISSION_LEVELS.map((level) => ({
-  value: level,
-  label: PERMISSION_LEVEL_LABELS[level],
-}));
+import {
+  getUserPermissionActions,
+  setUserModuleActions,
+  type PermissionActionsMap,
+} from "@/components/services/permission.service";
 
 interface StaffPermissionsDialogProps {
   user: AppUserProfile | null;
@@ -38,12 +38,8 @@ interface StaffPermissionsDialogProps {
 }
 
 /**
- * Admin-only "Edit Permissions" dialog for a single staff account
- * (migration 019). Full Access ON makes every individual module
- * control below irrelevant (the account behaves as Edit everywhere)
- * — mirrored by `hasPermission()` in `lib/auth/AuthProvider.tsx`, so
- * disabling the per-module selects here is purely a UI hint, not a
- * second source of truth.
+ * Admin-only "Edit Permissions" dialog — independent action toggles
+ * per module (migration 033).
  */
 export default function StaffPermissionsDialog({
   user,
@@ -52,7 +48,7 @@ export default function StaffPermissionsDialog({
   onSaved,
 }: StaffPermissionsDialogProps) {
   const [fullAccess, setFullAccess] = useState(false);
-  const [levels, setLevels] = useState<PermissionMap>({});
+  const [actionsMap, setActionsMap] = useState<PermissionActionsMap>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -62,8 +58,8 @@ export default function StaffPermissionsDialog({
     setFullAccess(user.fullAccess);
     setLoading(true);
 
-    getUserPermissions(user.id)
-      .then(setLevels)
+    getUserPermissionActions(user.id)
+      .then(setActionsMap)
       .catch((error) => {
         console.error(error);
         toast.error("Unable to load this user's permissions.");
@@ -71,8 +67,23 @@ export default function StaffPermissionsDialog({
       .finally(() => setLoading(false));
   }, [open, user]);
 
-  function handleLevelChange(key: PermissionKey, value: string) {
-    setLevels((prev) => ({ ...prev, [key]: value as PermissionLevel }));
+  function toggleAction(key: PermissionKey, action: PermissionAction) {
+    setActionsMap((prev) => {
+      const current = { ...(prev[key] ?? EMPTY_MODULE_ACTIONS) };
+      current[action] = !current[action];
+      if (action === "view" && !current.view) {
+        // Turning View off clears dependent actions that require visibility.
+        current.create = false;
+        current.edit = false;
+        current.delete = false;
+        current.print = false;
+        current.share = false;
+      }
+      if (action !== "view" && current[action]) {
+        current.view = true;
+      }
+      return { ...prev, [key]: current };
+    });
   }
 
   async function handleSave() {
@@ -87,7 +98,11 @@ export default function StaffPermissionsDialog({
 
       await Promise.all(
         PERMISSION_MODULES.map((module) =>
-          setUserPermission(user.id, module.key, levels[module.key] ?? "none")
+          setUserModuleActions(
+            user.id,
+            module.key,
+            actionsMap[module.key] ?? EMPTY_MODULE_ACTIONS
+          )
         )
       );
 
@@ -104,11 +119,11 @@ export default function StaffPermissionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader className="shrink-0">
           <DialogTitle>Edit Permissions{user ? ` — ${user.displayName}` : ""}</DialogTitle>
           <DialogDescription>
-            Control exactly what this staff member can see and do in each module.
+            Control View, Create, Edit, Delete, Print and Share independently for each module.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,28 +149,48 @@ export default function StaffPermissionsDialog({
           </button>
 
           <p className="text-xs text-muted-foreground">
-            When Full Access is ON, this account can create/view/edit every module below,
-            regardless of the individual settings. Turn it OFF to control each module separately.
+            When Full Access is ON, this account can perform every action in every module.
+            Turn it OFF to control each action separately.
           </p>
 
-          <div className={`space-y-3 ${fullAccess ? "pointer-events-none opacity-50" : ""}`}>
+          <div className={`space-y-4 ${fullAccess ? "pointer-events-none opacity-50" : ""}`}>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading...</p>
             ) : (
-              PERMISSION_MODULES.map((module) => (
-                <div key={module.key} className="space-y-1">
-                  <FormSelect
-                    label={module.label}
-                    value={levels[module.key] ?? "none"}
-                    onValueChange={(value) => handleLevelChange(module.key, value)}
-                    options={LEVEL_OPTIONS}
-                    disabled={fullAccess}
-                  />
-                  {module.description ? (
-                    <p className="text-xs text-muted-foreground">{module.description}</p>
-                  ) : null}
-                </div>
-              ))
+              PERMISSION_MODULES.map((module) => {
+                const actions: ModuleActions = actionsMap[module.key] ?? EMPTY_MODULE_ACTIONS;
+                const supported = MODULE_SUPPORTED_ACTIONS[module.key];
+                return (
+                  <div key={module.key} className="rounded-lg border border-border p-3">
+                    <p className="mb-2 text-sm font-medium text-foreground">{module.label}</p>
+                    {module.description ? (
+                      <p className="mb-2 text-xs text-muted-foreground">{module.description}</p>
+                    ) : null}
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {supported.map((action) => {
+                        const on = actions[action];
+                        return (
+                          <button
+                            key={action}
+                            type="button"
+                            disabled={fullAccess}
+                            onClick={() => toggleAction(module.key, action)}
+                            className={`flex items-center justify-between rounded-md border px-2.5 py-2 text-left text-xs font-medium transition-colors ${
+                              on
+                                ? "border-primary/40 bg-primary/5 text-foreground"
+                                : "border-border bg-background text-muted-foreground"
+                            }`}
+                            aria-pressed={on}
+                          >
+                            <span>{PERMISSION_ACTION_LABELS[action]}</span>
+                            <span className={on ? "text-primary" : ""}>{on ? "ON" : "OFF"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>

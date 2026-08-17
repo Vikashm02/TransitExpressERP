@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 
 import { parseAndValidateLRUpload, type LRUploadRow, type LRUploadRowError } from "./lrBulkUpload";
 import { createLR, deleteLR } from "@/components/services/lr.service";
-import { getCompany, saveCompany } from "@/components/services/company.service";
+import { allocateNextLrNumber } from "@/components/services/company.service";
 import { getBillingParties } from "@/components/services/billingParty.service";
 import { getMaterials } from "@/components/services/material.service";
 
@@ -71,39 +71,19 @@ export default function LRBulkUploadDialog({
     try {
       setImporting(true);
 
-      // Same automatic LR Number generation LRListPage's `handleSubmit`
-      // already uses for a single LR: LR Prefix + zero-padded next running
-      // number from Company Master Document Settings. Reserved in-memory
-      // here (not persisted per-row) so the whole batch can be rolled back
-      // together if any row fails to insert — the running number itself is
-      // only persisted once, after every row has been created successfully.
-      const company = await getCompany();
-
-      if (!company) {
-        toast.error("Configure Company Settings (LR Prefix) before creating an LR.");
-        return;
-      }
-
+      // Atomic reservation per row (migration 036). Concurrent draft
+      // creates cannot receive the same number. If the batch rolls back,
+      // reserved numbers are not recycled (intentional gaps).
       const createdIds: number[] = [];
-      let nextRunningNumber = company.lrRunningNumber ?? 0;
 
       try {
         for (const row of rows) {
-          nextRunningNumber += 1;
-          const lrNumber = `${company.lrPrefix}${String(nextRunningNumber).padStart(
-            company.lrPrefixLength || 4,
-            "0"
-          )}`;
-
+          const lrNumber = await allocateNextLrNumber();
           const created = await createLR({ ...row.values, lrNumber });
           createdIds.push(created.id);
         }
-
-        await saveCompany({ ...company, lrRunningNumber: nextRunningNumber }, company.id);
       } catch (error) {
         // All-or-nothing: roll back every LR created so far in this batch.
-        // The running number is never persisted unless every row succeeded,
-        // so it doesn't need to be rolled back separately.
         await Promise.all(
           createdIds.map((id) => deleteLR(id).catch((rollbackError) => console.error(rollbackError)))
         );

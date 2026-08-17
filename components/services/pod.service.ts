@@ -9,7 +9,10 @@ import { emitNotificationEvent } from "@/components/services/notification.servic
  * they need to be displayed, never duplicated into this table. */
 export interface PodRecord extends Pod {
   id: number;
+  createdBy: string | null;
+  updatedBy: string | null;
   created_at?: string;
+  updated_at?: string;
 }
 
 const TABLE = "pods";
@@ -30,7 +33,7 @@ function toRow(values: Pod) {
 /** Supabase returns raw snake_case columns; `id`/`created_at` pass through
  * explicitly since they live outside the `Pod` domain type. */
 function fromRow(row: Record<string, unknown>): PodRecord {
-  const { id, created_at, ...rest } = row;
+  const { id, created_at, updated_at, created_by, updated_by, ...rest } = row;
 
   const pod = objectToCamelCase<Pod>(rest);
 
@@ -45,7 +48,10 @@ function fromRow(row: Record<string, unknown>): PodRecord {
   return {
     ...pod,
     id: id as number,
+    createdBy: (created_by as string | null) ?? null,
+    updatedBy: (updated_by as string | null) ?? null,
     created_at: created_at as string | undefined,
+    updated_at: updated_at as string | undefined,
   };
 }
 

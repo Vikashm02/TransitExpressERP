@@ -412,6 +412,7 @@ export async function parseAndValidateLRUpload(
       internalRemarks,
 
       status: "Open",
+      entryStatus: "final",
     };
 
     for (const message of Object.values(validateLR(candidate))) {

@@ -7,7 +7,9 @@ import type { LRRecord } from "@/components/services/lr.service";
 export interface AsnRecord extends Asn {
   id: number;
   createdBy: string | null;
+  updatedBy: string | null;
   created_at?: string;
+  updated_at?: string;
 }
 
 const TABLE = "asn_creations";
@@ -35,7 +37,7 @@ function toRow(values: Asn) {
 }
 
 function fromRow(row: Record<string, unknown>): AsnRecord {
-  const { id, created_at, created_by, ...rest } = row;
+  const { id, created_at, updated_at, created_by, updated_by, ...rest } = row;
   const asn = objectToCamelCase<Asn>(rest);
 
   return {
@@ -60,7 +62,9 @@ function fromRow(row: Record<string, unknown>): AsnRecord {
     lrCopySlipUrl: asn.lrCopySlipUrl || "",
     id: id as number,
     createdBy: (created_by as string | null) ?? null,
+    updatedBy: (updated_by as string | null) ?? null,
     created_at: created_at as string | undefined,
+    updated_at: updated_at as string | undefined,
   };
 }
 

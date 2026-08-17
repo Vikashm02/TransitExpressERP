@@ -32,6 +32,7 @@ export const customerSchema = z.object({
   city: z.string().trim(),
   address: z.string().trim(),
   status: z.enum(CUSTOMER_STATUS_OPTIONS),
+  entryStatus: z.enum(["draft", "final"]).default("final"),
 });
 
 export type Customer = z.infer<typeof customerSchema>;

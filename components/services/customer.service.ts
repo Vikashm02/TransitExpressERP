@@ -13,11 +13,13 @@ const TABLE = "customers";
 /** Supabase returns raw snake_case columns; `id`/`created_at` pass through unchanged. */
 function fromRow(row: Record<string, unknown>): CustomerRecord {
   const { id, created_at, ...rest } = row;
+  const mapped = objectToCamelCase<Customer>(rest);
 
   return {
     id: id as number,
     created_at: created_at as string | undefined,
-    ...objectToCamelCase<Customer>(rest),
+    ...mapped,
+    entryStatus: mapped.entryStatus === "draft" ? "draft" : "final",
   };
 }
 

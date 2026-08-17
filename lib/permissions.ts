@@ -1,39 +1,60 @@
 /**
- * Client-side mirror of the permission model added by
- * database/migrations/019_add_staff_permissions.sql. This file is
- * the single source of truth for:
- *   - which permission keys exist and what a human calls each one
- *     (Sidebar nav labels, the Staff page's Edit Permissions dialog),
- *   - which route each key protects (DashboardLayout's route guard),
- *   - what each stored permission_level actually unlocks (`meetsLevel`).
+ * Staff module permissions — capability model.
  *
- * IMPORTANT — this is NOT a single continuous ranking (none < view <
- * create_view < edit) even though the four levels are stored/shown in
- * that order. "create_view" and "edit" both build on "view" but are
- * otherwise independent capability sets, not one strictly bigger than
- * the other:
- *   - create_view unlocks Create, but NOT Edit/Delete/Reassign.
- *   - edit unlocks Edit/Delete/Reassign, but does NOT also unlock
- *     Create (a staff member must be granted "edit" specifically for
- *     that, Create is not implied).
- * Treating this as one continuous ranking (a plain `indexOf(have) >=
- * indexOf(need)` comparison) is what previously made "Edit" silently
- * also unlock Create on every module — see `meetsLevel` below.
+ * Legacy stored levels (`none` | `view` | `create_view` | `edit`) remain
+ * for backward compatibility and are derived from independent action
+ * flags (migration 033): view / create / edit / delete / print / share.
  *
- * This is a UX/navigation convenience only — the database's
- * `public.has_permission()` function (same migration) is what
- * actually protects `lrs`/`pods` data if this check is ever
- * bypassed, and currently mirrors the old flat-ranking comparison
- * (see migration 019 part C) — it needs the equivalent fix so an
- * "edit"-level LR/POD user can't still INSERT via a direct API call
- * even though the UI now hides Create for them. Every other module
- * listed here (Billing, Credit/Debit Note, Ledger, Reports, and the
- * master screens) is gated here and in DashboardLayout/Sidebar only —
- * see that migration's file header for why those tables' RLS was
- * intentionally left untouched.
+ * Database enforcement:
+ *   - public.has_permission(key, level) — view / create_view / edit
+ *   - public.has_module_action(key, action) — delete / print / share (+ same)
  */
 
 export type PermissionLevel = "none" | "view" | "create_view" | "edit";
+
+export type PermissionAction =
+  | "view"
+  | "create"
+  | "edit"
+  | "delete"
+  | "print"
+  | "share";
+
+export const PERMISSION_ACTIONS: PermissionAction[] = [
+  "view",
+  "create",
+  "edit",
+  "delete",
+  "print",
+  "share",
+];
+
+export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
+  view: "View",
+  create: "Create",
+  edit: "Edit",
+  delete: "Delete",
+  print: "Print",
+  share: "Share",
+};
+
+export interface ModuleActions {
+  view: boolean;
+  create: boolean;
+  edit: boolean;
+  delete: boolean;
+  print: boolean;
+  share: boolean;
+}
+
+export const EMPTY_MODULE_ACTIONS: ModuleActions = {
+  view: false,
+  create: false,
+  edit: false,
+  delete: false,
+  print: false,
+  share: false,
+};
 
 export const PERMISSION_LEVELS: PermissionLevel[] = [
   "none",
@@ -67,10 +88,29 @@ export type PermissionKey =
   | "reports"
   | "notifications";
 
+/** Which actions make sense per module (UI only — flags still stored). */
+export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]> = {
+  company: ["view", "edit"],
+  customers: ["view", "create", "edit", "delete"],
+  billing_parties: ["view", "create", "edit", "delete"],
+  vehicle: ["view", "create", "edit", "delete"],
+  material: ["view", "create", "edit", "delete"],
+  lr: ["view", "create", "edit", "delete", "print", "share"],
+  pod: ["view", "create", "edit", "delete"],
+  delivery_challans: ["view", "create", "edit", "delete", "print", "share"],
+  asn_creations: ["view", "create", "edit", "delete", "print"],
+  lorry_expenses: ["view", "create", "edit", "delete"],
+  billing: ["view", "create", "edit", "delete", "print", "share"],
+  credit_notes: ["view", "create", "edit", "delete", "print"],
+  debit_notes: ["view", "create", "edit", "delete", "print"],
+  ledger: ["view", "print", "share"],
+  reports: ["view", "print", "share"],
+  notifications: ["view"],
+};
+
 export const PERMISSION_MODULES: {
   key: PermissionKey;
   label: string;
-  /** When set, DashboardLayout route-guards matching paths. Omit for feature-only permissions. */
   routePrefix?: string;
   description?: string;
 }[] = [
@@ -96,11 +136,28 @@ export const PERMISSION_MODULES: {
   },
 ];
 
-/**
- * Capability set granted by each stored permission_level. "view" is
- * the common baseline both "create_view" and "edit" build on; beyond
- * that they are independent, not ordered — see the file header.
- */
+/** Derive legacy level from action flags (for DB permission_level sync). */
+export function actionsToLevel(actions: ModuleActions): PermissionLevel {
+  if (actions.edit) return "edit";
+  if (actions.create) return "create_view";
+  if (actions.view || actions.print || actions.share || actions.delete) return "view";
+  return "none";
+}
+
+/** Expand a legacy level into action flags (migration backfill / defaults). */
+export function levelToActions(level: PermissionLevel): ModuleActions {
+  switch (level) {
+    case "view":
+      return { view: true, create: false, edit: false, delete: false, print: true, share: true };
+    case "create_view":
+      return { view: true, create: true, edit: false, delete: false, print: true, share: true };
+    case "edit":
+      return { view: true, create: false, edit: true, delete: true, print: true, share: true };
+    default:
+      return { ...EMPTY_MODULE_ACTIONS };
+  }
+}
+
 const LEVEL_CAPABILITIES: Record<PermissionLevel, ReadonlySet<PermissionLevel>> = {
   none: new Set(),
   view: new Set(["view"]),
@@ -111,6 +168,14 @@ const LEVEL_CAPABILITIES: Record<PermissionLevel, ReadonlySet<PermissionLevel>> 
 export function meetsLevel(have: PermissionLevel, need: PermissionLevel): boolean {
   if (need === "none") return true;
   return LEVEL_CAPABILITIES[have].has(need);
+}
+
+export function meetsAction(actions: ModuleActions | undefined, action: PermissionAction): boolean {
+  if (!actions) return false;
+  if (action === "view") {
+    return actions.view || actions.create || actions.edit;
+  }
+  return Boolean(actions[action]);
 }
 
 /**
@@ -129,4 +194,15 @@ export function permissionKeyForPath(pathname: string): PermissionKey | null {
   }
 
   return best?.key ?? null;
+}
+
+/** Preview-only document number from company running counter (does not allocate). */
+export function formatNextDocumentNumber(
+  prefix: string,
+  prefixLength: number,
+  runningNumber: number
+): string {
+  const next = (runningNumber ?? 0) + 1;
+  const length = Math.max(prefixLength || 0, String(next).length);
+  return `${prefix ?? ""}${String(next).padStart(length, "0")}`;
 }

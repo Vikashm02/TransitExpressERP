@@ -6,7 +6,9 @@ import { emitNotificationEvent } from "@/components/services/notification.servic
 export interface DeliveryChallanRecord extends DeliveryChallan {
   id: number;
   createdBy: string | null;
+  updatedBy: string | null;
   created_at?: string;
+  updated_at?: string;
 }
 
 const TABLE = "delivery_challans";
@@ -16,7 +18,7 @@ function toRow(values: DeliveryChallan) {
 }
 
 function fromRow(row: Record<string, unknown>): DeliveryChallanRecord {
-  const { id, created_at, created_by, ...rest } = row;
+  const { id, created_at, updated_at, created_by, updated_by, ...rest } = row;
   const challan = objectToCamelCase<DeliveryChallan>(rest);
 
   return {
@@ -25,7 +27,9 @@ function fromRow(row: Record<string, unknown>): DeliveryChallanRecord {
     qty: Number(challan.qty) || 0,
     id: id as number,
     createdBy: (created_by as string | null) ?? null,
+    updatedBy: (updated_by as string | null) ?? null,
     created_at: created_at as string | undefined,
+    updated_at: updated_at as string | undefined,
   };
 }
 

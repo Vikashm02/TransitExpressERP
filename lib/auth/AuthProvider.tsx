@@ -13,8 +13,19 @@ import type { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
 import { getMyProfile, type AppUserProfile } from "@/components/services/appUser.service";
-import { getMyPermissions, type PermissionMap } from "@/components/services/permission.service";
-import { meetsLevel, type PermissionKey, type PermissionLevel } from "@/lib/permissions";
+import {
+  getMyPermissionActions,
+  type PermissionActionsMap,
+} from "@/components/services/permission.service";
+import {
+  meetsAction,
+  meetsLevel,
+  actionsToLevel,
+  type PermissionAction,
+  type PermissionKey,
+  type PermissionLevel,
+  EMPTY_MODULE_ACTIONS,
+} from "@/lib/permissions";
 
 const SESSION_TIMEOUT_MS = 15_000;
 const PROFILE_TIMEOUT_MS = 15_000;
@@ -47,6 +58,8 @@ interface AuthContextValue {
    * at the database layer (see that migration).
    */
   hasPermission: (key: PermissionKey, level: PermissionLevel) => boolean;
+  /** Granular action check (view/create/edit/delete/print/share). */
+  hasAction: (key: PermissionKey, action: PermissionAction) => boolean;
   signOut: () => Promise<void>;
   /** Re-fetch profile/permissions for the current session user. */
   refreshProfile: () => Promise<void>;
@@ -89,7 +102,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AppUserProfile | null>(null);
-  const [permissions, setPermissions] = useState<PermissionMap>({});
+  const [permissions, setPermissions] = useState<PermissionActionsMap>({});
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -128,9 +141,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const [data, perms] = await withTimeout(
             Promise.all([
               getMyProfile(userId),
-              getMyPermissions(userId).catch((error) => {
+              getMyPermissionActions(userId).catch((error) => {
                 console.error(error);
-                return {} as PermissionMap;
+                return {} as PermissionActionsMap;
               }),
             ]),
             PROFILE_TIMEOUT_MS,
@@ -281,7 +294,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isAdmin) return true;
     if (!profile || profile.isLocked || profile.approvalStatus !== "approved") return false;
     if (profile.fullAccess) return true;
-    return meetsLevel(permissions[key] ?? "none", level);
+    const actions = permissions[key] ?? EMPTY_MODULE_ACTIONS;
+    if (level === "view") return meetsAction(actions, "view");
+    if (level === "create_view") return meetsAction(actions, "create");
+    if (level === "edit") return meetsAction(actions, "edit");
+    return meetsLevel(actionsToLevel(actions), level);
+  }
+
+  function hasAction(key: PermissionKey, action: PermissionAction): boolean {
+    if (isAdmin) return true;
+    if (!profile || profile.isLocked || profile.approvalStatus !== "approved") return false;
+    if (profile.fullAccess) return true;
+    return meetsAction(permissions[key], action);
   }
 
   const value: AuthContextValue = {
@@ -293,6 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profileError,
     isAdmin,
     hasPermission,
+    hasAction,
     signOut,
     refreshProfile,
   };
