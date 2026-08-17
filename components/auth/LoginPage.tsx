@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -215,6 +216,17 @@ export default function LoginPage() {
                 : "Create Account"}
             </Button>
           </form>
+
+          {tab === "sign-in" && (
+            <p className="mt-4 text-center text-sm">
+              <Link
+                href="/forgot-password"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </p>
+          )}
 
           {tab === "sign-up" && (
             <p className="mt-4 text-center text-xs text-muted-foreground">
