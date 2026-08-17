@@ -20,6 +20,26 @@ interface ShareLRDialogProps {
   lr: LRRecord | null;
 }
 
+function isShareCancelled(error: unknown): boolean {
+  return (
+    (error instanceof DOMException || error instanceof Error) &&
+    error.name === "AbortError"
+  );
+}
+
+/** Download the generated PDF; delay revoke so mobile browsers can start the save. */
+function downloadPdfFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 /**
  * Shares/downloads an LR from the original stationery PDF + dynamic overlay.
  * Final artifact is the PDF itself (not an HTML/CSS recreation).
@@ -40,17 +60,27 @@ export default function ShareLRDialog({ open, onOpenChange, lr }: ShareLRDialogP
         canShare?: (data: ShareData) => boolean;
       };
 
-      if (nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
-        await nav.share({ files: [file], title: `Lorry Receipt ${lr.lrNumber}` });
-      } else {
-        const url = URL.createObjectURL(file);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = file.name;
-        link.click();
-        URL.revokeObjectURL(url);
+      const canFileShare =
+        typeof nav.share === "function" &&
+        (typeof nav.canShare !== "function" || nav.canShare({ files: [file] }));
+
+      if (canFileShare) {
+        try {
+          await nav.share!({
+            files: [file],
+            title: `Lorry Receipt ${lr.lrNumber}`,
+          });
+          onOpenChange(false);
+          return;
+        } catch (shareError) {
+          if (isShareCancelled(shareError)) return;
+          // Share can fail on some mobile browsers even when canShare is true —
+          // keep the PDF via download instead of surfacing a hard error.
+          console.error(shareError);
+        }
       }
 
+      downloadPdfFile(file);
       onOpenChange(false);
     } catch (error) {
       console.error(error);

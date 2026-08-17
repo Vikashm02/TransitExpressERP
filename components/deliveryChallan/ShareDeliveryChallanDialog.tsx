@@ -21,7 +21,23 @@ interface ShareDeliveryChallanDialogProps {
 }
 
 function isShareCancelled(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
+  return (
+    (error instanceof DOMException || error instanceof Error) &&
+    error.name === "AbortError"
+  );
+}
+
+/** Download the generated PDF; delay revoke so mobile browsers can start the save. */
+function downloadPdfFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 /**
@@ -49,24 +65,30 @@ export default function ShareDeliveryChallanDialog({
         canShare?: (data: ShareData) => boolean;
       };
 
-      if (nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
-        await nav.share({
-          files: [file],
-          title: shareLabel,
-          text: shareLabel,
-        });
-      } else {
-        const url = URL.createObjectURL(file);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = file.name;
-        link.click();
-        URL.revokeObjectURL(url);
+      const canFileShare =
+        typeof nav.share === "function" &&
+        (typeof nav.canShare !== "function" || nav.canShare({ files: [file] }));
+
+      if (canFileShare) {
+        try {
+          await nav.share!({
+            files: [file],
+            title: shareLabel,
+            text: shareLabel,
+          });
+          onOpenChange(false);
+          return;
+        } catch (shareError) {
+          if (isShareCancelled(shareError)) return;
+          // Share can fail on some mobile browsers even when canShare is true —
+          // keep the PDF via download instead of surfacing a hard error.
+          console.error(shareError);
+        }
       }
 
+      downloadPdfFile(file);
       onOpenChange(false);
     } catch (error) {
-      if (isShareCancelled(error)) return;
       console.error(error);
       toast.error("Unable to share Delivery Challan as PDF.");
     } finally {
