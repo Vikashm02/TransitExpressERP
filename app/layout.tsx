@@ -27,6 +27,10 @@ export const metadata: Metadata = {
   themeColor: "#0B3A67",
 };
 
+/** Prevent year-long CDN/static HTML caching of app shell pages (e.g. /login).
+ * Hashed `/_next/static/*` assets remain cacheable; only document rendering is dynamic. */
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
