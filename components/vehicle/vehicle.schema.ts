@@ -2,6 +2,7 @@ import { z } from "zod";
 import { differenceInCalendarDays, isValid, parseISO } from "date-fns";
 
 import { getFieldErrors } from "@/lib/validation";
+import { canonicalizeVehicleNumber } from "@/lib/vehicleNumber";
 
 /**
  * Temporary, application-controlled list — intentionally NOT enforced by the
@@ -39,7 +40,7 @@ export const vehicleSchema = z.object({
     .string()
     .trim()
     .min(1, "Vehicle number is required.")
-    .transform((value) => value.toUpperCase()),
+    .transform((value) => canonicalizeVehicleNumber(value) || value.toUpperCase()),
   rcNumber: z.string().trim(),
   vehicleType: z
     .string()

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { getFieldErrors } from "@/lib/validation";
 import { DEFAULT_BRANCH_OPTIONS, DEFAULT_FREIGHT_TYPE_OPTIONS } from "@/components/company/company.schema";
+import { canonicalizeVehicleNumber } from "@/lib/vehicleNumber";
 
 export const BILLING_PARTY_OPTIONS = ["Consignor", "Consignee"] as const;
 
@@ -96,7 +97,7 @@ export const lrSchema = z
       .string()
       .trim()
       .min(1, "Vehicle number is required.")
-      .transform((value) => value.toUpperCase()),
+      .transform((value) => canonicalizeVehicleNumber(value) || value.toUpperCase()),
     vehicleType: z.string().trim(),
     transporter: z.string().trim(),
     driverName: z.string().trim().min(1, "Driver name is required."),

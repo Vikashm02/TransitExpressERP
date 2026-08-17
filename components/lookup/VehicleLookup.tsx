@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import LookupDialog from "./LookupDialog";
 import { getVehicles, type VehicleRecord } from "@/components/services/vehicle.service";
+import {
+  canonicalizeVehicleNumber,
+  vehicleNumberMatchesQuery,
+} from "@/lib/vehicleNumber";
 
 interface VehicleLookupProps {
   open: boolean;
@@ -44,15 +48,22 @@ export default function VehicleLookup({
   }, [open]);
 
   const filteredVehicles = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = search.trim();
 
-    return vehicles.filter(
-      (vehicle) =>
-        !query ||
-        vehicle.vehicleNumber.toLowerCase().includes(query) ||
-        vehicle.ownerName.toLowerCase().includes(query) ||
-        vehicle.mobile.toLowerCase().includes(query)
-    );
+    return vehicles
+      .filter(
+        (vehicle) =>
+          !query ||
+          vehicleNumberMatchesQuery(vehicle.vehicleNumber, query) ||
+          vehicle.ownerName.toLowerCase().includes(query.toLowerCase()) ||
+          vehicle.mobile.toLowerCase().includes(query.toLowerCase())
+      )
+      .map((vehicle) => ({
+        ...vehicle,
+        // Show the complete registration number in canonical form when possible.
+        vehicleNumber:
+          canonicalizeVehicleNumber(vehicle.vehicleNumber) || vehicle.vehicleNumber,
+      }));
   }, [vehicles, search]);
 
   return (
@@ -71,7 +82,9 @@ export default function VehicleLookup({
         { key: "mobile", label: "Mobile" },
       ]}
       onSelect={(vehicle) => {
-        onSelect(vehicle);
+        // Pass through the original master row (lookup by id) so hire/type stay accurate.
+        const original = vehicles.find((row) => row.id === vehicle.id) ?? vehicle;
+        onSelect(original);
         onClose();
       }}
       onClose={onClose}

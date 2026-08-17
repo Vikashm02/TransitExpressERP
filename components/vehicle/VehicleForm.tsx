@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import FormField from "@/components/ui/FormField";
@@ -15,6 +17,10 @@ import {
   type Vehicle,
 } from "./vehicle.schema";
 import type { FieldErrors } from "@/lib/validation";
+import {
+  canonicalizeVehicleNumber,
+  formatVehicleNumberInputChange,
+} from "@/lib/vehicleNumber";
 
 interface VehicleFormProps {
   vehicle: Vehicle;
@@ -31,8 +37,21 @@ export default function VehicleForm({
   errors = {},
   onChange,
 }: VehicleFormProps) {
+  const vehicleNumberRef = useRef<HTMLInputElement>(null);
+
   function update<K extends keyof Vehicle>(key: K, value: Vehicle[K]) {
     onChange({ ...vehicle, [key]: value });
+  }
+
+  function handleVehicleNumberChange(raw: string, cursor: number) {
+    const next = formatVehicleNumberInputChange(raw, cursor, vehicle.vehicleNumber);
+    update("vehicleNumber", next.value);
+    requestAnimationFrame(() => {
+      const el = vehicleNumberRef.current;
+      if (!el) return;
+      const pos = Math.min(next.cursor, next.value.length);
+      el.setSelectionRange(pos, pos);
+    });
   }
 
   return (
@@ -46,10 +65,23 @@ export default function VehicleForm({
             error={errors.vehicleNumber}
           >
             <Input
+              ref={vehicleNumberRef}
               id="vehicle-number"
-              placeholder="MH12AB1234"
+              placeholder="TN-34MA-8373"
               value={vehicle.vehicleNumber}
-              onChange={(e) => update("vehicleNumber", e.target.value.toUpperCase())}
+              autoComplete="off"
+              onChange={(e) =>
+                handleVehicleNumberChange(
+                  e.target.value,
+                  e.target.selectionStart ?? e.target.value.length
+                )
+              }
+              onBlur={() => {
+                const next = canonicalizeVehicleNumber(vehicle.vehicleNumber);
+                if (next && next !== vehicle.vehicleNumber) {
+                  update("vehicleNumber", next);
+                }
+              }}
             />
           </FormField>
 

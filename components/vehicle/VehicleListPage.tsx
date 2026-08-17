@@ -21,6 +21,7 @@ import {
   type VehicleRecord,
 } from "@/components/services/vehicle.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { vehicleNumberMatchesQuery } from "@/lib/vehicleNumber";
 
 const PAGE_SIZE = 10;
 
@@ -62,14 +63,15 @@ export default function VehicleListPage() {
   }
 
   const filteredVehicles = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = search.trim();
 
     return vehicles.filter((vehicle) => {
       const matchesSearch =
         !query ||
-        [vehicle.vehicleNumber, vehicle.ownerName, vehicle.mobile, vehicle.rcNumber, vehicle.chassisNumber]
+        vehicleNumberMatchesQuery(vehicle.vehicleNumber, query) ||
+        [vehicle.ownerName, vehicle.mobile, vehicle.rcNumber, vehicle.chassisNumber]
           .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+          .some((field) => field.toLowerCase().includes(query.toLowerCase()));
 
       const matchesStatus = !statusFilter || vehicle.status === statusFilter;
 

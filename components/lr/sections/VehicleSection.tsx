@@ -1,20 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import FormField from "@/components/ui/FormField";
 import FormSelect from "@/components/ui/FormSelect";
 import FormSection from "@/components/ui/FormSection";
+import { Input } from "@/components/ui/input";
 
 import VehicleLookup from "@/components/lookup/VehicleLookup";
+import VehicleNumberInput from "@/components/lookup/VehicleNumberInput";
 import TransporterLookup from "@/components/lookup/TransporterLookup";
 import DriverLookup from "@/components/lookup/DriverLookup";
-import type { VehicleRecord } from "@/components/services/vehicle.service";
+import {
+  getVehicles,
+  type VehicleRecord,
+} from "@/components/services/vehicle.service";
 import type { TransporterRecord } from "@/components/services/transporter.service";
 import type { DriverRecord } from "@/components/services/driver.service";
 import { VEHICLE_TYPE_OPTIONS } from "@/components/vehicle/vehicle.schema";
+import { canonicalizeVehicleNumber } from "@/lib/vehicleNumber";
 
 import type { LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
@@ -37,15 +42,35 @@ export default function VehicleSection({
   const [vehicleLookupOpen, setVehicleLookupOpen] = useState(false);
   const [transporterLookupOpen, setTransporterLookupOpen] = useState(false);
   const [driverLookupOpen, setDriverLookupOpen] = useState(false);
+  const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setVehiclesLoading(true);
+    getVehicles()
+      .then((data) => {
+        if (!cancelled) setVehicles(data);
+      })
+      .catch((error) => console.error(error))
+      .finally(() => {
+        if (!cancelled) setVehiclesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function update<K extends keyof LR>(key: K, value: LR[K]) {
     onChange({ ...lr, [key]: value });
   }
 
-  function handleVehicleSelect(vehicle: VehicleRecord) {
+  function applyVehicle(vehicle: VehicleRecord) {
+    const vehicleNumber =
+      canonicalizeVehicleNumber(vehicle.vehicleNumber) || vehicle.vehicleNumber;
     onChange({
       ...lr,
-      vehicleNumber: vehicle.vehicleNumber,
+      vehicleNumber,
       vehicleType: vehicle.vehicleType,
       lorryHireRate: vehicle.hireRate,
       lorryHireType: vehicle.hireType,
@@ -77,17 +102,21 @@ export default function VehicleSection({
             required
             error={errors.vehicleNumber}
           >
-            <div className="flex gap-3">
-              <Input
+            <div className="flex min-w-0 gap-3">
+              <VehicleNumberInput
                 id="lr-vehicle-number"
-                placeholder="MH12AB1234"
+                className="min-w-0 flex-1"
                 value={lr.vehicleNumber}
-                onChange={(e) => update("vehicleNumber", e.target.value.toUpperCase())}
+                vehicles={vehicles}
+                loading={vehiclesLoading}
+                onChange={(vehicleNumber) => update("vehicleNumber", vehicleNumber)}
+                onSelectVehicle={applyVehicle}
               />
 
               <Button
                 type="button"
                 variant="outline"
+                className="shrink-0"
                 onClick={() => setVehicleLookupOpen(true)}
               >
                 Search
@@ -198,7 +227,7 @@ export default function VehicleSection({
       <VehicleLookup
         open={vehicleLookupOpen}
         onClose={() => setVehicleLookupOpen(false)}
-        onSelect={handleVehicleSelect}
+        onSelect={applyVehicle}
       />
 
       <TransporterLookup
