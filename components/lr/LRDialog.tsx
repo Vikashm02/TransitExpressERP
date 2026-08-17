@@ -12,6 +12,7 @@ import { getCompany } from "@/components/services/company.service";
 import { pickFields } from "@/lib/utils";
 import { formatNextDocumentNumber } from "@/lib/permissions";
 import { isDraftLrNumber } from "@/lib/entryStatus";
+import { prepareLrForDraftForm } from "@/lib/draftPersistence";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 
 interface LRDialogProps {
@@ -104,7 +105,10 @@ const emptyLR: LR = {
  * recomputed from `calculateLR()` at save time, never edited directly) so
  * none of them enter editable form state or `updateLR()`'s payload. */
 function toEditableLR(record: LRRecord): LR {
-  return pickFields(record, Object.keys(emptyLR) as (keyof LR)[]);
+  const picked = pickFields(record, Object.keys(emptyLR) as (keyof LR)[]);
+  // Strip DB-only draft placeholders ("Draft" / "DRAFT") so empty fields
+  // stay blank when resuming an incomplete LR.
+  return prepareLrForDraftForm(picked);
 }
 
 export default function LRDialog({
