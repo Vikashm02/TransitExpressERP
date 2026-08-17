@@ -28,66 +28,87 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useLanguage } from "@/lib/i18n";
 import type { PermissionKey } from "@/lib/permissions";
 
 type MenuItem = {
-  label: string;
+  labelKey: string;
   href: string;
   icon: typeof LayoutDashboard;
   permissionKey?: PermissionKey;
   adminOnly?: boolean;
 };
 
-const menuSections: { title: string; items: MenuItem[] }[] = [
+type MenuSection = {
+  titleKey: string;
+  items: MenuItem[];
+};
+
+const menuSections: MenuSection[] = [
   {
-    title: "Overview",
-    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
+    titleKey: "nav.section.overview",
+    items: [{ labelKey: "nav.dashboard", href: "/", icon: LayoutDashboard }],
   },
   {
-    title: "Masters",
+    titleKey: "nav.section.masters",
     items: [
-      { label: "Company Master", href: "/company", icon: Building2, permissionKey: "company" },
-      { label: "Customer Master", href: "/customers", icon: Users, permissionKey: "customers" },
+      { labelKey: "nav.company", href: "/company", icon: Building2, permissionKey: "company" },
+      { labelKey: "nav.customers", href: "/customers", icon: Users, permissionKey: "customers" },
       {
-        label: "Billing Party Master",
+        labelKey: "nav.billingParties",
         href: "/billing-parties",
         icon: Banknote,
         permissionKey: "billing_parties",
       },
-      { label: "Vehicle Master", href: "/vehicle", icon: Truck, permissionKey: "vehicle" },
-      { label: "Material Master", href: "/material", icon: Package, permissionKey: "material" },
+      { labelKey: "nav.vehicle", href: "/vehicle", icon: Truck, permissionKey: "vehicle" },
+      { labelKey: "nav.material", href: "/material", icon: Package, permissionKey: "material" },
     ],
   },
   {
-    title: "Operations",
+    titleKey: "nav.section.operations",
     items: [
-      { label: "LR Entry", href: "/lr", icon: FileText, permissionKey: "lr" },
-      { label: "POD Entry", href: "/pod", icon: ClipboardCheck, permissionKey: "pod" },
+      { labelKey: "nav.lr", href: "/lr", icon: FileText, permissionKey: "lr" },
+      { labelKey: "nav.pod", href: "/pod", icon: ClipboardCheck, permissionKey: "pod" },
       {
-        label: "Delivery Challan",
+        labelKey: "nav.deliveryChallans",
         href: "/delivery-challans",
         icon: ScrollText,
         permissionKey: "delivery_challans",
       },
-      { label: "ASN Creation", href: "/asn", icon: ClipboardList, permissionKey: "asn_creations" },
+      { labelKey: "nav.asn", href: "/asn", icon: ClipboardList, permissionKey: "asn_creations" },
     ],
   },
   {
-    title: "Finance",
+    titleKey: "nav.section.finance",
     items: [
-      { label: "Financials", href: "/lorry-expenses", icon: Wallet, permissionKey: "lorry_expenses" },
-      { label: "Billing", href: "/billing", icon: ReceiptIndianRupee, permissionKey: "billing" },
-      { label: "Credit Note", href: "/credit-notes", icon: FileMinus2, permissionKey: "credit_notes" },
-      { label: "Debit Note", href: "/debit-notes", icon: FilePlus2, permissionKey: "debit_notes" },
-      { label: "Ledger", href: "/ledger", icon: BookOpen, permissionKey: "ledger" },
-      { label: "Reports", href: "/reports", icon: BarChart3, permissionKey: "reports" },
+      {
+        labelKey: "nav.lorryExpenses",
+        href: "/lorry-expenses",
+        icon: Wallet,
+        permissionKey: "lorry_expenses",
+      },
+      { labelKey: "nav.billing", href: "/billing", icon: ReceiptIndianRupee, permissionKey: "billing" },
+      {
+        labelKey: "nav.creditNotes",
+        href: "/credit-notes",
+        icon: FileMinus2,
+        permissionKey: "credit_notes",
+      },
+      {
+        labelKey: "nav.debitNotes",
+        href: "/debit-notes",
+        icon: FilePlus2,
+        permissionKey: "debit_notes",
+      },
+      { labelKey: "nav.ledger", href: "/ledger", icon: BookOpen, permissionKey: "ledger" },
+      { labelKey: "nav.reports", href: "/reports", icon: BarChart3, permissionKey: "reports" },
     ],
   },
   {
-    title: "Administration",
+    titleKey: "nav.section.administration",
     items: [
-      { label: "Settings", href: "/settings", icon: Settings, adminOnly: true },
-      { label: "Staff", href: "/staff", icon: UserCog, adminOnly: true },
+      { labelKey: "nav.settings", href: "/settings", icon: Settings, adminOnly: true },
+      { labelKey: "nav.staff", href: "/staff", icon: UserCog, adminOnly: true },
     ],
   },
 ];
@@ -104,6 +125,7 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
   const pathname = usePathname();
   const router = useRouter();
   const { profile, isAdmin, signOut, hasPermission } = useAuth();
+  const { t } = useLanguage();
 
   const visibleSections = menuSections
     .map((section) => ({
@@ -133,19 +155,20 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
 
   function renderNavLinks(onNavigate?: () => void) {
     return visibleSections.map((section) => (
-      <div key={section.title} className="space-y-1">
+      <div key={section.titleKey} className="space-y-1">
         <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sidebar-foreground/45">
-          {section.title}
+          {t(section.titleKey)}
         </p>
         {section.items.map((menu) => {
           const Icon = menu.icon;
           const active = isActive(menu.href);
+          const label = t(menu.labelKey);
 
           return (
             <Link
-              key={menu.label}
+              key={menu.labelKey}
               href={menu.href}
-              title={menu.label}
+              title={label}
               onClick={onNavigate}
               className={cn(
                 "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
@@ -163,7 +186,7 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
                   active ? "scale-105" : "opacity-80 group-hover:opacity-100"
                 )}
               />
-              <span className="truncate">{menu.label}</span>
+              <span className="truncate">{label}</span>
             </Link>
           );
         })}
@@ -204,12 +227,12 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{profile?.displayName || "..."}</p>
             <p className="text-xs text-sidebar-foreground/60">
-              {isAdmin ? "Administrator" : "Staff"}
+              {isAdmin ? t("header.administrator") : t("header.staff")}
             </p>
           </div>
           <button
             type="button"
-            title="Sign out"
+            title={t("common.signOut")}
             onClick={onSignOut}
             className="shrink-0 rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
@@ -233,13 +256,15 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
           <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px] lg:hidden data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
 
           <DialogPrimitive.Popup className="fixed inset-y-0 left-0 z-50 flex h-full w-72 max-w-[85vw] flex-col bg-sidebar text-sidebar-foreground shadow-2xl outline-none lg:hidden data-open:animate-in data-open:slide-in-from-left data-closed:animate-out data-closed:slide-out-to-left">
-            <DialogPrimitive.Title className="sr-only">Navigation menu</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="sr-only">
+              {t("common.navigationMenu")}
+            </DialogPrimitive.Title>
 
             <div className="flex items-center justify-between gap-3 border-b border-sidebar-border">
               {brandBlock(true)}
               <DialogPrimitive.Close
                 className="mr-3 shrink-0 rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                aria-label="Close menu"
+                aria-label={t("common.closeMenu")}
               >
                 <X className="h-5 w-5" />
               </DialogPrimitive.Close>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useLanguage } from "@/lib/i18n";
 import {
   getOverviewSnapshot,
   type OverviewSnapshot,
@@ -46,6 +47,7 @@ const EMPTY_OPEN = {
  */
 export default function OverviewPage() {
   const { profile } = useAuth();
+  const { t } = useLanguage();
   const [period, setPeriod] = useState<OverviewPeriodValue>(() =>
     defaultOverviewPeriod("today")
   );
@@ -64,9 +66,7 @@ export default function OverviewPage() {
         console.error(error);
         if (!cancelled) {
           setSnapshot(null);
-          toast.error(
-            "Unable to load your overview. Confirm migration 037 is applied."
-          );
+          toast.error(t("overview.loadError"));
         }
       })
       .finally(() => {
@@ -76,7 +76,7 @@ export default function OverviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [period.fromDate, period.toDate]);
+  }, [period.fromDate, period.toDate, t]);
 
   const permissions = snapshot?.permissions ?? EMPTY_PERMISSIONS;
   const periodMetrics = snapshot?.period ?? EMPTY_PERIOD;

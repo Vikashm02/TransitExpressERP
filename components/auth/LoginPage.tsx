@@ -7,6 +7,8 @@ import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useLanguage } from "@/lib/i18n";
+import LanguageSelector from "@/components/layout/LanguageSelector";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +39,7 @@ type Tab = "sign-in" | "sign-up";
 export default function LoginPage() {
   const router = useRouter();
   const { session } = useAuth();
+  const { t } = useLanguage();
 
   const [tab, setTab] = useState<Tab>("sign-in");
   const [displayName, setDisplayName] = useState("");
@@ -55,7 +58,7 @@ export default function LoginPage() {
     setFormError(null);
 
     if (!email.trim() || !password) {
-      setFormError("Email and password are required.");
+      setFormError(t("auth.emailPasswordRequired"));
       return;
     }
 
@@ -73,7 +76,7 @@ export default function LoginPage() {
 
         if (error) throw error;
 
-        toast.success("Account created. Your account is awaiting administrator approval.");
+        toast.success(t("auth.accountCreated"));
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -82,13 +85,13 @@ export default function LoginPage() {
 
         if (error) throw error;
 
-        toast.success("Signed in successfully.");
+        toast.success(t("auth.signedIn"));
       }
 
       router.replace("/");
     } catch (error) {
       console.error(error);
-      setFormError(error instanceof Error ? error.message : "Unable to sign in.");
+      setFormError(error instanceof Error ? error.message : t("auth.unableToSignIn"));
     } finally {
       setSubmitting(false);
     }
@@ -100,14 +103,16 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute inset-y-0 left-0 hidden w-[42%] bg-primary lg:block" />
       <div className="pointer-events-none absolute bottom-8 left-8 hidden max-w-sm text-primary-foreground lg:block">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-highlight">
-          Transjit Express
+          {t("auth.brandEyebrow")}
         </p>
         <p className="mt-2 font-heading text-3xl font-semibold tracking-tight">
-          Logistics control, built for the yard.
+          {t("auth.brandHeadline")}
         </p>
-        <p className="mt-2 text-sm text-primary-foreground/75">
-          LR · POD · Delivery · Financials — one operational console for the team on the move.
-        </p>
+        <p className="mt-2 text-sm text-primary-foreground/75">{t("auth.brandSub")}</p>
+      </div>
+
+      <div className="absolute top-4 right-4 z-20 sm:top-6 sm:right-6">
+        <LanguageSelector variant="segmented" />
       </div>
 
       <Card className="relative z-10 w-full max-w-md border-border/70 shadow-xl shadow-primary/10">
@@ -120,9 +125,9 @@ export default function LoginPage() {
               className="h-12 w-12 object-contain"
             />
           </div>
-          <CardTitle className="text-xl">Transjit Express TMS</CardTitle>
+          <CardTitle className="text-xl">{t("auth.appTitle")}</CardTitle>
           <CardDescription>
-            {tab === "sign-in" ? "Sign in to your staff account." : "Create your staff account."}
+            {tab === "sign-in" ? t("auth.signInDescription") : t("auth.signUpDescription")}
           </CardDescription>
         </CardHeader>
 
@@ -137,7 +142,7 @@ export default function LoginPage() {
                 setFormError(null);
               }}
             >
-              Sign In
+              {t("auth.signIn")}
             </Button>
             <Button
               type="button"
@@ -148,48 +153,34 @@ export default function LoginPage() {
                 setFormError(null);
               }}
             >
-              Sign Up
+              {t("auth.signUp")}
             </Button>
           </div>
 
-          <form
-            className="space-y-4"
-            onSubmit={handleSubmit}
-          >
+          <form className="space-y-4" onSubmit={handleSubmit}>
             {tab === "sign-up" && (
-              <FormField
-                label="Your Name"
-                htmlFor="login-display-name"
-              >
+              <FormField label={t("auth.yourName")} htmlFor="login-display-name">
                 <Input
                   id="login-display-name"
-                  placeholder="e.g. Roshan"
+                  placeholder={t("auth.yourNamePlaceholder")}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                 />
               </FormField>
             )}
 
-            <FormField
-              label="Email"
-              htmlFor="login-email"
-              required
-            >
+            <FormField label={t("auth.email")} htmlFor="login-email" required>
               <Input
                 id="login-email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={t("auth.emailPlaceholder")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </FormField>
 
-            <FormField
-              label="Password"
-              htmlFor="login-password"
-              required
-            >
+            <FormField label={t("auth.password")} htmlFor="login-password" required>
               <Input
                 id="login-password"
                 type="password"
@@ -204,16 +195,12 @@ export default function LoginPage() {
               <p className="text-sm font-medium text-destructive">{formError}</p>
             )}
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={submitting}
-            >
+            <Button type="submit" className="w-full" disabled={submitting}>
               {submitting
-                ? "Please wait..."
+                ? t("common.pleaseWait")
                 : tab === "sign-in"
-                ? "Sign In"
-                : "Create Account"}
+                  ? t("auth.signIn")
+                  : t("auth.createAccount")}
             </Button>
           </form>
 
@@ -223,15 +210,14 @@ export default function LoginPage() {
                 href="/forgot-password"
                 className="font-medium text-primary underline-offset-4 hover:underline"
               >
-                Forgot password?
+                {t("auth.forgotPassword")}
               </Link>
             </p>
           )}
 
           {tab === "sign-up" && (
             <p className="mt-4 text-center text-xs text-muted-foreground">
-              New accounts always start as Staff and require Administrator approval before you can sign in and
-              use the app.
+              {t("auth.signUpHint")}
             </p>
           )}
         </CardContent>

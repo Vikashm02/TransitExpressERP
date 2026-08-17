@@ -6,6 +6,7 @@ import { ClipboardList, FilePenLine } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { OverviewOpenQueues } from "@/components/services/overview.service";
+import { useLanguage } from "@/lib/i18n";
 
 interface OverviewNeedsAttentionProps {
   loading: boolean;
@@ -18,26 +19,28 @@ export default function OverviewNeedsAttention({
   open,
   canLr,
 }: OverviewNeedsAttentionProps) {
+  const { t } = useLanguage();
+
   if (!canLr) return null;
 
   const items = [
     {
       key: "pending-pod",
-      title: "Pending POD",
+      title: t("overview.cards.pendingPod"),
       count: open.pendingPodCount,
       href: "/pod",
-      action: "View",
+      action: t("overview.attention.view"),
       icon: ClipboardList,
-      hint: "Final LRs you created or are assigned, still without POD",
+      hint: t("overview.attention.pendingPodHint"),
     },
     {
       key: "drafts",
-      title: "LR Drafts",
+      title: t("overview.attention.lrDrafts"),
       count: open.lrDraftsCount,
       href: "/lr",
-      action: "Resume Drafts",
+      action: t("overview.attention.resumeDrafts"),
       icon: FilePenLine,
-      hint: "Incomplete LRs you can continue",
+      hint: t("overview.attention.draftsHint"),
     },
   ];
 
@@ -45,10 +48,10 @@ export default function OverviewNeedsAttention({
     <section className="erp-panel overflow-hidden">
       <div className="border-b border-border/80 px-4 py-3 sm:px-5">
         <h3 className="font-heading text-base font-semibold tracking-tight">
-          Needs Attention
+          {t("overview.attention.title")}
         </h3>
         <p className="text-xs text-muted-foreground">
-          Open work that still needs you — not limited to the selected period.
+          {t("overview.attention.subtitle")}
         </p>
       </div>
 

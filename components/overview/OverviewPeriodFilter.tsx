@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import FormDatePicker from "@/components/ui/FormDatePicker";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { todayIsoDate } from "@/lib/draftPersistence";
 
@@ -45,17 +46,21 @@ export function defaultOverviewPeriod(
   return { preset: "today", fromDate: today, toDate: today };
 }
 
-const PRESETS: Array<{ key: OverviewPeriodPreset; label: string }> = [
-  { key: "today", label: "Today" },
-  { key: "week", label: "This Week" },
-  { key: "month", label: "This Month" },
-  { key: "custom", label: "Custom" },
+const PRESET_KEYS: Array<{
+  key: OverviewPeriodPreset;
+  labelKey: string;
+}> = [
+  { key: "today", labelKey: "overview.period.today" },
+  { key: "week", labelKey: "overview.period.week" },
+  { key: "month", labelKey: "overview.period.month" },
+  { key: "custom", labelKey: "overview.period.custom" },
 ];
 
 export default function OverviewPeriodFilter({
   value,
   onChange,
 }: OverviewPeriodFilterProps) {
+  const { t } = useLanguage();
   const [customFrom, setCustomFrom] = useState(value.fromDate);
   const [customTo, setCustomTo] = useState(value.toDate);
 
@@ -89,7 +94,7 @@ export default function OverviewPeriodFilter({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {PRESETS.map((preset) => (
+        {PRESET_KEYS.map((preset) => (
           <Button
             key={preset.key}
             type="button"
@@ -98,31 +103,32 @@ export default function OverviewPeriodFilter({
             className={cn(value.preset === preset.key && "shadow-sm")}
             onClick={() => applyPreset(preset.key)}
           >
-            {preset.label}
+            {t(preset.labelKey)}
           </Button>
         ))}
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Period: <span className="font-medium text-foreground">{rangeLabel}</span>
+        {t("overview.period.label")}:{" "}
+        <span className="font-medium text-foreground">{rangeLabel}</span>
       </p>
 
       {value.preset === "custom" && (
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <FormDatePicker
-            label="From Date"
+            label={t("overview.period.fromDate")}
             value={customFrom}
             onChange={setCustomFrom}
             className="sm:w-48"
           />
           <FormDatePicker
-            label="To Date"
+            label={t("overview.period.toDate")}
             value={customTo}
             onChange={setCustomTo}
             className="sm:w-48"
           />
           <Button type="button" onClick={applyCustom}>
-            Apply
+            {t("overview.period.apply")}
           </Button>
         </div>
       )}

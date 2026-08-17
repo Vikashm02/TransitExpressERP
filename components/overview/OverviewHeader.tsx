@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "@/lib/i18n";
+
 import OverviewPeriodFilter, {
   type OverviewPeriodValue,
 } from "./OverviewPeriodFilter";
@@ -10,10 +12,10 @@ interface OverviewHeaderProps {
   onPeriodChange: (next: OverviewPeriodValue) => void;
 }
 
-function greetingForHour(hour: number): string {
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+function greetingKeyForHour(hour: number): string {
+  if (hour < 12) return "overview.greeting.morning";
+  if (hour < 17) return "overview.greeting.afternoon";
+  return "overview.greeting.evening";
 }
 
 export default function OverviewHeader({
@@ -21,21 +23,22 @@ export default function OverviewHeader({
   period,
   onPeriodChange,
 }: OverviewHeaderProps) {
-  const name = displayName.trim() || "there";
-  const greeting = greetingForHour(new Date().getHours());
+  const { t } = useLanguage();
+  const trimmed = displayName.trim();
+  const name = trimmed || t("overview.greeting.fallbackName");
+  const greeting = t(greetingKeyForHour(new Date().getHours()));
 
   return (
     <div className="overflow-hidden erp-panel">
       <div className="border-b border-border/80 bg-gradient-to-r from-primary/[0.07] via-card to-highlight/[0.08] px-4 py-4 sm:px-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          My work
+          {t("overview.myWork")}
         </p>
         <h2 className="font-heading text-lg font-semibold tracking-tight text-foreground sm:text-xl">
           {greeting}, {name}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Your operational activity for the selected period. Open drafts and
-          pending POD stay visible until finished.
+          {t("overview.subtitle")}
         </p>
       </div>
 

@@ -5,23 +5,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabase";
-import {
-  getPasswordRequirementHint,
-  validateNewPassword,
-} from "@/lib/auth/passwordPolicy";
+import { AUTH_PASSWORD_MIN_LENGTH } from "@/lib/auth/passwordPolicy";
+import { useLanguage } from "@/lib/i18n";
+import LanguageSelector from "@/components/layout/LanguageSelector";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import FormField from "@/components/ui/FormField";
 
 type Step = "request" | "verify" | "password" | "done";
+type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
 
 const RESEND_COOLDOWN_SECONDS = 60;
 /** Non-sensitive UI flag only — never stores passwords, OTPs, or tokens. */
 const RECOVERY_UI_FLAG = "erp_password_recovery";
-
-const GENERIC_CODE_SENT =
-  "If an account exists for this email address, a verification code has been sent.";
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -51,8 +48,12 @@ function isRecoveryUiActive(): boolean {
   }
 }
 
-function friendlyAuthError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error) || !error.message) return fallback;
+function friendlyAuthError(
+  error: unknown,
+  fallbackKey: string,
+  t: TranslateFn
+): string {
+  if (!(error instanceof Error) || !error.message) return t(fallbackKey);
 
   const message = error.message.toLowerCase();
 
@@ -61,7 +62,7 @@ function friendlyAuthError(error: unknown, fallback: string): string {
     message.includes("too many requests") ||
     message.includes("email rate limit")
   ) {
-    return "Too many requests. Please wait a moment and try again.";
+    return t("auth.forgot.rateLimited");
   }
 
   if (
@@ -71,25 +72,25 @@ function friendlyAuthError(error: unknown, fallback: string): string {
     message.includes("invalid")
   ) {
     if (message.includes("password")) {
-      return "That password does not meet the requirements. Please choose a stronger password.";
+      return t("auth.forgot.passwordNotStrong");
     }
-    return "That verification code is invalid or has expired. Request a new code and try again.";
+    return t("auth.forgot.invalidOrExpiredCode");
   }
 
   if (message.includes("same password") || message.includes("different from the old")) {
-    return "Choose a password that is different from your current password.";
+    return t("auth.forgot.differentPassword");
   }
 
   if (message.includes("network") || message.includes("fetch")) {
-    return "Network error. Check your connection and try again.";
+    return t("auth.forgot.networkError");
   }
 
   if (message.includes("session") || message.includes("auth session missing")) {
-    return "Your reset session has expired. Request a new verification code.";
+    return t("auth.forgot.sessionExpired");
   }
 
   // Never surface raw Auth/database internals.
-  return fallback;
+  return t(fallbackKey);
 }
 
 function shouldTreatAsSent(error: unknown): boolean {
@@ -114,12 +115,21 @@ function isRateLimited(error: unknown): boolean {
   );
 }
 
+function localPasswordError(password: string, t: TranslateFn): string | null {
+  if (!password) return t("auth.forgot.newPasswordRequired");
+  if (password.length < AUTH_PASSWORD_MIN_LENGTH) {
+    return t("auth.forgot.passwordTooShort", { min: AUTH_PASSWORD_MIN_LENGTH });
+  }
+  return null;
+}
+
 /**
  * Forgot / reset password via Supabase Auth recovery OTP.
  * Does not store OTPs or reset codes in the app database.
  */
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const { t } = useLanguage();
 
   const [step, setStep] = useState<Step>("request");
   const [email, setEmail] = useState("");
@@ -154,9 +164,7 @@ export default function ForgotPasswordPage() {
       if (!active) return;
       if (data.session && isRecoveryUiActive()) {
         setStep("password");
-        setInfoMessage(
-          "Verification succeeded. Create a new password to finish resetting your account."
-        );
+        setInfoMessage(t("auth.forgot.verificationSucceeded"));
       }
     }
 
@@ -170,9 +178,7 @@ export default function ForgotPasswordPage() {
         markRecoveryUiActive();
         setStep("password");
         setFormError(null);
-        setInfoMessage(
-          "Verification succeeded. Create a new password to finish resetting your account."
-        );
+        setInfoMessage(t("auth.forgot.verificationSucceeded"));
       }
     });
 
@@ -180,7 +186,7 @@ export default function ForgotPasswordPage() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [t]);
 
   async function sendRecoveryCode(targetEmail: string): Promise<boolean> {
     const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
@@ -189,14 +195,12 @@ export default function ForgotPasswordPage() {
 
     if (!error) return true;
     if (isRateLimited(error)) {
-      setFormError(friendlyAuthError(error, "Too many requests. Please wait and try again."));
+      setFormError(friendlyAuthError(error, "auth.forgot.rateLimited", t));
       return false;
     }
     if (shouldTreatAsSent(error)) return true;
 
-    setFormError(
-      friendlyAuthError(error, "Unable to send a verification code right now. Please try again later.")
-    );
+    setFormError(friendlyAuthError(error, "auth.forgot.unableToSend", t));
     return false;
   }
 
@@ -207,11 +211,11 @@ export default function ForgotPasswordPage() {
 
     const trimmed = email.trim();
     if (!trimmed) {
-      setFormError("Email is required.");
+      setFormError(t("auth.forgot.emailRequired"));
       return;
     }
     if (!isValidEmail(trimmed)) {
-      setFormError("Enter a valid email address.");
+      setFormError(t("auth.forgot.invalidEmail"));
       return;
     }
 
@@ -222,11 +226,11 @@ export default function ForgotPasswordPage() {
 
       setEmail(trimmed);
       setOtp("");
-      setInfoMessage(GENERIC_CODE_SENT);
+      setInfoMessage(t("auth.forgot.codeSent"));
       setStep("verify");
       startCooldown();
     } catch {
-      setFormError("Network error. Check your connection and try again.");
+      setFormError(t("auth.forgot.networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -240,10 +244,10 @@ export default function ForgotPasswordPage() {
       setSubmitting(true);
       const ok = await sendRecoveryCode(email.trim());
       if (!ok) return;
-      setInfoMessage(GENERIC_CODE_SENT);
+      setInfoMessage(t("auth.forgot.codeSent"));
       startCooldown();
     } catch {
-      setFormError("Network error. Check your connection and try again.");
+      setFormError(t("auth.forgot.networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -255,7 +259,7 @@ export default function ForgotPasswordPage() {
 
     const token = otp.trim();
     if (!token) {
-      setFormError("Enter the verification code from your email.");
+      setFormError(t("auth.forgot.otpRequired"));
       return;
     }
 
@@ -269,10 +273,7 @@ export default function ForgotPasswordPage() {
 
       if (error) {
         setFormError(
-          friendlyAuthError(
-            error,
-            "That verification code is invalid or has expired. Request a new code and try again."
-          )
+          friendlyAuthError(error, "auth.forgot.invalidOrExpiredCode", t)
         );
         return;
       }
@@ -282,7 +283,7 @@ export default function ForgotPasswordPage() {
       setStep("password");
       setInfoMessage(null);
     } catch {
-      setFormError("Network error. Check your connection and try again.");
+      setFormError(t("auth.forgot.networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -292,17 +293,17 @@ export default function ForgotPasswordPage() {
     event.preventDefault();
     setFormError(null);
 
-    const passwordError = validateNewPassword(newPassword);
+    const passwordError = localPasswordError(newPassword, t);
     if (passwordError) {
       setFormError(passwordError);
       return;
     }
     if (!confirmPassword) {
-      setFormError("Confirm your new password.");
+      setFormError(t("auth.forgot.confirmRequired"));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setFormError("Passwords do not match.");
+      setFormError(t("auth.forgot.passwordsDoNotMatch"));
       return;
     }
 
@@ -311,12 +312,7 @@ export default function ForgotPasswordPage() {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
 
       if (error) {
-        setFormError(
-          friendlyAuthError(
-            error,
-            "Unable to update your password. Request a new verification code and try again."
-          )
-        );
+        setFormError(friendlyAuthError(error, "auth.forgot.unableToUpdate", t));
         if (
           error.message.toLowerCase().includes("session") ||
           error.message.toLowerCase().includes("auth session missing")
@@ -333,7 +329,7 @@ export default function ForgotPasswordPage() {
       setStep("done");
       setInfoMessage(null);
     } catch {
-      setFormError("Network error. Check your connection and try again.");
+      setFormError(t("auth.forgot.networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -347,26 +343,26 @@ export default function ForgotPasswordPage() {
   function titleForStep(): string {
     switch (step) {
       case "request":
-        return "Forgot Password";
+        return t("auth.forgot.stepRequest");
       case "verify":
-        return "Verify your email";
+        return t("auth.forgot.stepVerify");
       case "password":
-        return "Create a new password";
+        return t("auth.forgot.stepPassword");
       case "done":
-        return "Password updated successfully.";
+        return t("auth.forgot.stepDone");
     }
   }
 
   function descriptionForStep(): string {
     switch (step) {
       case "request":
-        return "Enter your registered email address and we'll send you a verification code.";
+        return t("auth.forgot.descRequest");
       case "verify":
-        return "Enter the verification code sent to your registered email.";
+        return t("auth.forgot.descVerify");
       case "password":
-        return "Choose a new password for your account.";
+        return t("auth.forgot.descPassword");
       case "done":
-        return "You can now sign in with your new password.";
+        return t("auth.forgot.descDone");
     }
   }
 
@@ -376,14 +372,16 @@ export default function ForgotPasswordPage() {
       <div className="pointer-events-none absolute inset-y-0 left-0 hidden w-[42%] bg-primary lg:block" />
       <div className="pointer-events-none absolute bottom-8 left-8 hidden max-w-sm text-primary-foreground lg:block">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-highlight">
-          Transjit Express
+          {t("auth.brandEyebrow")}
         </p>
         <p className="mt-2 font-heading text-3xl font-semibold tracking-tight">
-          Logistics control, built for the yard.
+          {t("auth.brandHeadline")}
         </p>
-        <p className="mt-2 text-sm text-primary-foreground/75">
-          LR · POD · Delivery · Financials — one operational console for the team on the move.
-        </p>
+        <p className="mt-2 text-sm text-primary-foreground/75">{t("auth.brandSub")}</p>
+      </div>
+
+      <div className="absolute top-4 right-4 z-20 sm:top-6 sm:right-6">
+        <LanguageSelector variant="segmented" />
       </div>
 
       <Card className="relative z-10 w-full max-w-md border-border/70 shadow-xl shadow-primary/10">
@@ -392,7 +390,7 @@ export default function ForgotPasswordPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/icons/icon-192.png"
-              alt="Transjit Express"
+              alt={t("auth.forgot.brandAlt")}
               className="h-12 w-12 object-contain"
             />
           </div>
@@ -409,13 +407,18 @@ export default function ForgotPasswordPage() {
 
           {step === "request" && (
             <form className="space-y-4" onSubmit={handleRequestCode}>
-              <FormField label="Email" htmlFor="forgot-email" required error={formError ?? undefined}>
+              <FormField
+                label={t("auth.email")}
+                htmlFor="forgot-email"
+                required
+                error={formError ?? undefined}
+              >
                 <Input
                   id="forgot-email"
                   type="email"
                   autoComplete="email"
                   inputMode="email"
-                  placeholder="you@example.com"
+                  placeholder={t("auth.emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={submitting}
@@ -424,7 +427,7 @@ export default function ForgotPasswordPage() {
               </FormField>
 
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Sending..." : "Send verification code"}
+                {submitting ? t("auth.forgot.sending") : t("auth.forgot.sendCode")}
               </Button>
 
               <Button
@@ -434,7 +437,7 @@ export default function ForgotPasswordPage() {
                 onClick={goBackToLogin}
                 disabled={submitting}
               >
-                Back to Login
+                {t("auth.forgot.backToLogin")}
               </Button>
             </form>
           )}
@@ -442,7 +445,7 @@ export default function ForgotPasswordPage() {
           {step === "verify" && (
             <form className="space-y-4" onSubmit={handleVerifyCode}>
               <FormField
-                label="Verification code"
+                label={t("auth.forgot.verificationCode")}
                 htmlFor="forgot-otp"
                 required
                 error={formError ?? undefined}
@@ -455,7 +458,7 @@ export default function ForgotPasswordPage() {
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder="Enter code"
+                  placeholder={t("auth.forgot.enterCode")}
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   disabled={submitting}
@@ -464,7 +467,9 @@ export default function ForgotPasswordPage() {
               </FormField>
 
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Verifying..." : "Verify code"}
+                {submitting
+                  ? t("auth.forgot.verifying")
+                  : t("auth.forgot.verifyCode")}
               </Button>
 
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -475,7 +480,11 @@ export default function ForgotPasswordPage() {
                   onClick={() => void handleResend()}
                   disabled={submitting || cooldownSeconds > 0}
                 >
-                  {cooldownSeconds > 0 ? `Resend code (${cooldownSeconds}s)` : "Resend code"}
+                  {cooldownSeconds > 0
+                    ? t("auth.forgot.resendCodeCooldown", {
+                        seconds: cooldownSeconds,
+                      })
+                    : t("auth.forgot.resendCode")}
                 </Button>
                 <Button
                   type="button"
@@ -488,7 +497,7 @@ export default function ForgotPasswordPage() {
                   }}
                   disabled={submitting}
                 >
-                  Back
+                  {t("auth.forgot.back")}
                 </Button>
               </div>
             </form>
@@ -497,10 +506,12 @@ export default function ForgotPasswordPage() {
           {step === "password" && (
             <form className="space-y-4" onSubmit={handleResetPassword}>
               <FormField
-                label="New password"
+                label={t("auth.forgot.newPassword")}
                 htmlFor="forgot-new-password"
                 required
-                hint={getPasswordRequirementHint()}
+                hint={t("auth.forgot.passwordHint", {
+                  min: AUTH_PASSWORD_MIN_LENGTH,
+                })}
               >
                 <Input
                   id="forgot-new-password"
@@ -514,7 +525,11 @@ export default function ForgotPasswordPage() {
                 />
               </FormField>
 
-              <FormField label="Confirm new password" htmlFor="forgot-confirm-password" required>
+              <FormField
+                label={t("auth.forgot.confirmNewPassword")}
+                htmlFor="forgot-confirm-password"
+                required
+              >
                 <Input
                   id="forgot-confirm-password"
                   type="password"
@@ -534,7 +549,9 @@ export default function ForgotPasswordPage() {
               )}
 
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Updating..." : "Reset password"}
+                {submitting
+                  ? t("auth.forgot.updating")
+                  : t("auth.forgot.resetPassword")}
               </Button>
 
               <Button
@@ -551,7 +568,7 @@ export default function ForgotPasswordPage() {
                 }}
                 disabled={submitting}
               >
-                Back
+                {t("auth.forgot.back")}
               </Button>
             </form>
           )}
@@ -559,15 +576,15 @@ export default function ForgotPasswordPage() {
           {step === "done" && (
             <div className="space-y-4">
               <p className="text-center text-sm text-muted-foreground">
-                Password updated successfully.
+                {t("auth.forgot.passwordUpdatedBody")}
               </p>
               <Button type="button" className="w-full" onClick={goBackToLogin}>
-                Back to Login
+                {t("auth.forgot.backToLogin")}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
-                Or go directly to{" "}
+                {t("auth.forgot.orGoDirectly")}{" "}
                 <Link href="/login" className="underline underline-offset-2">
-                  Sign In
+                  {t("auth.signIn")}
                 </Link>
                 .
               </p>

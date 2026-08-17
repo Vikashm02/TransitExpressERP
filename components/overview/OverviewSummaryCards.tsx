@@ -14,6 +14,7 @@ import type {
   OverviewPeriodMetrics,
   OverviewPermissions,
 } from "@/components/services/overview.service";
+import { useLanguage } from "@/lib/i18n";
 
 interface OverviewSummaryCardsProps {
   loading: boolean;
@@ -34,6 +35,8 @@ export default function OverviewSummaryCards({
   period,
   open,
 }: OverviewSummaryCardsProps) {
+  const { t } = useLanguage();
+
   const dcAsnTotal =
     permissions.deliveryChallans || permissions.asnCreations
       ? (period.dcsCreated ?? 0) + (period.asnsCreated ?? 0)
@@ -43,54 +46,54 @@ export default function OverviewSummaryCards({
     permissions.lr
       ? {
           key: "lrs",
-          title: "My LRs",
+          title: t("overview.cards.myLrs"),
           value: display(loading, period.lrsCreated),
-          subtitle: "Created in period",
+          subtitle: t("overview.cards.createdInPeriod"),
           icon: FileText,
         }
       : null,
     permissions.lr
       ? {
           key: "updates",
-          title: "LR Updates",
+          title: t("overview.cards.lrUpdates"),
           value: display(loading, period.lrsUpdated),
-          subtitle: "Edits in period",
+          subtitle: t("overview.cards.editsInPeriod"),
           icon: FileEdit,
         }
       : null,
     permissions.pod
       ? {
           key: "pods",
-          title: "PODs",
+          title: t("overview.cards.pods"),
           value: display(loading, period.podsCreated),
-          subtitle: "Created in period",
+          subtitle: t("overview.cards.createdInPeriod"),
           icon: ClipboardCheck,
         }
       : null,
     permissions.lr
       ? {
           key: "pending-pod",
-          title: "Pending POD",
+          title: t("overview.cards.pendingPod"),
           value: display(loading, open.pendingPodCount),
-          subtitle: "Still open",
+          subtitle: t("overview.cards.stillOpen"),
           icon: Package,
         }
       : null,
     permissions.lr
       ? {
           key: "drafts",
-          title: "Drafts",
+          title: t("overview.cards.drafts"),
           value: display(loading, open.lrDraftsCount),
-          subtitle: "Open LR drafts",
+          subtitle: t("overview.cards.openLrDrafts"),
           icon: FileEdit,
         }
       : null,
     permissions.deliveryChallans || permissions.asnCreations
       ? {
           key: "dc-asn",
-          title: "DC / ASN",
+          title: t("overview.cards.dcAsn"),
           value: display(loading, dcAsnTotal),
-          subtitle: "Created in period",
+          subtitle: t("overview.cards.createdInPeriod"),
           icon: Truck,
         }
       : null,
@@ -105,7 +108,7 @@ export default function OverviewSummaryCards({
   if (cards.length === 0) {
     return (
       <div className="erp-panel p-4 text-sm text-muted-foreground">
-        No module permissions are available for overview metrics.
+        {t("overview.cards.noPermissions")}
       </div>
     );
   }

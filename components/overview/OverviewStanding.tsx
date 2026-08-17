@@ -4,6 +4,7 @@ import type {
   OverviewOpenQueues,
   OverviewPeriodMetrics,
 } from "@/components/services/overview.service";
+import { useLanguage } from "@/lib/i18n";
 
 interface OverviewStandingProps {
   loading: boolean;
@@ -33,11 +34,12 @@ function StandingBlock({
   pending: number | null | undefined;
   drafts: number | null | undefined;
 }) {
+  const { t } = useLanguage();
   const rows = [
-    { label: "Created", value: created },
-    { label: "Updated", value: updated },
-    { label: "Pending POD", value: pending },
-    { label: "Drafts", value: drafts },
+    { label: t("overview.standing.created"), value: created },
+    { label: t("overview.standing.updated"), value: updated },
+    { label: t("overview.standing.pendingPod"), value: pending },
+    { label: t("overview.standing.drafts"), value: drafts },
   ];
 
   return (
@@ -63,19 +65,21 @@ export default function OverviewStanding({
   month,
   open,
 }: OverviewStandingProps) {
+  const { t } = useLanguage();
+
   return (
     <section className="space-y-3">
       <div>
         <h3 className="font-heading text-base font-semibold tracking-tight">
-          Where I Stand
+          {t("overview.standing.title")}
         </h3>
         <p className="text-xs text-muted-foreground">
-          Fixed windows for today and this month. Pending and drafts are open queues.
+          {t("overview.standing.subtitle")}
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <StandingBlock
-          title="Today's Work"
+          title={t("overview.standing.todaysWork")}
           loading={loading}
           created={today.createdTotal ?? today.lrsCreated}
           updated={today.lrsUpdated}
@@ -83,7 +87,7 @@ export default function OverviewStanding({
           drafts={open.lrDraftsCount}
         />
         <StandingBlock
-          title="This Month"
+          title={t("overview.standing.thisMonth")}
           loading={loading}
           created={month.createdTotal ?? month.lrsCreated}
           updated={month.lrsUpdated}
