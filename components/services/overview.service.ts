@@ -38,6 +38,46 @@ export interface OverviewPermissions {
   asnCreations: boolean;
 }
 
+/** Open-queue age buckets (not filtered by reporting period). */
+export interface OverviewAgeBuckets {
+  today: number;
+  days12: number;
+  days37: number;
+  days7Plus: number;
+  oldestDays: number | null;
+  total: number;
+}
+
+/**
+ * Period: LRs created in selected range with finalized_at set.
+ * Duration uses finalized_at − created_at (never updated_at).
+ */
+export interface OverviewCompletionMetrics {
+  completedCount: number;
+  /** Average seconds; null when no completed LRs. */
+  avgSeconds: number | null;
+}
+
+/**
+ * Period: LRs created by user in selected range.
+ * Edits: all tracked lr_edit_events on those LRs (may be after period end).
+ * Scores are null when lrsCreated === 0 (show "No data").
+ */
+export interface OverviewQualityMetrics {
+  lrsCreated: number;
+  totalEdits: number;
+  editRate: number | null;
+  qualityScore: number | null;
+  trackingStartedAt: string | null;
+}
+
+export interface OverviewEfficiency {
+  draftAge: OverviewAgeBuckets;
+  pendingPodAge: OverviewAgeBuckets;
+  completion: OverviewCompletionMetrics;
+  quality: OverviewQualityMetrics;
+}
+
 export interface OverviewSnapshot {
   userId: string;
   from: string;
@@ -49,6 +89,8 @@ export interface OverviewSnapshot {
   month: OverviewPeriodMetrics;
   drafts: OverviewDraftItem[];
   recent: OverviewRecentItem[];
+  /** Null when caller lacks LR view permission (or pre-038 RPC). */
+  efficiency: OverviewEfficiency | null;
 }
 
 function asNullableNumber(value: unknown): number | null {
@@ -69,6 +111,44 @@ function mapPeriod(raw: Record<string, unknown> | null | undefined): OverviewPer
   };
 }
 
+function mapAgeBuckets(raw: Record<string, unknown> | null | undefined): OverviewAgeBuckets {
+  const row = raw ?? {};
+  return {
+    today: asNullableNumber(row.today) ?? 0,
+    days12: asNullableNumber(row.days_1_2) ?? 0,
+    days37: asNullableNumber(row.days_3_7) ?? 0,
+    days7Plus: asNullableNumber(row.days_7_plus) ?? 0,
+    oldestDays: asNullableNumber(row.oldest_days),
+    total: asNullableNumber(row.total) ?? 0,
+  };
+}
+
+function mapEfficiency(raw: unknown): OverviewEfficiency | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const completion = (row.completion ?? {}) as Record<string, unknown>;
+  const quality = (row.quality ?? {}) as Record<string, unknown>;
+
+  return {
+    draftAge: mapAgeBuckets(row.draft_age as Record<string, unknown>),
+    pendingPodAge: mapAgeBuckets(row.pending_pod_age as Record<string, unknown>),
+    completion: {
+      completedCount: asNullableNumber(completion.completed_count) ?? 0,
+      avgSeconds: asNullableNumber(completion.avg_seconds),
+    },
+    quality: {
+      lrsCreated: asNullableNumber(quality.lrs_created) ?? 0,
+      totalEdits: asNullableNumber(quality.total_edits) ?? 0,
+      editRate: asNullableNumber(quality.edit_rate),
+      qualityScore: asNullableNumber(quality.quality_score),
+      trackingStartedAt:
+        quality.tracking_started_at == null
+          ? null
+          : String(quality.tracking_started_at),
+    },
+  };
+}
+
 /** Strip DB draft vehicle placeholders for display only. */
 function displayVehicleNumber(value: string | null | undefined): string {
   const trimmed = (value ?? "").trim();
@@ -77,8 +157,9 @@ function displayVehicleNumber(value: string | null | undefined): string {
 }
 
 /**
- * Personal Overview snapshot for the authenticated user (Phase 2a).
+ * Personal Overview snapshot for the authenticated user.
  * Scope is enforced by `get_overview_snapshot` via auth.uid() — no staff id.
+ * Efficiency block requires migration 038.
  */
 export async function getOverviewSnapshot(
   fromDate: string,
@@ -140,5 +221,6 @@ export async function getOverviewSnapshot(
         at: String(row.at ?? ""),
       };
     }),
+    efficiency: mapEfficiency(raw.efficiency),
   };
 }

@@ -200,7 +200,35 @@ const hi: TranslationDict = {
   "overview.standing.pendingPod": "लंबित POD",
   "overview.standing.drafts": "ड्राफ्ट",
   "overview.loadError":
-    "आपका अवलोकन लोड नहीं हो सका। पुष्टि करें कि माइग्रेशन 037 लागू है।",
+    "आपका अवलोकन लोड नहीं हो सका। पुष्टि करें कि माइग्रेशन 037–038 लागू हैं।",
+
+  // Overview efficiency (Phase ops)
+  "overview.efficiency.title": "मेरे संचालन",
+  "overview.efficiency.subtitle":
+    "पूर्णता और गुणवत्ता चयनित अवधि पर आधारित हैं। ड्राफ्ट और लंबित POD खुली कतारें हैं।",
+  "overview.efficiency.noData": "कोई डेटा नहीं",
+  "overview.efficiency.daysCount": "{days} दिन",
+  "overview.efficiency.bucket.today": "आज",
+  "overview.efficiency.bucket.days12": "1–2 दिन",
+  "overview.efficiency.bucket.days37": "3–7 दिन",
+  "overview.efficiency.bucket.days7Plus": "7+ दिन",
+  "overview.efficiency.completion.title": "औसत LR पूर्णता समय",
+  "overview.efficiency.completion.minutes": "मिनट",
+  "overview.efficiency.completion.basedOn": "{count} पूर्ण LR के आधार पर",
+  "overview.efficiency.quality.title": "LR गुणवत्ता",
+  "overview.efficiency.quality.editsOverLrs": "{edits} संपादन / {lrs} LR",
+  "overview.efficiency.quality.editRate": "संपादन दर {rate}%",
+  "overview.efficiency.quality.trackingNotice":
+    "सटीक संपादन ट्रैकिंग {date} से शुरू हुई। उससे पहले की गुणवत्ता अधूरी है।",
+  "overview.efficiency.draftAge.title": "मेरे LR ड्राफ्ट — समयरेखा",
+  "overview.efficiency.draftAge.subtitle":
+    "आयु के अनुसार खुले ड्राफ्ट। चयनित अवधि से स्वतंत्र।",
+  "overview.efficiency.draftAge.oldest": "सबसे पुराना ड्राफ्ट:",
+  "overview.efficiency.podAge.title": "लंबित POD आयु",
+  "overview.efficiency.podAge.subtitle":
+    "आयु के अनुसार लंबित POD। ध्यान दें वाली वही व्यक्तिगत नियम।",
+  "overview.efficiency.podAge.oldest": "सबसे पुराना लंबित:",
+  "overview.efficiency.podAge.total": "कुल लंबित POD",
 };
 
 export default hi;

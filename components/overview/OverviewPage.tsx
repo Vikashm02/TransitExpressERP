@@ -16,6 +16,7 @@ import OverviewNeedsAttention from "./OverviewNeedsAttention";
 import OverviewDrafts from "./OverviewDrafts";
 import OverviewRecentWork from "./OverviewRecentWork";
 import OverviewStanding from "./OverviewStanding";
+import OverviewEfficiencyPanel from "./OverviewEfficiencyPanel";
 import {
   defaultOverviewPeriod,
   type OverviewPeriodValue,
@@ -42,7 +43,8 @@ const EMPTY_OPEN = {
 };
 
 /**
- * Phase 2a personal Overview — scoped via get_overview_snapshot (auth.uid()).
+ * Personal Overview — scoped via get_overview_snapshot (auth.uid()).
+ * Efficiency metrics require migration 038.
  * Company / staff selector deferred to Phase 2c.
  */
 export default function OverviewPage() {
@@ -103,27 +105,39 @@ export default function OverviewPage() {
           period={periodMetrics}
           open={open}
         />
+        <OverviewEfficiencyPanel
+          loading={loading}
+          canLr={permissions.lr}
+          periodFrom={period.fromDate}
+          efficiency={snapshot?.efficiency ?? null}
+        />
         <OverviewStanding
           loading={loading}
           today={snapshot?.today ?? EMPTY_PERIOD}
           month={snapshot?.month ?? EMPTY_PERIOD}
           open={open}
         />
-        <OverviewRecentWork loading={loading} recent={snapshot?.recent ?? []} />
         <OverviewDrafts
           loading={loading}
           drafts={snapshot?.drafts ?? []}
           canLr={permissions.lr}
         />
+        <OverviewRecentWork loading={loading} recent={snapshot?.recent ?? []} />
       </div>
 
-      {/* Desktop: summary → standing → attention / recent / drafts */}
+      {/* Desktop: summary → efficiency → standing → attention / drafts → recent */}
       <div className="hidden space-y-5 lg:block">
         <OverviewSummaryCards
           loading={loading}
           permissions={permissions}
           period={periodMetrics}
           open={open}
+        />
+        <OverviewEfficiencyPanel
+          loading={loading}
+          canLr={permissions.lr}
+          periodFrom={period.fromDate}
+          efficiency={snapshot?.efficiency ?? null}
         />
         <OverviewStanding
           loading={loading}

@@ -198,7 +198,35 @@ const en: TranslationDict = {
   "overview.standing.pendingPod": "Pending POD",
   "overview.standing.drafts": "Drafts",
   "overview.loadError":
-    "Unable to load your overview. Confirm migration 037 is applied.",
+    "Unable to load your overview. Confirm migrations 037–038 are applied.",
+
+  // Overview efficiency (Phase ops)
+  "overview.efficiency.title": "My Operations",
+  "overview.efficiency.subtitle":
+    "Completion and quality use the selected period. Drafts and pending POD are open queues.",
+  "overview.efficiency.noData": "No data",
+  "overview.efficiency.daysCount": "{days} days",
+  "overview.efficiency.bucket.today": "Today",
+  "overview.efficiency.bucket.days12": "1–2 days",
+  "overview.efficiency.bucket.days37": "3–7 days",
+  "overview.efficiency.bucket.days7Plus": "7+ days",
+  "overview.efficiency.completion.title": "Average LR Completion",
+  "overview.efficiency.completion.minutes": "min",
+  "overview.efficiency.completion.basedOn": "Based on {count} completed LRs",
+  "overview.efficiency.quality.title": "LR Quality",
+  "overview.efficiency.quality.editsOverLrs": "{edits} edits / {lrs} LRs",
+  "overview.efficiency.quality.editRate": "Edit rate {rate}%",
+  "overview.efficiency.quality.trackingNotice":
+    "Exact edit tracking started on {date}. Quality for earlier dates is incomplete.",
+  "overview.efficiency.draftAge.title": "My LR Drafts — Timeline",
+  "overview.efficiency.draftAge.subtitle":
+    "Open drafts by age. Visible regardless of the selected period.",
+  "overview.efficiency.draftAge.oldest": "Oldest draft:",
+  "overview.efficiency.podAge.title": "POD Pending Age",
+  "overview.efficiency.podAge.subtitle":
+    "Pending POD by age. Same personal rules as Needs Attention.",
+  "overview.efficiency.podAge.oldest": "Oldest pending:",
+  "overview.efficiency.podAge.total": "Total pending POD",
 };
 
 export default en;
