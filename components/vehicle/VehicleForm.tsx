@@ -21,6 +21,7 @@ import {
   canonicalizeVehicleNumber,
   formatVehicleNumberInputChange,
 } from "@/lib/vehicleNumber";
+import { useControlledInputCaret } from "@/hooks/useControlledInputCaret";
 
 interface VehicleFormProps {
   vehicle: Vehicle;
@@ -38,20 +39,30 @@ export default function VehicleForm({
   onChange,
 }: VehicleFormProps) {
   const vehicleNumberRef = useRef<HTMLInputElement>(null);
+  const scheduleCaret = useControlledInputCaret(
+    vehicleNumberRef,
+    vehicle.vehicleNumber
+  );
 
   function update<K extends keyof Vehicle>(key: K, value: Vehicle[K]) {
     onChange({ ...vehicle, [key]: value });
   }
 
-  function handleVehicleNumberChange(raw: string, cursor: number) {
+  function handleVehicleNumberChange(raw: string, selectionStart: number | null) {
+    const cursor = selectionStart ?? raw.length;
     const next = formatVehicleNumberInputChange(raw, cursor, vehicle.vehicleNumber);
-    update("vehicleNumber", next.value);
-    requestAnimationFrame(() => {
-      const el = vehicleNumberRef.current;
-      if (!el) return;
+    scheduleCaret(next.cursor);
+
+    const el = vehicleNumberRef.current;
+    if (el) {
+      if (el.value !== next.value) {
+        el.value = next.value;
+      }
       const pos = Math.min(next.cursor, next.value.length);
       el.setSelectionRange(pos, pos);
-    });
+    }
+
+    update("vehicleNumber", next.value);
   }
 
   return (
@@ -71,10 +82,7 @@ export default function VehicleForm({
               value={vehicle.vehicleNumber}
               autoComplete="off"
               onChange={(e) =>
-                handleVehicleNumberChange(
-                  e.target.value,
-                  e.target.selectionStart ?? e.target.value.length
-                )
+                handleVehicleNumberChange(e.target.value, e.target.selectionStart)
               }
               onBlur={() => {
                 const next = canonicalizeVehicleNumber(vehicle.vehicleNumber);

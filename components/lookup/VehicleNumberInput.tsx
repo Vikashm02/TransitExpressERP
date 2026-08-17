@@ -10,6 +10,7 @@ import {
   formatVehicleNumberInputChange,
   vehicleNumberMatchesQuery,
 } from "@/lib/vehicleNumber";
+import { useControlledInputCaret } from "@/hooks/useControlledInputCaret";
 import type { VehicleRecord } from "@/components/services/vehicle.service";
 
 interface VehicleNumberInputProps {
@@ -44,6 +45,7 @@ export default function VehicleNumberInput({
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const scheduleCaret = useControlledInputCaret(inputRef, value);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
 
@@ -69,15 +71,23 @@ export default function VehicleNumberInput({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  function applyFormattedChange(raw: string, cursor: number) {
+  function applyFormattedChange(raw: string, selectionStart: number | null) {
+    const cursor = selectionStart ?? raw.length;
     const next = formatVehicleNumberInputChange(raw, cursor, value);
-    onChange(next.value);
-    requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (!el) return;
+    scheduleCaret(next.cursor);
+
+    // Keep the DOM value/selection in sync before React commits, then
+    // useLayoutEffect restores again after the controlled re-render.
+    const el = inputRef.current;
+    if (el) {
+      if (el.value !== next.value) {
+        el.value = next.value;
+      }
       const pos = Math.min(next.cursor, next.value.length);
       el.setSelectionRange(pos, pos);
-    });
+    }
+
+    onChange(next.value);
   }
 
   function commit(vehicle: VehicleRecord) {
@@ -107,8 +117,7 @@ export default function VehicleNumberInput({
           className="pl-8"
           onFocus={() => setOpen(true)}
           onChange={(e) => {
-            const el = e.target;
-            applyFormattedChange(el.value, el.selectionStart ?? el.value.length);
+            applyFormattedChange(e.target.value, e.target.selectionStart);
             setOpen(true);
           }}
           onKeyDown={(e) => {

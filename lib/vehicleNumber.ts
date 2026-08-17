@@ -78,6 +78,11 @@ export function canonicalizeVehicleNumber(value: string): string {
 
 /**
  * Format while typing and map the caret so it does not jump to the end.
+ *
+ * Caret is derived from how many alphanumeric characters sit before the
+ * pre-format selection, then projected into the formatted string (skipping
+ * auto-inserted hyphens). When a trailing hyphen is inserted at the typing
+ * frontier, the caret sits after that hyphen.
  */
 export function formatVehicleNumberInputChange(
   raw: string,
@@ -85,26 +90,56 @@ export function formatVehicleNumberInputChange(
   previousFormatted: string
 ): { value: string; cursor: number } {
   const prevCleaned = normalizeVehicleNumberKey(previousFormatted);
-  const nextCleaned = normalizeVehicleNumberKey(raw);
-  const deleting = nextCleaned.length < prevCleaned.length;
+  let nextCleaned = normalizeVehicleNumberKey(raw);
+  let source = raw;
+  let sourceCursor = Math.max(0, Math.min(cursor, raw.length));
 
-  const value = formatIndianVehicleNumber(raw, { trailingHyphen: !deleting });
+  // Backspace deleted only an auto-inserted "-" (cleaned length unchanged).
+  // Drop the preceding alphanumeric so the user is not stuck on the hyphen.
+  if (
+    nextCleaned.length === prevCleaned.length &&
+    raw.length < previousFormatted.length &&
+    prevCleaned.length > 0
+  ) {
+    nextCleaned = prevCleaned.slice(0, -1);
+    source = nextCleaned;
+    sourceCursor = nextCleaned.length;
+  }
 
-  const alnumBeforeCursor = normalizeVehicleNumberKey(raw.slice(0, cursor)).length;
+  const deleting =
+    nextCleaned.length < prevCleaned.length || raw.length < previousFormatted.length;
+
+  const value = formatIndianVehicleNumber(source, { trailingHyphen: !deleting });
+
+  const alnumBeforeCursor = normalizeVehicleNumberKey(source.slice(0, sourceCursor)).length;
+
+  if (alnumBeforeCursor === 0) {
+    return { value, cursor: 0 };
+  }
+
   let seen = 0;
   let nextCursor = value.length;
+
   for (let i = 0; i < value.length; i++) {
     if (/[A-Z0-9]/i.test(value[i]!)) {
       seen += 1;
       if (seen === alnumBeforeCursor) {
         nextCursor = i + 1;
+        // Typing at the end of the alphanumeric content: sit after a
+        // just-inserted trailing hyphen (e.g. "TN" → "TN-|").
+        if (
+          !deleting &&
+          alnumBeforeCursor === nextCleaned.length &&
+          value[i + 1] === "-"
+        ) {
+          nextCursor = i + 2;
+        }
         break;
       }
     }
   }
-  if (alnumBeforeCursor === 0) nextCursor = 0;
 
-  return { value, cursor: nextCursor };
+  return { value, cursor: Math.min(nextCursor, value.length) };
 }
 
 /**
