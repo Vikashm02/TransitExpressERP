@@ -596,7 +596,7 @@ export async function generateLrPdfBytes(
     [FIELDS.consigneeGST, lr.consigneeGST || ""],
     [FIELDS.consigneeAddress, lr.consigneeAddress || ""],
     [FIELDS.packages, packagesValue],
-    [FIELDS.material, lr.material || ""],
+    [FIELDS.material, (lr.materialDescription || "").trim() || lr.material || ""],
     [FIELDS.vendorCode, lr.vendorCode || ""],
     [FIELDS.invoiceDcNo, pickInvoiceDcNumber(lr)],
     [FIELDS.invoiceDcDate, pickInvoiceDcDate(lr)],

@@ -113,6 +113,11 @@ export const lrSchema = z
     // Material
     // ===========================
     material: z.string().trim().min(1, "Material is required."),
+    /** Staff-entered LR-specific description (not Material Master.description). */
+    materialDescription: z
+      .string()
+      .trim()
+      .max(500, "Material description must be 500 characters or fewer."),
     packageType: z.string().trim(),
     packages: nonNegativeNumber("Packages cannot be negative."),
     loadingWeight: requiredPositiveNumber("Loading weight is required."),

@@ -375,6 +375,7 @@ export async function parseAndValidateLRUpload(
       to,
 
       material,
+      materialDescription: "",
       packageType,
       packages,
       loadingWeight,

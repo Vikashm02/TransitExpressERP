@@ -221,7 +221,7 @@ export default function LRPrint({ lr, company }: LRPrintProps) {
                 {packagesDisplay} {lr.packageType}
               </td>
               <td>
-                <div>{lr.material}</div>
+                <div>{(lr.materialDescription || "").trim() || lr.material}</div>
                 <div className={styles.refLines}>
                   <div>Vendor Code : {lr.vendorCode}</div>
                   <div>Invoice/DC No.: {invoiceDcNumber}</div>

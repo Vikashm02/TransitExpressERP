@@ -56,6 +56,7 @@ const emptyLR: LR = {
 
   // Material
   material: "",
+  materialDescription: "",
   packageType: "",
   packages: 0,
   loadingWeight: 0,
