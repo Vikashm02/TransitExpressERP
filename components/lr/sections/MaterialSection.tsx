@@ -25,12 +25,15 @@ interface MaterialSectionProps {
   lr: LR;
   errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
+  /** Show required indicator + enforce via parent validation for new/draft LRs. */
+  requireMaterialDescription?: boolean;
 }
 
 export default function MaterialSection({
   lr,
   errors = {},
   onChange,
+  requireMaterialDescription = false,
 }: MaterialSectionProps) {
   const [lookupOpen, setLookupOpen] = useState(false);
   const [materials, setMaterials] = useState<MaterialRecord[]>([]);
@@ -103,6 +106,8 @@ export default function MaterialSection({
           <FormField
             label="Material Description"
             htmlFor="lr-material-description"
+            required={requireMaterialDescription}
+            error={errors.materialDescription}
             hint="Type the description for this LR. Matching uses Material Master reference descriptions only as suggestions."
             className="lg:col-span-3"
           >

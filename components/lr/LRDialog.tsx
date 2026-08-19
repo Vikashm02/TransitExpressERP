@@ -11,7 +11,7 @@ import type { LRRecord } from "@/components/services/lr.service";
 import { getCompany } from "@/components/services/company.service";
 import { pickFields } from "@/lib/utils";
 import { formatNextDocumentNumber } from "@/lib/permissions";
-import { isDraftLrNumber } from "@/lib/entryStatus";
+import { isDraftEntry, isDraftLrNumber } from "@/lib/entryStatus";
 import { prepareLrForDraftForm } from "@/lib/draftPersistence";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 
@@ -127,6 +127,12 @@ export default function LRDialog({
 
   const isEditing = Boolean(lr);
 
+  /** Required for brand-new LRs and drafts being finalized — not historical finals. */
+  const requireMaterialDescription =
+    !isEditing ||
+    isDraftEntry(lr?.entryStatus) ||
+    isDraftLrNumber(lr?.lrNumber);
+
   useDebouncedAutosave({
     values,
     enabled:
@@ -188,7 +194,7 @@ export default function LRDialog({
   }, [open, lr]);
 
   function handleSave() {
-    const fieldErrors = validateLR(values);
+    const fieldErrors = validateLR(values, { requireMaterialDescription });
 
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
@@ -239,6 +245,7 @@ export default function LRDialog({
         errors={errors}
         onChange={setValues}
         nextLrNumberPreview={nextLrNumberPreview}
+        requireMaterialDescription={requireMaterialDescription}
       />
     </FormDialog>
   );

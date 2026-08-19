@@ -195,6 +195,22 @@ export type LorryHireType = LR["lorryHireType"];
 export type FreightType = LR["freightType"];
 export type LRStatus = LR["status"];
 
-export function validateLR(values: LR) {
-  return getFieldErrors(lrSchema, values);
+export type ValidateLROptions = {
+  /**
+   * When true, materialDescription must be non-empty after trim.
+   * Use for brand-new LRs and draft finalization only — not historical
+   * finalized LRs that may legitimately have materialDescription = "".
+   */
+  requireMaterialDescription?: boolean;
+};
+
+export function validateLR(values: LR, options?: ValidateLROptions) {
+  const errors = getFieldErrors(lrSchema, values);
+  if (
+    options?.requireMaterialDescription &&
+    !(values.materialDescription ?? "").trim()
+  ) {
+    errors.materialDescription = "Material Description is required.";
+  }
+  return errors;
 }

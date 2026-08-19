@@ -16,6 +16,8 @@ interface LRFormProps {
   errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
   nextLrNumberPreview?: string;
+  /** When true, Material Description shows as required (new LR / draft finalize). */
+  requireMaterialDescription?: boolean;
 }
 
 export default function LRForm({
@@ -23,6 +25,7 @@ export default function LRForm({
   errors = {},
   onChange,
   nextLrNumberPreview,
+  requireMaterialDescription = false,
 }: LRFormProps) {
   return (
     <div className="space-y-6">
@@ -59,6 +62,7 @@ export default function LRForm({
         lr={lr}
         errors={errors}
         onChange={onChange}
+        requireMaterialDescription={requireMaterialDescription}
       />
 
       <DispatchDocumentsSection
