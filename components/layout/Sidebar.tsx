@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLanguage } from "@/lib/i18n";
 import type { PermissionKey } from "@/lib/permissions";
+import { organizationalRoleLabel } from "@/components/services/appUser.service";
 
 type MenuItem = {
   labelKey: string;
@@ -231,7 +232,11 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{profile?.displayName || "..."}</p>
             <p className="text-xs text-sidebar-foreground/60">
-              {isAdmin ? t("header.administrator") : t("header.staff")}
+              {profile
+                ? organizationalRoleLabel(profile.role)
+                : isAdmin
+                  ? t("header.administrator")
+                  : t("header.staff")}
             </p>
           </div>
           <button

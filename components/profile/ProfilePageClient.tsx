@@ -22,6 +22,7 @@ import {
 } from "@/lib/profilePreferences";
 import { defaultOverviewPeriod } from "@/components/overview/OverviewPeriodFilter";
 import { getDeviceInfo, type DeviceInfo } from "@/lib/deviceInfo";
+import { organizationalRoleLabel } from "@/components/services/appUser.service";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -207,7 +208,13 @@ export default function ProfilePageClient() {
             <FormField label="Role">
               <Input
                 readOnly
-                value={isAdmin ? "Administrator" : "Staff"}
+                value={
+                  profile
+                    ? organizationalRoleLabel(profile.role)
+                    : isAdmin
+                      ? "Tier 1"
+                      : "Tier 2"
+                }
                 className="bg-muted/40"
               />
             </FormField>

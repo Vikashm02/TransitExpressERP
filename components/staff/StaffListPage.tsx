@@ -8,7 +8,9 @@ import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
+  canManageStaffTarget,
   getStaffUsers,
+  organizationalRoleLabel,
   updateAppUserRole,
   updateAppUserApprovalStatus,
   updateAppUserLocked,
@@ -17,37 +19,26 @@ import {
 import StaffPermissionsDialog from "@/components/staff/StaffPermissionsDialog";
 
 /**
- * Admin-only staff roster. Lets an admin:
- *   - promote/demote a staff member between "staff" and "admin" — the
- *     ONLY way any account (after the very first, manually-bootstrapped
- *     Admin — see the "INITIAL ADMIN BOOTSTRAP" section in migration
- *     017) can ever become Admin.
- *   - approve/reject a pending signup (migration 018) — the ONLY way a
- *     new account's `approvalStatus` ever leaves "pending"; until then,
- *     `DashboardLayout` blocks that account from the rest of the app.
+ * Staff roster for Creator and Tier 1.
  *
- * Every new sign-up always starts as "staff" + "pending" (enforced
- * server-side); nobody, including the person using this page, can
- * promote or approve themselves — the `app_users_update_admin_only`
- * RLS policy rejects any update (role OR approval_status) not coming
- * from an already-authenticated Admin, so both are enforced at the
- * database layer, not just by the client-side `hidden` rules below.
- * Reassigning an individual LR to a staff member happens from the LR
- * table itself (see LRTable.tsx's "Reassign" action), not here.
+ * Hierarchy (UI mirrors migration 041 RLS):
+ *   Creator → manage Tier 1 (admin) + Tier 2 (staff)
+ *   Tier 1  → manage Tier 2 only
+ *   Tier 2  → no access
  *
- * Also manages the Staff / Sub-User Access Control system (migration
- * 019): "Edit Permissions" opens `StaffPermissionsDialog` (Full
- * Access toggle + per-module View/Create & View/Edit), and Lock/
- * Unlock blocks a staff account outright regardless of role or
- * approval — same admin-only RLS protection as role/approval above.
+ * Creator designation is never offered here — only service_role
+ * designate_creator(uuid) after migration 041.
  */
 export default function StaffListPage() {
-  const { isAdmin, profile } = useAuth();
+  const { isAdmin, isCreator, profile } = useAuth();
   const [staff, setStaff] = useState<AppUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [permissionsUser, setPermissionsUser] = useState<AppUserProfile | null>(null);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
+
+  const actorRole = profile?.role ?? "staff";
+  const actorId = profile?.id ?? "";
 
   const loadStaff = useCallback(async () => {
     try {
@@ -70,13 +61,28 @@ export default function StaffListPage() {
     }
   }, [isAdmin, loadStaff]);
 
+  function canManage(row: AppUserProfile): boolean {
+    return canManageStaffTarget(actorRole, actorId, row);
+  }
+
   async function handleToggleRole(user: AppUserProfile) {
+    // Creator only; Tier 1 never sees this action. Never assigns creator.
+    if (!isCreator || !canManage(user)) {
+      toast.error("You do not have permission to change this user's tier.");
+      return;
+    }
+    if (user.role !== "admin" && user.role !== "staff") return;
+
     const nextRole = user.role === "admin" ? "staff" : "admin";
 
     try {
       setUpdatingId(user.id);
       await updateAppUserRole(user.id, nextRole);
-      toast.success(`${user.displayName} is now ${nextRole === "admin" ? "an Administrator" : "Staff"}.`);
+      toast.success(
+        `${user.displayName} is now ${
+          nextRole === "admin" ? "Tier 1" : "Tier 2"
+        }.`
+      );
       await loadStaff();
     } catch (error) {
       console.error(error);
@@ -86,7 +92,15 @@ export default function StaffListPage() {
     }
   }
 
-  async function handleSetApproval(user: AppUserProfile, approvalStatus: "approved" | "rejected") {
+  async function handleSetApproval(
+    user: AppUserProfile,
+    approvalStatus: "approved" | "rejected"
+  ) {
+    if (!canManage(user)) {
+      toast.error("You do not have permission to update this user.");
+      return;
+    }
+
     try {
       setUpdatingId(user.id);
       await updateAppUserApprovalStatus(user.id, approvalStatus);
@@ -101,12 +115,19 @@ export default function StaffListPage() {
   }
 
   async function handleToggleLock(user: AppUserProfile) {
+    if (!canManage(user)) {
+      toast.error("You do not have permission to update this user.");
+      return;
+    }
+
     const nextLocked = !user.isLocked;
 
     try {
       setUpdatingId(user.id);
       await updateAppUserLocked(user.id, nextLocked);
-      toast.success(`${user.displayName} has been ${nextLocked ? "locked" : "unlocked"}.`);
+      toast.success(
+        `${user.displayName} has been ${nextLocked ? "locked" : "unlocked"}.`
+      );
       await loadStaff();
     } catch (error) {
       console.error(error);
@@ -117,6 +138,10 @@ export default function StaffListPage() {
   }
 
   function handleEditPermissions(user: AppUserProfile) {
+    if (!canManage(user) || user.role !== "staff") {
+      toast.error("You do not have permission to edit these permissions.");
+      return;
+    }
     setPermissionsUser(user);
     setPermissionsOpen(true);
   }
@@ -125,7 +150,9 @@ export default function StaffListPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border bg-card p-14 text-center shadow-sm">
         <ShieldAlert className="h-10 w-10 text-muted-foreground/50" />
-        <p className="text-sm font-medium text-foreground">Staff management is available to Administrators only.</p>
+        <p className="text-sm font-medium text-foreground">
+          Staff management is available to Creator and Tier 1 only.
+        </p>
       </div>
     );
   }
@@ -135,9 +162,16 @@ export default function StaffListPage() {
     { key: "email", header: "Email", sortable: true },
     {
       key: "role",
-      header: "Role",
+      header: "Tier",
       sortable: true,
-      render: (row) => <StatusBadge status={row.role === "admin" ? "Active" : "Pending"} label={row.role === "admin" ? "Admin" : "Staff"} />,
+      render: (row) => (
+        <StatusBadge
+          status={
+            row.role === "creator" || row.role === "admin" ? "Active" : "Pending"
+          }
+          label={organizationalRoleLabel(row.role)}
+        />
+      ),
     },
     {
       key: "approvalStatus",
@@ -146,7 +180,9 @@ export default function StaffListPage() {
       render: (row) => (
         <StatusBadge
           status={row.approvalStatus}
-          label={row.approvalStatus.charAt(0).toUpperCase() + row.approvalStatus.slice(1)}
+          label={
+            row.approvalStatus.charAt(0).toUpperCase() + row.approvalStatus.slice(1)
+          }
         />
       ),
     },
@@ -154,7 +190,7 @@ export default function StaffListPage() {
       key: "access",
       header: "Access",
       render: (row) =>
-        row.role === "admin" ? (
+        row.role === "creator" || row.role === "admin" ? (
           <StatusBadge status="Active" label="All Modules" />
         ) : row.fullAccess ? (
           <StatusBadge status="Active" label="Full Access" />
@@ -167,7 +203,10 @@ export default function StaffListPage() {
       header: "Locked",
       sortable: true,
       render: (row) => (
-        <StatusBadge status={row.isLocked ? "Error" : "Active"} label={row.isLocked ? "Locked" : "Active"} />
+        <StatusBadge
+          status={row.isLocked ? "Error" : "Active"}
+          label={row.isLocked ? "Locked" : "Active"}
+        />
       ),
     },
   ];
@@ -175,9 +214,14 @@ export default function StaffListPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Staff</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          Staff
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Promote/demote staff accounts. LR ownership reassignment happens from the LR Entry table.
+          {isCreator
+            ? "Creator can manage Tier 1 and Tier 2. Creator designation is not available here."
+            : "Tier 1 can manage Tier 2 staff only."}{" "}
+          LR ownership reassignment happens from the LR Entry table.
         </p>
       </div>
 
@@ -192,41 +236,52 @@ export default function StaffListPage() {
           {
             label: "Approve",
             onClick: (row) => handleSetApproval(row, "approved"),
-            hidden: (row) => Boolean((profile && row.id === profile.id) || row.approvalStatus === "approved"),
+            hidden: (row) =>
+              !canManage(row) || row.approvalStatus === "approved",
           },
           {
             label: "Reject",
             variant: "destructive",
             onClick: (row) => handleSetApproval(row, "rejected"),
-            hidden: (row) => Boolean((profile && row.id === profile.id) || row.approvalStatus === "rejected"),
+            hidden: (row) =>
+              !canManage(row) || row.approvalStatus === "rejected",
           },
           {
-            label: "Toggle Role",
+            label: "Make Tier 1",
             onClick: handleToggleRole,
-            hidden: (row) => Boolean(profile && row.id === profile.id),
+            // Creator-only; promote Tier 2 → Tier 1. Never offered to Tier 1.
+            hidden: (row) =>
+              !isCreator || !canManage(row) || row.role !== "staff",
+          },
+          {
+            label: "Make Tier 2",
+            onClick: handleToggleRole,
+            // Creator-only; demote Tier 1 → Tier 2.
+            hidden: (row) =>
+              !isCreator || !canManage(row) || row.role !== "admin",
           },
           {
             label: "Edit Permissions",
             onClick: handleEditPermissions,
-            hidden: (row) => row.role === "admin",
+            hidden: (row) => !canManage(row) || row.role !== "staff",
           },
           {
             label: "Unlock",
             onClick: (row) => handleToggleLock(row),
-            hidden: (row) => Boolean((profile && row.id === profile.id) || !row.isLocked),
+            hidden: (row) => !canManage(row) || !row.isLocked,
           },
           {
             label: "Lock",
             variant: "destructive",
             onClick: (row) => handleToggleLock(row),
-            hidden: (row) => Boolean((profile && row.id === profile.id) || row.isLocked || row.role === "admin"),
+            hidden: (row) => !canManage(row) || row.isLocked,
           },
         ]}
       />
 
       <p className="text-xs text-muted-foreground">
-        You cannot change your own role, approval status, or lock status from here — ask another Administrator if
-        you need to step down.
+        You cannot change your own role, approval status, or lock status from
+        here. Creator cannot be modified from this page.
       </p>
 
       {updatingId && (

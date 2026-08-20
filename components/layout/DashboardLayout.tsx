@@ -191,8 +191,8 @@ export default function DashboardLayout({
 
   const requiredPermissionKey = permissionKeyForPath(pathname ?? "");
 
-  // Admin-only Settings (no permission key — role gate).
-  if ((pathname ?? "").startsWith("/settings") && profile.role !== "admin") {
+  // Admin settings (Creator + Tier 1 via isAdmin / role check).
+  if ((pathname ?? "").startsWith("/settings") && profile.role !== "admin" && profile.role !== "creator") {
     return (
       <div className="flex h-screen overflow-hidden erp-shell">
         <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />

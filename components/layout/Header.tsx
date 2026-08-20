@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { organizationalRoleLabel } from "@/components/services/appUser.service";
 import { useLanguage } from "@/lib/i18n";
 import NotificationBell from "@/components/pwa/NotificationBell";
 import LanguageSelector from "@/components/layout/LanguageSelector";
@@ -66,7 +67,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
               {profile?.displayName || "..."}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {isAdmin ? t("header.administrator") : t("header.staff")}
+              {profile
+                ? organizationalRoleLabel(profile.role)
+                : isAdmin
+                  ? t("header.administrator")
+                  : t("header.staff")}
             </p>
           </div>
         </div>

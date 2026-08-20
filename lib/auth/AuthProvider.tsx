@@ -49,6 +49,8 @@ interface AuthContextValue {
    */
   profileError: string | null;
   isAdmin: boolean;
+  /** True when profile.role === "creator". */
+  isCreator: boolean;
   /**
    * Staff / Sub-User Access Control (migration 019). Admins always
    * pass. A staff account with `profile.fullAccess` always passes.
@@ -93,11 +95,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  *
  * This is the single source of "who is logged in" for the staff
  * ownership model — `DashboardLayout` uses it to gate every other
- * route, and the LR/POD/Lorry Expenses screens use `isAdmin` to decide
- * whether to show admin-only actions (Reassign, Staff page). Real
- * enforcement still lives in the database via RLS (migration 017);
- * this context is the UI-side reflection of that, not a replacement
- * for it.
+ * route, and the LR/POD/Lorry Expenses screens use `isAdmin` (Creator
+ * OR Tier 1) for administrator/module actions. Real enforcement still
+ * lives in the database via RLS; this context is the UI-side
+ * reflection of that, not a replacement for it.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -288,7 +289,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadProfile(userId);
   }
 
-  const isAdmin = profile?.role === "admin";
+  const isCreator = profile?.role === "creator";
+  // Administrator / module access: Creator OR Tier 1 (matches DB is_admin()).
+  const isAdmin = profile?.role === "creator" || profile?.role === "admin";
 
   function hasPermission(key: PermissionKey, level: PermissionLevel): boolean {
     if (isAdmin) return true;
@@ -316,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profileLoading,
     profileError,
     isAdmin,
+    isCreator,
     hasPermission,
     hasAction,
     signOut,
