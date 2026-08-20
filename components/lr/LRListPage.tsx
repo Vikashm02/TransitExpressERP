@@ -72,6 +72,35 @@ export default function LRListPage() {
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   /** Prevents overlapping autosaves from reserving two numbers for one draft. */
   const autosaveInFlightRef = useRef(false);
+  /**
+   * Create-session discard tracking (Cancel on brand-new LR only).
+   * Never treat Continue-draft / Edit-final as a new-create session.
+   */
+  const openedAsNewCreateRef = useRef(false);
+  const sessionCreatedDraftIdRef = useRef<number | null>(null);
+  const createSessionDiscardedRef = useRef(false);
+  /** Bumped on each dialog open and on discard so late autosaves are ignored. */
+  const createSessionTokenRef = useRef(0);
+
+  function beginNewCreateSession() {
+    createSessionTokenRef.current += 1;
+    openedAsNewCreateRef.current = true;
+    sessionCreatedDraftIdRef.current = null;
+    createSessionDiscardedRef.current = false;
+  }
+
+  function beginExistingLrSession() {
+    createSessionTokenRef.current += 1;
+    openedAsNewCreateRef.current = false;
+    sessionCreatedDraftIdRef.current = null;
+    createSessionDiscardedRef.current = false;
+  }
+
+  function clearCreateSessionTracking() {
+    openedAsNewCreateRef.current = false;
+    sessionCreatedDraftIdRef.current = null;
+    createSessionDiscardedRef.current = false;
+  }
 
   useEffect(() => {
     loadLRs();
@@ -151,6 +180,7 @@ export default function LRListPage() {
   }, [lrs]);
 
   function handleAdd() {
+    beginNewCreateSession();
     setEditingLR(null);
     setDialogOpen(true);
   }
@@ -161,6 +191,7 @@ export default function LRListPage() {
       toast.error("You do not have permission to edit finalized LRs.");
       return;
     }
+    beginExistingLrSession();
     setEditingLR(lr);
     setDialogOpen(true);
   }
@@ -171,6 +202,7 @@ export default function LRListPage() {
       toast.error("You do not have permission to continue this draft.");
       return;
     }
+    beginExistingLrSession();
     setEditingLR(lr);
     setDialogOpen(true);
   }
@@ -184,9 +216,32 @@ export default function LRListPage() {
     setShareOpen(true);
   }
 
-  function handleDialogOpenChange(open: boolean) {
-    setDialogOpen(open);
-    if (!open) setEditingLR(null);
+  async function handleDialogOpenChange(open: boolean) {
+    if (open) {
+      setDialogOpen(true);
+      return;
+    }
+
+    // Mark discarded before closing so in-flight/debounced autosave bails out.
+    const wasNewCreate = openedAsNewCreateRef.current;
+    const draftIdToDelete = sessionCreatedDraftIdRef.current;
+    createSessionDiscardedRef.current = true;
+    createSessionTokenRef.current += 1;
+
+    setDialogOpen(false);
+    setEditingLR(null);
+
+    if (wasNewCreate && draftIdToDelete != null) {
+      try {
+        await deleteLR(draftIdToDelete);
+        await loadLRs();
+      } catch (error) {
+        console.error(error);
+        toast.error("Unable to discard the unsaved draft.");
+      }
+    }
+
+    clearCreateSessionTracking();
   }
 
   async function handleSubmit(values: LR) {
@@ -234,6 +289,7 @@ export default function LRListPage() {
 
       setDialogOpen(false);
       setEditingLR(null);
+      clearCreateSessionTracking();
       await loadLRs();
     } catch (error) {
       console.error(error);
@@ -250,13 +306,23 @@ export default function LRListPage() {
   async function handleAutosave(values: LR) {
     // First persist reserves a real LR number atomically. Later autosaves
     // keep that number. Opening the form alone does not consume a number.
+    if (createSessionDiscardedRef.current) return;
     if (autosaveInFlightRef.current) return;
     autosaveInFlightRef.current = true;
 
+    const tokenAtStart = createSessionTokenRef.current;
+    const isNewCreateSession = openedAsNewCreateRef.current;
+
     try {
+      if (createSessionDiscardedRef.current) return;
+      if (tokenAtStart !== createSessionTokenRef.current) return;
+
       const draftValues = normalizeLrForDraftPersist(values);
 
       if (editingLR) {
+        if (createSessionDiscardedRef.current) return;
+        if (tokenAtStart !== createSessionTokenRef.current) return;
+
         const reservedNumber =
           editingLR.lrNumber && !isDraftLrNumber(editingLR.lrNumber)
             ? editingLR.lrNumber
@@ -264,21 +330,54 @@ export default function LRListPage() {
               ? draftValues.lrNumber
               : await allocateNextLrNumber();
 
+        if (createSessionDiscardedRef.current) return;
+        if (tokenAtStart !== createSessionTokenRef.current) return;
+
         const updated = await updateLR(editingLR.id, {
           ...draftValues,
           lrNumber: reservedNumber,
         });
+
+        if (createSessionDiscardedRef.current) return;
+        if (tokenAtStart !== createSessionTokenRef.current) return;
+
         setEditingLR(updated);
         return;
       }
 
       if (!values.consignor.trim() && !values.customer.trim()) return;
+      if (createSessionDiscardedRef.current) return;
+      if (tokenAtStart !== createSessionTokenRef.current) return;
 
       const lrNumber = await allocateNextLrNumber();
+      if (createSessionDiscardedRef.current) return;
+      if (tokenAtStart !== createSessionTokenRef.current) return;
+
       const created = await createLR({
         ...draftValues,
         lrNumber,
       });
+
+      // Cancel won the race: remove only this exact create, do not reattach.
+      if (
+        createSessionDiscardedRef.current ||
+        tokenAtStart !== createSessionTokenRef.current
+      ) {
+        if (isNewCreateSession) {
+          try {
+            await deleteLR(created.id);
+            await loadLRs();
+          } catch (error) {
+            console.error(error);
+            toast.error("Unable to discard the unsaved draft.");
+          }
+        }
+        return;
+      }
+
+      if (isNewCreateSession) {
+        sessionCreatedDraftIdRef.current = created.id;
+      }
       setEditingLR(created);
       await loadLRs();
     } finally {
