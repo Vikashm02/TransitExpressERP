@@ -32,6 +32,7 @@ const en: TranslationDict = {
 
   // Nav items
   "nav.dashboard": "Dashboard",
+  "nav.profile": "Profile",
   "nav.company": "Company Master",
   "nav.customers": "Customer Master",
   "nav.billingParties": "Billing Party Master",

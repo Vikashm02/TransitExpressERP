@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLanguage } from "@/lib/i18n";
+import { readDefaultLandingPage } from "@/lib/profilePreferences";
 import LanguageSelector from "@/components/layout/LanguageSelector";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ export default function LoginPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   if (session) {
-    router.replace("/");
+    router.replace(readDefaultLandingPage());
     return null;
   }
 
@@ -88,7 +89,7 @@ export default function LoginPage() {
         toast.success(t("auth.signedIn"));
       }
 
-      router.replace("/");
+      router.replace(readDefaultLandingPage());
     } catch (error) {
       console.error(error);
       setFormError(error instanceof Error ? error.message : t("auth.unableToSignIn"));

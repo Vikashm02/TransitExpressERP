@@ -22,6 +22,7 @@ import {
   Settings,
   Wallet,
   UserCog,
+  UserRound,
   LogOut,
   X,
 } from "lucide-react";
@@ -47,7 +48,10 @@ type MenuSection = {
 const menuSections: MenuSection[] = [
   {
     titleKey: "nav.section.overview",
-    items: [{ labelKey: "nav.dashboard", href: "/", icon: LayoutDashboard }],
+    items: [
+      { labelKey: "nav.dashboard", href: "/", icon: LayoutDashboard },
+      { labelKey: "nav.profile", href: "/profile", icon: UserRound },
+    ],
   },
   {
     titleKey: "nav.section.masters",
