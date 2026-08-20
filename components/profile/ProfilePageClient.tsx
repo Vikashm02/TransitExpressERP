@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import { format, parseISO } from "date-fns";
+import { Monitor, Smartphone, Tablet } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
@@ -20,12 +21,20 @@ import {
   type LandingPageValue,
 } from "@/lib/profilePreferences";
 import { defaultOverviewPeriod } from "@/components/overview/OverviewPeriodFilter";
+import { getDeviceInfo, type DeviceInfo } from "@/lib/deviceInfo";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import FormField from "@/components/ui/FormField";
 import FormSelect from "@/components/ui/FormSelect";
+
+function CurrentDeviceIcon({ type }: { type: DeviceInfo["deviceType"] }) {
+  const className = "h-8 w-8 text-muted-foreground";
+  if (type === "phone") return <Smartphone className={className} aria-hidden />;
+  if (type === "tablet") return <Tablet className={className} aria-hidden />;
+  return <Monitor className={className} aria-hidden />;
+}
 
 function formatMaybeIso(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -52,6 +61,7 @@ export default function ProfilePageClient() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
 
   const [snapshot, setSnapshot] = useState<OverviewSnapshot | null>(null);
   const [activityLoading, setActivityLoading] = useState(true);
@@ -59,6 +69,7 @@ export default function ProfilePageClient() {
   useEffect(() => {
     setThemeReady(true);
     setLanding(readDefaultLandingPage());
+    setDeviceInfo(getDeviceInfo());
   }, []);
 
   useEffect(() => {
@@ -218,9 +229,41 @@ export default function ProfilePageClient() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Current device — display-only, derived locally from UA APIs */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Current device</p>
+            <div className="flex gap-4 rounded-lg border border-border p-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-muted/50">
+                <CurrentDeviceIcon type={deviceInfo?.deviceType ?? "unknown"} />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {deviceInfo?.deviceTypeLabel ?? "Unknown device"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {deviceInfo
+                    ? `${deviceInfo.operatingSystem} • ${deviceInfo.browser}`
+                    : "—"}
+                </p>
+                <p className="text-xs font-medium text-foreground">
+                  Current session
+                </p>
+                {lastLogin ? (
+                  <p className="text-xs text-muted-foreground">
+                    Last account login: {lastLogin}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Device information is approximate. This app currently cannot list
+              individual active sessions.
+            </p>
+          </div>
+
           <form
             onSubmit={handleChangePassword}
-            className="grid max-w-lg gap-4 sm:grid-cols-2"
+            className="grid max-w-lg gap-4 border-t border-border pt-4 sm:grid-cols-2"
           >
             {currentPasswordNote ? (
               <p className="sm:col-span-2 text-xs text-muted-foreground">
