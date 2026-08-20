@@ -16,6 +16,10 @@ import {
   updateAppUserLocked,
   type AppUserProfile,
 } from "@/components/services/appUser.service";
+import {
+  getStaffManagerAssignments,
+  setStaffManagerAssignment,
+} from "@/components/services/teamOverview.service";
 import StaffPermissionsDialog from "@/components/staff/StaffPermissionsDialog";
 
 /**
@@ -36,6 +40,10 @@ export default function StaffListPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [permissionsUser, setPermissionsUser] = useState<AppUserProfile | null>(null);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
+  /** staffId → managerId (Creator assignment UI). */
+  const [managerByStaffId, setManagerByStaffId] = useState<Record<string, string>>(
+    {}
+  );
 
   const actorRole = profile?.role ?? "staff";
   const actorId = profile?.id ?? "";
@@ -43,8 +51,16 @@ export default function StaffListPage() {
   const loadStaff = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getStaffUsers();
+      const [data, assignments] = await Promise.all([
+        getStaffUsers(),
+        getStaffManagerAssignments().catch(() => []),
+      ]);
       setStaff(data);
+      const map: Record<string, string> = {};
+      for (const row of assignments) {
+        map[row.staffId] = row.managerId;
+      }
+      setManagerByStaffId(map);
     } catch (error) {
       console.error(error);
       toast.error("Unable to load staff.");
@@ -146,6 +162,31 @@ export default function StaffListPage() {
     setPermissionsOpen(true);
   }
 
+  async function handleManagerChange(staffUser: AppUserProfile, managerId: string) {
+    if (!isCreator || staffUser.role !== "staff") {
+      toast.error("Only the Creator can assign Tier 2 managers.");
+      return;
+    }
+
+    const nextManager = managerId.trim() || null;
+
+    try {
+      setUpdatingId(staffUser.id);
+      await setStaffManagerAssignment(staffUser.id, nextManager);
+      toast.success(
+        nextManager
+          ? `Manager updated for ${staffUser.displayName}.`
+          : `Manager cleared for ${staffUser.displayName}.`
+      );
+      await loadStaff();
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to update manager assignment.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border bg-card p-14 text-center shadow-sm">
@@ -156,6 +197,8 @@ export default function StaffListPage() {
       </div>
     );
   }
+
+  const tier1Options = staff.filter((u) => u.role === "admin");
 
   const columns: DataTableColumn<AppUserProfile>[] = [
     { key: "displayName", header: "Name", sortable: true, className: "font-medium" },
@@ -172,6 +215,45 @@ export default function StaffListPage() {
           label={organizationalRoleLabel(row.role)}
         />
       ),
+    },
+    {
+      key: "manager",
+      header: "Manager",
+      render: (row) => {
+        if (row.role !== "staff") {
+          return <span className="text-xs text-muted-foreground">—</span>;
+        }
+
+        const currentManagerId = managerByStaffId[row.id] ?? "";
+
+        if (!isCreator) {
+          const manager = staff.find((u) => u.id === currentManagerId);
+          return (
+            <span className="text-xs text-muted-foreground">
+              {manager?.displayName ?? "Unassigned"}
+            </span>
+          );
+        }
+
+        return (
+          <select
+            className="max-w-[11rem] rounded-md border border-border bg-background px-2 py-1 text-xs"
+            value={currentManagerId}
+            disabled={updatingId === row.id}
+            onChange={(event) => {
+              void handleManagerChange(row, event.target.value);
+            }}
+            aria-label={`Manager for ${row.displayName}`}
+          >
+            <option value="">Unassigned</option>
+            {tier1Options.map((manager) => (
+              <option key={manager.id} value={manager.id}>
+                {manager.displayName}
+              </option>
+            ))}
+          </select>
+        );
+      },
     },
     {
       key: "approvalStatus",
@@ -219,8 +301,8 @@ export default function StaffListPage() {
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {isCreator
-            ? "Creator can manage Tier 1 and Tier 2. Creator designation is not available here."
-            : "Tier 1 can manage Tier 2 staff only."}{" "}
+            ? "Creator can manage Tier 1 and Tier 2, and assign Tier 2 staff to a Tier 1 manager. Creator designation is not available here."
+            : "Tier 1 can manage Tier 2 staff only. Manager assignments are set by the Creator."}{" "}
           LR ownership reassignment happens from the LR Entry table.
         </p>
       </div>
