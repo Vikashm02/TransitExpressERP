@@ -16,6 +16,7 @@ import {
 import LRNumericInput from "../LRNumericInput";
 import type { LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
+import { lrFieldHelp } from "@/lib/help";
 import {
   matchMaterialsByDescription,
   type MaterialMatchCandidate,
@@ -108,6 +109,7 @@ export default function MaterialSection({
             htmlFor="lr-material-description"
             required={requireMaterialDescription}
             error={errors.materialDescription}
+            helpText={lrFieldHelp.materialDescription}
             hint="Type the description for this LR. Matching uses Material Master reference descriptions only as suggestions."
             className="lg:col-span-3"
           >

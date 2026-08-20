@@ -23,6 +23,7 @@ import { canonicalizeVehicleNumber } from "@/lib/vehicleNumber";
 
 import type { LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
+import { lrFieldHelp } from "@/lib/help";
 
 interface VehicleSectionProps {
   lr: LR;
@@ -101,6 +102,7 @@ export default function VehicleSection({
             htmlFor="lr-vehicle-number"
             required
             error={errors.vehicleNumber}
+            helpText={lrFieldHelp.vehicleNumber}
           >
             <div className="flex min-w-0 gap-3">
               <VehicleNumberInput
@@ -137,6 +139,7 @@ export default function VehicleSection({
           <FormField
             label="Transporter"
             htmlFor="lr-transporter"
+            helpText={lrFieldHelp.transporter}
           >
             <div className="flex gap-3">
               <Input
@@ -161,6 +164,7 @@ export default function VehicleSection({
             htmlFor="lr-driver-name"
             required
             error={errors.driverName}
+            helpText={lrFieldHelp.driverName}
           >
             <div className="flex gap-3">
               <Input

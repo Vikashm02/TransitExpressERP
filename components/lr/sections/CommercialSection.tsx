@@ -5,6 +5,7 @@ import FormSection from "@/components/ui/FormSection";
 
 import { FREIGHT_TYPE_OPTIONS, type LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
+import { lrFieldHelp } from "@/lib/help";
 
 interface CommercialSectionProps {
   lr: LR;
@@ -42,6 +43,7 @@ export default function CommercialSection({
           id="lr-freight-type"
           required
           error={errors.freightType}
+          helpText={lrFieldHelp.freightType}
           value={lr.freightType}
           onValueChange={(value) => update("freightType", value as LR["freightType"])}
           options={toOptions(FREIGHT_TYPE_OPTIONS)}

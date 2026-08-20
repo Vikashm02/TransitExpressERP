@@ -15,6 +15,7 @@ import {
 
 import type { LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
+import { lrFieldHelp } from "@/lib/help";
 
 type PartyRole = "consignor" | "consignee";
 
@@ -122,6 +123,11 @@ export default function PartySection({
           htmlFor={`lr-${role}-name`}
           required
           error={errors[config.nameField]}
+          helpText={
+            role === "consignor"
+              ? lrFieldHelp.consignor
+              : lrFieldHelp.consignee
+          }
           hint="Type to search Customer Master, then select a row. Free text is not allowed."
         >
           <MasterAutocomplete

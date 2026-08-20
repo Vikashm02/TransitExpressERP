@@ -18,6 +18,7 @@ import {
 import { BILLING_PARTY_OPTIONS, BOOKING_BRANCH_OPTIONS, type LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
 import { isDraftLrNumber } from "@/lib/entryStatus";
+import { lrFieldHelp } from "@/lib/help";
 
 interface LRHeaderProps {
   lr: LR;
@@ -89,6 +90,7 @@ export default function LRHeader({
         <FormField
           label="LR Number"
           htmlFor="lr-number"
+          helpText={lrFieldHelp.lrNumber}
           hint={
             hasReservedNumber
               ? lr.entryStatus === "draft"
@@ -110,6 +112,7 @@ export default function LRHeader({
           id="lr-date"
           required
           error={errors.lrDate}
+          helpText={lrFieldHelp.lrDate}
           value={lr.lrDate}
           onChange={(value) => update("lrDate", value)}
         />
@@ -119,6 +122,7 @@ export default function LRHeader({
           id="lr-booking-branch"
           required
           error={errors.bookingBranch}
+          helpText={lrFieldHelp.bookingBranch}
           value={lr.bookingBranch}
           onValueChange={(value) => update("bookingBranch", value)}
           options={toOptions(BOOKING_BRANCH_OPTIONS)}
@@ -130,6 +134,7 @@ export default function LRHeader({
           htmlFor="lr-billing-party-name"
           required
           error={errors.customer}
+          helpText={lrFieldHelp.billingParty}
           hint="Type to search Billing Party Master, then select. Free text is not allowed."
         >
           <MasterAutocomplete
@@ -149,6 +154,7 @@ export default function LRHeader({
           id="lr-gst-payable-by"
           required
           error={errors.billingParty}
+          helpText={lrFieldHelp.gstPayableBy}
           value={lr.billingParty}
           onValueChange={(value) => update("billingParty", value as LR["billingParty"])}
           options={toOptions(BILLING_PARTY_OPTIONS)}

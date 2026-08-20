@@ -7,6 +7,12 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
+  dashboardHelp,
+  teamDashboardHelpCreator,
+  teamDashboardHelpTier1,
+} from "@/lib/help";
+import LearningPageChrome from "@/components/help/LearningPageChrome";
+import {
   getOverviewSnapshot,
   type OverviewSnapshot,
 } from "@/components/services/overview.service";
@@ -128,30 +134,42 @@ export default function OverviewPage() {
   const periodMetrics = snapshot?.period ?? EMPTY_PERIOD;
   const open = snapshot?.open ?? EMPTY_OPEN;
 
+  const pageHelp =
+    view === "team" && canUseTeam
+      ? isCreator
+        ? teamDashboardHelpCreator
+        : teamDashboardHelpTier1
+      : dashboardHelp;
+
   return (
     <div className="space-y-5">
-      {canUseTeam ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={view === "my" ? "default" : "outline"}
-            className={cn(view === "my" && "pointer-events-none")}
-            onClick={() => setView("my")}
-          >
-            My Dashboard
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={view === "team" ? "default" : "outline"}
-            className={cn(view === "team" && "pointer-events-none")}
-            onClick={() => setView("team")}
-          >
-            Team Dashboard
-          </Button>
-        </div>
-      ) : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {canUseTeam ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "my" ? "default" : "outline"}
+              className={cn(view === "my" && "pointer-events-none")}
+              onClick={() => setView("my")}
+            >
+              My Dashboard
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "team" ? "default" : "outline"}
+              className={cn(view === "team" && "pointer-events-none")}
+              onClick={() => setView("team")}
+            >
+              Team Dashboard
+            </Button>
+          </div>
+        ) : (
+          <div />
+        )}
+        <LearningPageChrome content={pageHelp} />
+      </div>
 
       <OverviewHeader
         displayName={profile?.displayName || profile?.email || ""}

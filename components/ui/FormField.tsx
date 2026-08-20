@@ -1,3 +1,6 @@
+"use client";
+
+import FieldHelp from "@/components/help/FieldHelp";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -7,6 +10,8 @@ interface FormFieldProps {
   required?: boolean;
   error?: string;
   hint?: string;
+  /** Hindi field tip — shown only when Learning Mode is ON */
+  helpText?: string;
   className?: string;
   children: React.ReactNode;
 }
@@ -17,22 +22,26 @@ export default function FormField({
   required,
   error,
   hint,
+  helpText,
   className,
   children,
 }: FormFieldProps) {
   return (
     <div className={cn("space-y-2", className)}>
       {label && (
-        <Label
-          htmlFor={htmlFor}
-          className="text-sm font-medium text-foreground"
-        >
-          {label}
+        <div className="flex items-center gap-1">
+          <Label
+            htmlFor={htmlFor}
+            className="text-sm font-medium text-foreground"
+          >
+            {label}
 
-          {required && (
-            <span className="text-destructive">*</span>
-          )}
-        </Label>
+            {required && (
+              <span className="text-destructive">*</span>
+            )}
+          </Label>
+          {helpText ? <FieldHelp text={helpText} label={label} /> : null}
+        </div>
       )}
 
       {children}

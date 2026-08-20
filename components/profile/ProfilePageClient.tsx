@@ -24,6 +24,9 @@ import { defaultOverviewPeriod } from "@/components/overview/OverviewPeriodFilte
 import { getDeviceInfo, type DeviceInfo } from "@/lib/deviceInfo";
 import { organizationalRoleLabel } from "@/components/services/appUser.service";
 
+import LearningModeToggle from "@/components/help/LearningModeToggle";
+import LearningPageChrome from "@/components/help/LearningPageChrome";
+import { profilePageHelp } from "@/lib/help";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -171,14 +174,17 @@ export default function ProfilePageClient() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">
-          Profile
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Your account details, security, and personal preferences for this
-          device.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+            Profile
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your account details, security, and personal preferences for this
+            device.
+          </p>
+        </div>
+        <LearningPageChrome content={profilePageHelp} />
       </div>
 
       {/* Personal information — display only */}
@@ -328,6 +334,19 @@ export default function ProfilePageClient() {
               {sessionsBusy ? "Working…" : "Sign out of other sessions"}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Learning Mode — server-backed via user_preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Learning Mode</CardTitle>
+          <CardDescription>
+            Synced to your account. Works across devices after login.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LearningModeToggle />
         </CardContent>
       </Card>
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
+import { LearningModeProvider } from "@/lib/help/LearningModeProvider";
 import { LanguageProvider } from "@/lib/i18n";
 import AppThemeProvider from "@/components/theme/AppThemeProvider";
 import PwaRegister from "@/components/pwa/PwaRegister";
@@ -43,11 +44,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <AppThemeProvider>
           <AuthProvider>
-            <LanguageProvider>
-              <PwaRegister />
-              {children}
-              <Toaster />
-            </LanguageProvider>
+            <LearningModeProvider>
+              <LanguageProvider>
+                <PwaRegister />
+                {children}
+                <Toaster />
+              </LanguageProvider>
+            </LearningModeProvider>
           </AuthProvider>
         </AppThemeProvider>
       </body>

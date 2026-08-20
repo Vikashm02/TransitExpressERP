@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { FileDown, IndianRupee, Upload, Wallet } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
+import LearningPageChrome from "@/components/help/LearningPageChrome";
+import { financialsPageHelp } from "@/lib/help";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import StatCard from "@/components/ui/StatCard";
@@ -332,6 +334,7 @@ export default function LorryExpenseListPage() {
 
   return (
     <div className="space-y-6">
+      <LearningPageChrome content={financialsPageHelp} className="-mb-2" />
       <PageHeader
         title="Financials"
         buttonText="Add Financials"

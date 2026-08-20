@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
+import LearningPageChrome from "@/components/help/LearningPageChrome";
+import { podPageHelp } from "@/lib/help";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import PodDialog from "./PodDialog";
 import PodBulkUploadDialog from "./PodBulkUploadDialog";
@@ -189,6 +191,7 @@ export default function PodListPage() {
 
   return (
     <div className="space-y-6">
+      <LearningPageChrome content={podPageHelp} className="-mb-2" />
       <PageHeader
         title="POD Entry"
         buttonText="Add POD"

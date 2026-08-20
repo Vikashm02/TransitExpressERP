@@ -20,6 +20,7 @@ interface FormDatePickerProps {
   required?: boolean;
   error?: string;
   hint?: string;
+  helpText?: string;
   className?: string;
   /** ISO date string, e.g. "2026-08-07" — same format used by native <input type="date"> */
   value?: string;
@@ -35,6 +36,7 @@ export default function FormDatePicker({
   required,
   error,
   hint,
+  helpText,
   className,
   value,
   onChange,
@@ -54,6 +56,7 @@ export default function FormDatePicker({
       required={required}
       error={error}
       hint={hint}
+      helpText={helpText}
       className={className}
     >
       <Popover

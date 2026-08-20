@@ -22,6 +22,7 @@ interface FormSelectProps {
   required?: boolean;
   error?: string;
   hint?: string;
+  helpText?: string;
   className?: string;
   triggerClassName?: string;
   value: string;
@@ -37,6 +38,7 @@ export default function FormSelect({
   required,
   error,
   hint,
+  helpText,
   className,
   triggerClassName,
   value,
@@ -52,6 +54,7 @@ export default function FormSelect({
       required={required}
       error={error}
       hint={hint}
+      helpText={helpText}
       className={className}
     >
       <Select

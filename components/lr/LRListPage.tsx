@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Banknote, FileDown, FileText, PackageCheck, Truck, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
+import LearningPageChrome from "@/components/help/LearningPageChrome";
+import { lrPageHelp } from "@/lib/help";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import FormDialog from "@/components/ui/FormDialog";
@@ -497,6 +499,7 @@ export default function LRListPage() {
 
   return (
     <div className="space-y-6">
+      <LearningPageChrome content={lrPageHelp} className="-mb-2" />
       <PageHeader
         title="LR Entry"
         buttonText="Create LR"

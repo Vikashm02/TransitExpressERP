@@ -8,6 +8,7 @@ import FormDatePicker from "@/components/ui/FormDatePicker";
 import type { Pod } from "./pod.schema";
 import type { LRRecord } from "@/components/services/lr.service";
 import type { FieldErrors } from "@/lib/validation";
+import { podFieldHelp } from "@/lib/help";
 
 interface PodFormProps {
   pod: Pod;
@@ -62,6 +63,7 @@ export default function PodForm({
           htmlFor="pod-lr-number"
           required
           error={errors.lrNumber}
+          helpText={podFieldHelp.lrNumber}
           className="sm:col-span-2"
         >
           <div className="flex gap-3">
@@ -98,6 +100,7 @@ export default function PodForm({
           id="pod-date"
           required
           error={errors.podDate}
+          helpText={podFieldHelp.podDate}
           value={pod.podDate}
           onChange={(value) => update("podDate", value)}
           disabled={readOnly}
@@ -108,6 +111,7 @@ export default function PodForm({
           htmlFor="pod-unloading-weight"
           required
           error={errors.unloadingWeight}
+          helpText={podFieldHelp.unloadingWeight}
         >
           <Input
             id="pod-unloading-weight"
@@ -126,6 +130,7 @@ export default function PodForm({
           id="pod-unloading-date"
           required
           error={errors.unloadingDate}
+          helpText={podFieldHelp.unloadingDate}
           value={pod.unloadingDate}
           onChange={(value) => update("unloadingDate", value)}
           disabled={readOnly}
@@ -134,6 +139,7 @@ export default function PodForm({
         <FormField
           label="Proof of POD"
           htmlFor="pod-proof-file"
+          helpText={podFieldHelp.proofUrl}
           hint="PDF, JPG, JPEG or PNG."
           className="sm:col-span-2"
         >
