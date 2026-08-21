@@ -30,6 +30,11 @@ type FieldSpec = {
   color: "red" | "blue";
   wrap?: boolean;
   maxLines?: number;
+  /**
+   * Wrap fields only: vertically center the rendered line block inside the
+   * existing mask-union text area (does not change mask geometry).
+   */
+  verticalCenter?: boolean;
   /** Description-only: wrap + optional pt shrink; never ellipsis. */
   descriptionWrap?: boolean;
   /** Max bottom Y (mm from page top) for wrapped description lines. */
@@ -43,6 +48,18 @@ function normalizeMasks(spec: FieldSpec): MaskBox[] {
   if (spec.masks?.length) return spec.masks;
   if (spec.mask) return [spec.mask];
   return [];
+}
+
+/** Vertical extent of existing value masks (mm from page top). Masks unchanged. */
+function textAreaFromMasks(masks: MaskBox[]): {
+  top: number;
+  bottom: number;
+  height: number;
+} | null {
+  if (!masks.length) return null;
+  const top = Math.min(...masks.map((m) => m.y));
+  const bottom = Math.max(...masks.map((m) => m.y + m.h));
+  return { top, bottom, height: bottom - top };
 }
 
 /**
@@ -160,6 +177,7 @@ const FIELDS = {
     color: "blue" as const,
     wrap: true,
     maxLines: 2,
+    verticalCenter: true,
   },
   consigneeGST: {
     x: 151.0,
@@ -180,6 +198,7 @@ const FIELDS = {
     color: "blue" as const,
     wrap: true,
     maxLines: 2,
+    verticalCenter: true,
   },
   packages: {
     // Full packages-column interior so stationery sample "0" is cleared
@@ -551,12 +570,34 @@ function drawField(
   const leftX = spec.x * MM;
 
   if (spec.wrap) {
-    const lines = wrapLines(text, used, size, maxWpt, spec.maxLines ?? 2);
-    const leading = size * 1.18;
+    const leadingPt = size * 1.18;
+    const leadingMm = leadingPt * (25.4 / 72);
+    const lineBoxMm = size * (25.4 / 72);
+    const area = spec.verticalCenter ? textAreaFromMasks(masks) : null;
+
+    // Capacity from existing mask-union height only — never expand the area.
+    const capacity =
+      area && leadingMm > 0
+        ? Math.max(1, Math.floor((area.height - lineBoxMm) / leadingMm) + 1)
+        : spec.maxLines ?? 2;
+    const maxLines = Math.min(spec.maxLines ?? capacity, capacity);
+    const lines = wrapLines(text, used, size, maxWpt, maxLines);
+
+    let firstBaselineY = baselineY;
+    if (area && lines.length > 0) {
+      // blockHeight ≈ (n-1)*leading + one glyph box; center inside area.
+      const blockH = (lines.length - 1) * leadingMm + lineBoxMm;
+      let blockTop = area.top + (area.height - blockH) / 2;
+      if (blockTop < area.top) blockTop = area.top;
+      if (blockTop + blockH > area.bottom) blockTop = area.bottom - blockH;
+      const firstBaselineMm = blockTop + lineBoxMm * 0.9;
+      firstBaselineY = pageHeightPt - firstBaselineMm * MM;
+    }
+
     lines.forEach((line, i) => {
       page.drawText(line, {
         x: leftX,
-        y: baselineY - i * leading,
+        y: firstBaselineY - i * leadingPt,
         size,
         font: used,
         color,
