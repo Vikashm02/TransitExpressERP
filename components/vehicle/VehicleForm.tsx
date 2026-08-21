@@ -128,8 +128,8 @@ export default function VehicleForm({
           <FormField
             label="Owner Name"
             htmlFor="vehicle-owner-name"
-            required
             error={errors.ownerName}
+            hint="Financials Broker save भी Owner Name update कर सकता है।"
           >
             <Input
               id="vehicle-owner-name"
@@ -149,6 +149,46 @@ export default function VehicleForm({
               placeholder="Mobile Number"
               value={vehicle.mobile}
               onChange={(e) => update("mobile", e.target.value)}
+            />
+          </FormField>
+
+          <FormField
+            label="Transporter"
+            htmlFor="vehicle-transporter"
+            error={errors.transporter}
+            hint="Latest transporter from LR entry (editable here too)."
+          >
+            <Input
+              id="vehicle-transporter"
+              placeholder="Transporter"
+              value={vehicle.transporter}
+              onChange={(e) => update("transporter", e.target.value)}
+            />
+          </FormField>
+
+          <FormField
+            label="Driver Name"
+            htmlFor="vehicle-driver-name"
+            error={errors.driverName}
+          >
+            <Input
+              id="vehicle-driver-name"
+              placeholder="Driver Name"
+              value={vehicle.driverName}
+              onChange={(e) => update("driverName", e.target.value)}
+            />
+          </FormField>
+
+          <FormField
+            label="Driver Mobile"
+            htmlFor="vehicle-driver-mobile"
+            error={errors.driverMobile}
+          >
+            <Input
+              id="vehicle-driver-mobile"
+              placeholder="9876543210"
+              value={vehicle.driverMobile}
+              onChange={(e) => update("driverMobile", e.target.value)}
             />
           </FormField>
         </div>

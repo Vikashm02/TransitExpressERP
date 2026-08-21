@@ -28,6 +28,10 @@ const emptyVehicle: Vehicle = {
   ownerType: "Market",
   mobile: "",
 
+  transporter: "",
+  driverName: "",
+  driverMobile: "",
+
   capacity: 0,
   capacityUnit: "TON",
 

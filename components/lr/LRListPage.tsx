@@ -28,6 +28,7 @@ import {
   updateLR,
   type LRRecord,
 } from "@/components/services/lr.service";
+import { syncVehicleMasterFromLr } from "@/components/services/vehicle.service";
 import { allocateNextLrNumber } from "@/components/services/company.service";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -250,6 +251,8 @@ export default function LRListPage() {
     try {
       setSaving(true);
 
+      let successMessage = "LR saved successfully.";
+
       if (editingLR) {
         if (editingLR.entryStatus === "draft" || isDraftLrNumber(editingLR.lrNumber)) {
           if (!canContinueDraft) {
@@ -269,7 +272,7 @@ export default function LRListPage() {
             lrNumber,
             entryStatus: "final",
           });
-          toast.success(`LR ${lrNumber} saved successfully.`);
+          successMessage = `LR ${lrNumber} saved successfully.`;
         } else {
           if (!canEdit) {
             toast.error("You do not have permission to edit finalized LRs.");
@@ -280,13 +283,30 @@ export default function LRListPage() {
             lrNumber: editingLR.lrNumber,
             entryStatus: "final",
           });
-          toast.success("LR updated successfully.");
+          successMessage = "LR updated successfully.";
         }
       } else {
         // Direct final create (no prior draft) — reserve atomically once.
         const lrNumber = await allocateNextLrNumber();
         await createLR({ ...values, lrNumber, entryStatus: "final" });
-        toast.success(`LR ${lrNumber} created successfully.`);
+        successMessage = `LR ${lrNumber} created successfully.`;
+      }
+
+      // Vehicle Master sync only after LR save succeeds (not on draft autosave).
+      try {
+        await syncVehicleMasterFromLr({
+          vehicleNumber: values.vehicleNumber,
+          vehicleType: values.vehicleType,
+          transporter: values.transporter,
+          driverName: values.driverName,
+          driverMobile: values.driverMobile,
+        });
+        toast.success(successMessage);
+      } catch (syncError) {
+        console.error(syncError);
+        toast.error(
+          "LR save हो गया, लेकिन Vehicle Master update नहीं हुआ। Vehicle Master में manually check करें।"
+        );
       }
 
       setDialogOpen(false);

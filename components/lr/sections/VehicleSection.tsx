@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import FormField from "@/components/ui/FormField";
@@ -19,7 +19,10 @@ import {
 import type { TransporterRecord } from "@/components/services/transporter.service";
 import type { DriverRecord } from "@/components/services/driver.service";
 import { VEHICLE_TYPE_OPTIONS } from "@/components/vehicle/vehicle.schema";
-import { canonicalizeVehicleNumber } from "@/lib/vehicleNumber";
+import {
+  canonicalizeVehicleNumber,
+  normalizeVehicleNumberKey,
+} from "@/lib/vehicleNumber";
 
 import type { LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
@@ -35,6 +38,17 @@ function toOptions(values: readonly string[]) {
   return values.map((value) => ({ label: value, value }));
 }
 
+function findExactVehicle(
+  vehicles: VehicleRecord[],
+  vehicleNumber: string
+): VehicleRecord | undefined {
+  const key = normalizeVehicleNumberKey(vehicleNumber);
+  if (!key) return undefined;
+  return vehicles.find(
+    (vehicle) => normalizeVehicleNumberKey(vehicle.vehicleNumber) === key
+  );
+}
+
 export default function VehicleSection({
   lr,
   errors = {},
@@ -45,6 +59,9 @@ export default function VehicleSection({
   const [driverLookupOpen, setDriverLookupOpen] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
+  const [newVehicleHint, setNewVehicleHint] = useState(false);
+  /** Avoid re-applying the same master row and wiping user edits on blur. */
+  const lastAppliedKeyRef = useRef("");
 
   useEffect(() => {
     let cancelled = false;
@@ -69,13 +86,37 @@ export default function VehicleSection({
   function applyVehicle(vehicle: VehicleRecord) {
     const vehicleNumber =
       canonicalizeVehicleNumber(vehicle.vehicleNumber) || vehicle.vehicleNumber;
+    const key = normalizeVehicleNumberKey(vehicleNumber);
+    lastAppliedKeyRef.current = key;
+    setNewVehicleHint(false);
     onChange({
       ...lr,
       vehicleNumber,
-      vehicleType: vehicle.vehicleType,
+      vehicleType: vehicle.vehicleType || lr.vehicleType,
+      transporter: vehicle.transporter || "",
+      driverName: vehicle.driverName || "",
+      driverMobile: vehicle.driverMobile || "",
       lorryHireRate: vehicle.hireRate,
       lorryHireType: vehicle.hireType,
     });
+  }
+
+  function handleVehicleNumberChange(vehicleNumber: string) {
+    const key = normalizeVehicleNumberKey(vehicleNumber);
+    if (!key || key !== lastAppliedKeyRef.current) {
+      lastAppliedKeyRef.current = "";
+    }
+
+    const match = findExactVehicle(vehicles, vehicleNumber);
+    if (match && key && key === normalizeVehicleNumberKey(match.vehicleNumber)) {
+      if (lastAppliedKeyRef.current !== key) {
+        applyVehicle(match);
+        return;
+      }
+    }
+
+    setNewVehicleHint(Boolean(key) && !match);
+    update("vehicleNumber", vehicleNumber);
   }
 
   function handleTransporterSelect(transporter: TransporterRecord) {
@@ -103,6 +144,12 @@ export default function VehicleSection({
             required
             error={errors.vehicleNumber}
             helpText={lrFieldHelp.vehicleNumber}
+            hint={
+              newVehicleHint
+                ? "यह नया vehicle है। Details भरें; save करने के बाद यह Vehicle Master में automatically save हो जाएगा।"
+                : undefined
+            }
+            className="md:col-span-2 lg:col-span-3"
           >
             <div className="flex min-w-0 gap-3">
               <VehicleNumberInput
@@ -111,7 +158,7 @@ export default function VehicleSection({
                 value={lr.vehicleNumber}
                 vehicles={vehicles}
                 loading={vehiclesLoading}
-                onChange={(vehicleNumber) => update("vehicleNumber", vehicleNumber)}
+                onChange={handleVehicleNumberChange}
                 onSelectVehicle={applyVehicle}
               />
 
@@ -130,6 +177,7 @@ export default function VehicleSection({
             label="Vehicle Type"
             id="lr-vehicle-type"
             error={errors.vehicleType}
+            helpText={lrFieldHelp.vehicleType}
             value={lr.vehicleType}
             onValueChange={(value) => update("vehicleType", value)}
             options={toOptions(VEHICLE_TYPE_OPTIONS)}
@@ -189,6 +237,7 @@ export default function VehicleSection({
             htmlFor="lr-driver-mobile"
             required
             error={errors.driverMobile}
+            helpText={lrFieldHelp.driverMobile}
           >
             <Input
               id="lr-driver-mobile"

@@ -49,9 +49,19 @@ export const vehicleSchema = z.object({
     .refine((value) => (VEHICLE_TYPE_OPTIONS as readonly string[]).includes(value), {
       message: "Select a valid vehicle type.",
     }),
-  ownerName: z.string().trim().min(1, "Owner name is required."),
+  ownerName: z.string().trim(),
   ownerType: z.enum(OWNER_TYPE_OPTIONS),
   mobile: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || MOBILE_PATTERN.test(value), {
+      message: "Enter a valid 10-digit mobile number.",
+    }),
+
+  /** Latest LR-synced assignment fields (migration 044). */
+  transporter: z.string().trim(),
+  driverName: z.string().trim(),
+  driverMobile: z
     .string()
     .trim()
     .refine((value) => value === "" || MOBILE_PATTERN.test(value), {

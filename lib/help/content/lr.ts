@@ -42,8 +42,10 @@ export const lrFieldHelp = {
   consignee: "जिस party को माल deliver होना है, उसे यहाँ select करें।",
   vehicleNumber:
     "जिस गाड़ी से माल जाएगा, उसका Vehicle Number यहाँ लिखें या Search से चुनें।",
-  transporter: "Transporter का नाम यहाँ भरें या Search से चुनें।",
-  driverName: "Driver का नाम यहाँ भरें। Search से master से भी चुन सकते हैं।",
+  vehicleType: "Vehicle का type यहाँ select करें।",
+  transporter: "इस vehicle से जुड़ा transporter यहाँ select करें।",
+  driverName: "इस LR के लिए current driver का नाम यहाँ डालें।",
+  driverMobile: "Current driver का mobile number यहाँ डालें।",
   materialDescription:
     "माल का संक्षिप्त विवरण यहाँ लिखें। नया / draft पूरा करते समय यह ज़रूरी हो सकता है।",
   freightType: "Freight कैसे charge होगा — यहाँ Freight Type चुनें।",

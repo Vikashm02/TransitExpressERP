@@ -31,6 +31,9 @@ export default function VehicleTable({
   const columns: DataTableColumn<VehicleRecord>[] = [
     { key: "vehicleNumber", header: "Vehicle Number", sortable: true, className: "font-medium" },
     { key: "vehicleType", header: "Vehicle Type", sortable: true },
+    { key: "transporter", header: "Transporter", sortable: true },
+    { key: "driverName", header: "Driver", sortable: true },
+    { key: "driverMobile", header: "Driver Mobile" },
     { key: "ownerName", header: "Owner", sortable: true },
     { key: "ownerType", header: "Owner Type" },
     {
@@ -38,7 +41,7 @@ export default function VehicleTable({
       header: "Capacity",
       render: (row) => (row.capacity ? `${row.capacity} ${row.capacityUnit}` : "—"),
     },
-    { key: "mobile", header: "Mobile" },
+    { key: "mobile", header: "Owner Mobile" },
     {
       key: "complianceStatus",
       header: "Compliance Status",

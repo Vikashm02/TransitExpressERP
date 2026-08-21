@@ -32,6 +32,7 @@ import {
   type LorryExpenseRecord,
 } from "@/components/services/lorryExpense.service";
 import { getLRs, updateLR, type LRRecord } from "@/components/services/lr.service";
+import { syncVehicleOwnerFromBroker } from "@/components/services/vehicle.service";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import {
   calculateFinancialProfitLoss,
@@ -296,10 +297,26 @@ export default function LorryExpenseListPage() {
           return;
         }
         await updateLorryExpense(existingId, { ...values, entryStatus: "final" });
-        toast.success("Financials updated successfully.");
       } else {
         await createLorryExpense({ ...values, entryStatus: "final" });
-        toast.success("Financials saved successfully.");
+      }
+
+      // Broker → Vehicle Master owner_name only after Financials save succeeds.
+      try {
+        await syncVehicleOwnerFromBroker({
+          vehicleNumber: linkedLr.vehicleNumber,
+          brokerName: values.brokerName,
+        });
+        toast.success(
+          existingId
+            ? "Financials updated successfully."
+            : "Financials saved successfully."
+        );
+      } catch (syncError) {
+        console.error(syncError);
+        toast.error(
+          "Financials save हो गया, लेकिन Vehicle Master Owner update नहीं हुआ।"
+        );
       }
 
       setDialogOpen(false);
