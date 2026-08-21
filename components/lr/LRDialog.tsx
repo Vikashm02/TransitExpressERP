@@ -14,6 +14,7 @@ import { formatNextDocumentNumber } from "@/lib/permissions";
 import { isDraftEntry, isDraftLrNumber } from "@/lib/entryStatus";
 import { prepareLrForDraftForm } from "@/lib/draftPersistence";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
+import { normalizeLrTextFields } from "./lrTextNormalize";
 
 interface LRDialogProps {
   open: boolean;
@@ -133,6 +134,14 @@ export default function LRDialog({
   const [nextLrNumberPreview, setNextLrNumberPreview] = useState("");
   const [draftHint, setDraftHint] = useState<string | null>(null);
 
+  /** Central path: typing, paste, lookups, load, and freight default all go through here. */
+  function setLrValues(next: LR | ((prev: LR) => LR)) {
+    setValues((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      return normalizeLrTextFields(resolved);
+    });
+  }
+
   const isEditing = Boolean(lr);
 
   /** Required for brand-new LRs and drafts being finalized — not historical finals. */
@@ -167,13 +176,13 @@ export default function LRDialog({
     setDraftHint(lr?.entryStatus === "draft" ? "Incomplete draft — continue editing, then Save." : null);
 
     if (lr) {
-      setValues({ ...emptyLR, ...toEditableLR(lr) });
+      setLrValues({ ...emptyLR, ...toEditableLR(lr) });
       if (!isDraftLrNumber(lr.lrNumber)) {
         setNextLrNumberPreview("");
         return;
       }
     } else {
-      setValues(emptyLR);
+      setLrValues(emptyLR);
     }
 
     let cancelled = false;
@@ -189,7 +198,10 @@ export default function LRDialog({
           )
         );
         if (!lr && company.defaultFreightType) {
-          setValues((current) => ({ ...current, freightType: company.defaultFreightType }));
+          setLrValues((current) => ({
+            ...current,
+            freightType: company.defaultFreightType,
+          }));
         }
       })
       .catch((error) => {
@@ -251,7 +263,7 @@ export default function LRDialog({
       <LRForm
         lr={values}
         errors={errors}
-        onChange={setValues}
+        onChange={setLrValues}
         nextLrNumberPreview={nextLrNumberPreview}
         requireMaterialDescription={requireMaterialDescription}
       />

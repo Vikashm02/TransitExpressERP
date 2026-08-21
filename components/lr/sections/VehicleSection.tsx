@@ -136,6 +136,7 @@ export default function VehicleSection({
       <FormSection
         title="Vehicle & Route Details"
         subtitle="Vehicle, transporter and driver assigned to this shipment"
+        contentClassName="md:[&_[data-slot=input]]:text-base md:[&_[data-slot=select-trigger]]:text-base md:[&_[data-slot=select-trigger]]:w-full"
       >
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           <FormField
@@ -182,6 +183,7 @@ export default function VehicleSection({
             onValueChange={(value) => update("vehicleType", value)}
             options={toOptions(VEHICLE_TYPE_OPTIONS)}
             placeholder="Select Vehicle Type"
+            triggerClassName="md:w-full md:text-base"
           />
 
           <FormField
