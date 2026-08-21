@@ -68,6 +68,75 @@ function emptyToNull(value: string): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
+/** Form/schema expect `number`; DB may return null (or numeric-as-string). */
+function asLrNumber(value: unknown): number {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+/** Form/schema expect `string`; DB may return null for nullable text columns. */
+function asLrString(value: unknown): string {
+  if (value == null) return "";
+  return typeof value === "string" ? value : String(value);
+}
+
+/** Numeric LR domain fields (matches `lr.schema` / `emptyLR`). */
+const LR_NUMBER_FIELDS = [
+  "packages",
+  "loadingWeight",
+  "unloadingWeight",
+  "chargedWeight",
+  "invoiceValue",
+  "billRate",
+  "guaranteedWeight",
+  "lorryHireRate",
+  "lorryHireGuaranteedWeight",
+  "driverAdvance",
+  "dieselAdvance",
+  "stChallan",
+  "loadingCharges",
+  "unloadingCharges",
+  "hamali",
+  "commission",
+  "otherExpense",
+] as const;
+
+/** String LR domain fields (excludes dates — those use OPTIONAL_DATE_FIELDS). */
+const LR_STRING_FIELDS = [
+  "lrNumber",
+  "lrDate",
+  "bookingBranch",
+  "customer",
+  "consignor",
+  "consignorGST",
+  "consignorAddress",
+  "consignee",
+  "consigneeGST",
+  "consigneeAddress",
+  "vehicleNumber",
+  "vehicleType",
+  "transporter",
+  "driverName",
+  "driverMobile",
+  "from",
+  "to",
+  "material",
+  "materialDescription",
+  "packageType",
+  "poNumber",
+  "vendorCode",
+  "dcNumber",
+  "invoiceNumber",
+  "ewayBillNumber",
+  "remarks",
+  "internalRemarks",
+] as const;
+
 function toRow(values: LR) {
   const row = objectToSnakeCase(values);
 
@@ -116,19 +185,45 @@ function fromRow(row: Record<string, unknown>): LRRecord {
   }
 
   const lr = objectToCamelCase<LR>(rest);
+  const normalized = lr as Record<string, unknown>;
 
   for (const field of OPTIONAL_DATE_FIELDS) {
-    if (lr[field] == null) {
-      (lr as Record<string, unknown>)[field] = "";
+    if (normalized[field] == null) {
+      normalized[field] = "";
     }
   }
 
+  for (const field of LR_NUMBER_FIELDS) {
+    normalized[field] = asLrNumber(normalized[field]);
+  }
+
+  for (const field of LR_STRING_FIELDS) {
+    normalized[field] = asLrString(normalized[field]);
+  }
+
+  // Enum-like strings: null → same defaults as emptyLR / normal drafts.
+  if (normalized.billingParty == null || normalized.billingParty === "") {
+    normalized.billingParty = "Consignor";
+  }
+  if (normalized.billRateType == null || normalized.billRateType === "") {
+    normalized.billRateType = "Fixed";
+  }
+  if (normalized.lorryHireType == null || normalized.lorryHireType === "") {
+    normalized.lorryHireType = "Fixed";
+  }
+  if (normalized.freightType == null || normalized.freightType === "") {
+    normalized.freightType = "To Be Billed";
+  }
+  if (normalized.status == null || normalized.status === "") {
+    normalized.status = "Open";
+  }
+
   return {
-    ...lr,
+    ...(normalized as LR),
     id: id as number,
-    billAmount: (bill_amount as number | null) ?? 0,
-    lorryHireAmount: (lorry_hire_amount as number | null) ?? 0,
-    profitAmount: (profit_amount as number | null) ?? 0,
+    billAmount: asLrNumber(bill_amount),
+    lorryHireAmount: asLrNumber(lorry_hire_amount),
+    profitAmount: asLrNumber(profit_amount),
     createdBy: (created_by as string | null) ?? null,
     updatedBy: (updated_by as string | null) ?? null,
     assignedTo: (assigned_to as string | null) ?? null,

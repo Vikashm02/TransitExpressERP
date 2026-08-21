@@ -107,9 +107,17 @@ const emptyLR: LR = {
  * none of them enter editable form state or `updateLR()`'s payload. */
 function toEditableLR(record: LRRecord): LR {
   const picked = pickFields(record, Object.keys(emptyLR) as (keyof LR)[]);
+  // Defense in depth: never seed controlled inputs with null/undefined.
+  const safe = { ...emptyLR, ...picked } as LR;
+  for (const key of Object.keys(emptyLR) as (keyof LR)[]) {
+    const fallback = emptyLR[key];
+    if (safe[key] == null) {
+      (safe as Record<string, unknown>)[key as string] = fallback;
+    }
+  }
   // Strip DB-only draft placeholders ("Draft" / "DRAFT") so empty fields
   // stay blank when resuming an incomplete LR.
-  return prepareLrForDraftForm(picked);
+  return prepareLrForDraftForm(safe);
 }
 
 export default function LRDialog({
