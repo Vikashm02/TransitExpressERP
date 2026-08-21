@@ -35,6 +35,8 @@ type FieldSpec = {
   /** Max bottom Y (mm from page top) for wrapped description lines. */
   maxBottomY?: number;
   minSizePt?: number;
+  /** Single-line: horizontally center within [x, x+maxW] (own column). */
+  alignCenter?: boolean;
 };
 
 function normalizeMasks(spec: FieldSpec): MaskBox[] {
@@ -180,12 +182,24 @@ const FIELDS = {
     maxLines: 2,
   },
   packages: {
-    masks: [{ x: 13.45, y: 137.79, w: 12.19, h: 3.95 }],
-    x: 13.45,
+    // Full packages-column interior so stationery sample "0" is cleared
+    // when packageType is empty, and longer types fit without crossing
+    // the Packages|Description divider (stay ≥0.5mm inside TABLE_V borders).
+    masks: [
+      {
+        x: 4.128 + BORDER_INSET,
+        y: 137.79,
+        w: TABLE_V.packagesRight - BORDER_INSET - (4.128 + BORDER_INSET),
+        h: 3.95,
+      },
+    ],
+    x: 4.128 + BORDER_INSET,
     y: 137.79,
-    maxW: TABLE_V.packagesRight - BORDER_INSET - 13.45,
+    maxW: TABLE_V.packagesRight - BORDER_INSET - (4.128 + BORDER_INSET),
     sizePt: 9.61,
     color: "blue" as const,
+    // Same principle as Description: center within this column only.
+    alignCenter: true,
   },
   material: {
     masks: [{ x: 49.03, y: 137.79, w: 52.59, h: 3.95 }],
@@ -270,6 +284,19 @@ function formatPrintDate(value: string): string {
   } catch {
     return value;
   }
+}
+
+/**
+ * PDF presentation only — never write this back to the database.
+ * LR19305 | LR 19305 | 19305 → "LR 19305" (never "LR LR19305").
+ */
+function displayLrNumber(lrNumber: string): string {
+  const stripped = String(lrNumber || "")
+    .trim()
+    .replace(/^LR\s*/i, "")
+    .trim();
+  if (!stripped) return "";
+  return `LR ${stripped}`;
 }
 
 function formatWeight(value: number): string {
@@ -427,7 +454,6 @@ function drawDescription(
 
   const maxWpt = spec.maxW * MM;
   const color = colorOf(spec.color);
-  const x = spec.x * MM;
   const minSize = spec.minSizePt ?? 7.5;
   const maxBottomY = spec.maxBottomY ?? spec.y + 20;
   const startSize = spec.sizePt;
@@ -473,13 +499,18 @@ function drawDescription(
     chosenLines = lines;
   }
 
+  // Top-aligned in the description band (spec.y → maxBottomY).
+  // Each wrapped line is horizontally centered within spec.x + maxW.
   const bandH = chosenSize * (25.4 / 72);
   const baselineY = pageHeightPt - (spec.y + bandH * 0.9) * MM;
   const leading = chosenSize * 1.15;
+  const originX = spec.x * MM;
 
   chosenLines.forEach((line, i) => {
+    const lineWidth = font.widthOfTextAtSize(line, chosenSize);
+    const lineX = originX + (maxWpt - lineWidth) / 2;
     page.drawText(line, {
-      x,
+      x: lineX,
       y: baselineY - i * leading,
       size: chosenSize,
       font,
@@ -517,14 +548,14 @@ function drawField(
       ? Math.min(maskH, size * (25.4 / 72) * 1.15)
       : size * (25.4 / 72);
   const baselineY = pageHeightPt - (spec.y + bandH * 0.9) * MM;
-  const x = spec.x * MM;
+  const leftX = spec.x * MM;
 
   if (spec.wrap) {
     const lines = wrapLines(text, used, size, maxWpt, spec.maxLines ?? 2);
     const leading = size * 1.18;
     lines.forEach((line, i) => {
       page.drawText(line, {
-        x,
+        x: leftX,
         y: baselineY - i * leading,
         size,
         font: used,
@@ -535,8 +566,22 @@ function drawField(
     return;
   }
 
-  page.drawText(fitSingleLine(text, used, size, maxWpt), {
-    x,
+  const fitted = fitSingleLine(text, used, size, maxWpt);
+  if (spec.alignCenter) {
+    // packagesLeft + (packagesColumnWidth - textWidth) / 2
+    const textWidth = used.widthOfTextAtSize(fitted, size);
+    page.drawText(fitted, {
+      x: leftX + (maxWpt - textWidth) / 2,
+      y: baselineY,
+      size,
+      font: used,
+      color,
+    });
+    return;
+  }
+
+  page.drawText(fitted, {
+    x: leftX,
     y: baselineY,
     size,
     font: used,
@@ -577,11 +622,11 @@ export async function generateLrPdfBytes(
   const font = await pdfDoc.embedFont(regularBytes);
   const boldFont = await pdfDoc.embedFont(boldBytes);
 
-  const packagesValue =
-    lr.packages === null || lr.packages === undefined ? "" : String(lr.packages);
+  // Packages column shows package type (form field), not package count.
+  const packagesValue = (lr.packageType || "").trim();
 
   const draws: Array<[FieldSpec, string]> = [
-    [FIELDS.lrNumber, lr.lrNumber || ""],
+    [FIELDS.lrNumber, displayLrNumber(lr.lrNumber || "")],
     [FIELDS.lrDate, formatPrintDate(lr.lrDate || "")],
     [FIELDS.gstPayable, lr.billingParty || ""],
     [FIELDS.driverName, lr.driverName || ""],
