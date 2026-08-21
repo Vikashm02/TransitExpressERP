@@ -31,6 +31,10 @@ export interface TeamOverviewMember {
   dcsCreated: number | null;
   asnsCreated: number | null;
   completedCount: number | null;
+  /** Same as Self Performance: avg(finalized_at - created_at) in seconds. */
+  avgCompletionSeconds: number | null;
+  /** Same as Self Performance: max(0, round(100 - edit_rate, 2)). */
+  qualityScore: number | null;
 }
 
 export interface TeamOverviewTrend {
@@ -148,6 +152,8 @@ export async function getTeamOverviewSnapshot(
         dcsCreated: asNullableNumber(row.dcs_created),
         asnsCreated: asNullableNumber(row.asns_created),
         completedCount: asNullableNumber(row.completed_count),
+        avgCompletionSeconds: asNullableNumber(row.avg_completion_seconds),
+        qualityScore: asNullableNumber(row.quality_score),
       };
     }),
     trends: trendsRaw.map((item) => {

@@ -30,6 +30,14 @@ function displayNum(value: number | null | undefined): string {
   return String(value);
 }
 
+/** Same display rule as Self Performance OverviewEfficiencyPanel. */
+function formatAvgMinutes(avgSeconds: number | null | undefined): number | null {
+  if (avgSeconds === null || avgSeconds === undefined || !Number.isFinite(avgSeconds)) {
+    return null;
+  }
+  return Math.max(0, Math.round(avgSeconds / 60));
+}
+
 export default function TeamOverviewPanel({
   loading,
   snapshot,
@@ -46,11 +54,13 @@ export default function TeamOverviewPanel({
       key: "displayName",
       header: "Staff",
       sortable: true,
+      align: "left",
       className: "font-medium",
     },
     {
       key: "role",
       header: "Tier",
+      align: "center",
       render: (row) => (
         <StatusBadge
           status={row.role === "admin" ? "Active" : "Pending"}
@@ -61,6 +71,7 @@ export default function TeamOverviewPanel({
     {
       key: "approvalStatus",
       header: "Status",
+      align: "center",
       render: (row) => (
         <StatusBadge
           status={row.isLocked ? "Error" : row.approvalStatus}
@@ -76,6 +87,7 @@ export default function TeamOverviewPanel({
     {
       key: "drafts",
       header: "Drafts",
+      align: "center",
       render: (row) => (
         <span className="tabular-nums">{displayNum(row.drafts)}</span>
       ),
@@ -83,6 +95,7 @@ export default function TeamOverviewPanel({
     {
       key: "pendingPods",
       header: "Pending PODs",
+      align: "center",
       render: (row) => (
         <span className="tabular-nums">{displayNum(row.pendingPods)}</span>
       ),
@@ -90,16 +103,50 @@ export default function TeamOverviewPanel({
     {
       key: "completedCount",
       header: "Completed",
+      align: "center",
       render: (row) => (
         <span className="tabular-nums">{displayNum(row.completedCount)}</span>
       ),
     },
     {
       key: "lrsCreated",
-      header: "LRs created",
+      header: "LRs Created",
+      align: "center",
       render: (row) => (
         <span className="tabular-nums">{displayNum(row.lrsCreated)}</span>
       ),
+    },
+    {
+      key: "avgCompletionSeconds",
+      header: "Avg LR Completion",
+      align: "center",
+      sortAccessor: (row) => row.avgCompletionSeconds ?? -1,
+      render: (row) => {
+        const minutes = formatAvgMinutes(row.avgCompletionSeconds);
+        const hasData = (row.completedCount ?? 0) > 0 && minutes !== null;
+        return (
+          <span className="tabular-nums">
+            {hasData ? `${minutes} min` : "—"}
+          </span>
+        );
+      },
+    },
+    {
+      key: "qualityScore",
+      header: "LR Quality",
+      align: "center",
+      sortAccessor: (row) => row.qualityScore ?? -1,
+      render: (row) => {
+        const hasData =
+          (row.lrsCreated ?? 0) > 0 &&
+          row.qualityScore !== null &&
+          row.qualityScore !== undefined;
+        return (
+          <span className="tabular-nums">
+            {hasData ? `${row.qualityScore}%` : "—"}
+          </span>
+        );
+      },
     },
   ];
 
@@ -229,9 +276,9 @@ export default function TeamOverviewPanel({
               <thead className="border-b border-border bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Week</th>
-                  <th className="px-3 py-2 font-medium">LRs created</th>
-                  <th className="px-3 py-2 font-medium">PODs created</th>
-                  <th className="px-3 py-2 font-medium">Completed</th>
+                  <th className="px-3 py-2 text-center font-medium">LRs created</th>
+                  <th className="px-3 py-2 text-center font-medium">PODs created</th>
+                  <th className="px-3 py-2 text-center font-medium">Completed</th>
                 </tr>
               </thead>
               <tbody>
@@ -245,13 +292,13 @@ export default function TeamOverviewPanel({
                         ? row.weekStart
                         : `${row.weekStart} → ${row.weekEnd}`}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">
+                    <td className="px-3 py-2 text-center tabular-nums">
                       {displayNum(row.lrsCreated)}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">
+                    <td className="px-3 py-2 text-center tabular-nums">
                       {displayNum(row.podsCreated)}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">
+                    <td className="px-3 py-2 text-center tabular-nums">
                       {displayNum(row.completedCount)}
                     </td>
                   </tr>
