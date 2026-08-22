@@ -33,8 +33,13 @@ function emptyToNull(value: string): string | null {
 
 function toRow(values: LorryExpense) {
   const row = objectToSnakeCase(values);
+  // Digits break generic toSnakeCase (driverAdvance1Date → driver_advance1_date).
+  delete row.driver_advance1_date;
+  delete row.driver_advance2_date;
+  delete row.driver_advance2;
   row.driver_advance_1_date = emptyToNull(values.driverAdvance1Date);
   row.driver_advance_2_date = emptyToNull(values.driverAdvance2Date);
+  row.driver_advance_2 = values.driverAdvance2;
   row.balance_paid_on = emptyToNull(values.balancePaidOn);
   return row;
 }
