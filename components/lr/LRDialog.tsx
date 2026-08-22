@@ -19,12 +19,18 @@ import { normalizeLrTextFields } from "./lrTextNormalize";
 interface LRDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Pass a record to edit; omit/null to add a new LR. */
+  /** Pass a record to view/edit; omit/null to add a new LR. */
   lr?: LRRecord | null;
   /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
   loading?: boolean;
+  /** View mode: read-only fields, no Save, no autosave. */
+  readOnly?: boolean;
+  /** Shown in view mode when the user may switch to edit (final LRs only). */
+  onRequestEdit?: () => void;
+  /** Shown in view mode when the user may continue a draft. */
+  onRequestContinueDraft?: () => void;
   onSubmit: (values: LR) => void | Promise<void>;
-  /** Optional draft autosave — does not finalize numbering. */
+  /** Optional draft autosave — does not finalize numbering. Ignored when readOnly. */
   onAutosave?: (values: LR) => void | Promise<void>;
 }
 
@@ -126,6 +132,9 @@ export default function LRDialog({
   onOpenChange,
   lr,
   loading = false,
+  readOnly = false,
+  onRequestEdit,
+  onRequestContinueDraft,
   onSubmit,
   onAutosave,
 }: LRDialogProps) {
@@ -136,6 +145,7 @@ export default function LRDialog({
 
   /** Central path: typing, paste, lookups, load, and freight default all go through here. */
   function setLrValues(next: LR | ((prev: LR) => LR)) {
+    if (readOnly) return;
     setValues((prev) => {
       const resolved = typeof next === "function" ? next(prev) : next;
       return normalizeLrTextFields(resolved);
@@ -154,12 +164,13 @@ export default function LRDialog({
     values,
     enabled:
       open &&
+      !readOnly &&
       Boolean(onAutosave) &&
       !loading &&
       (values.consignor.trim().length > 0 || values.customer.trim().length > 0),
     delayMs: 2500,
     onSave: async (next) => {
-      if (!onAutosave) return;
+      if (readOnly || !onAutosave) return;
       try {
         await onAutosave({ ...next, entryStatus: "draft" });
         setDraftHint("Draft saved");
@@ -173,16 +184,22 @@ export default function LRDialog({
     if (!open) return;
 
     setErrors({});
-    setDraftHint(lr?.entryStatus === "draft" ? "Incomplete draft — continue editing, then Save." : null);
+    setDraftHint(
+      readOnly
+        ? null
+        : lr?.entryStatus === "draft"
+          ? "Incomplete draft — continue editing, then Save."
+          : null
+    );
 
     if (lr) {
-      setLrValues({ ...emptyLR, ...toEditableLR(lr) });
+      setValues(normalizeLrTextFields({ ...emptyLR, ...toEditableLR(lr) }));
       if (!isDraftLrNumber(lr.lrNumber)) {
         setNextLrNumberPreview("");
         return;
       }
     } else {
-      setLrValues(emptyLR);
+      setValues(normalizeLrTextFields(emptyLR));
     }
 
     let cancelled = false;
@@ -197,7 +214,7 @@ export default function LRDialog({
             company.lrRunningNumber
           )
         );
-        if (!lr && company.defaultFreightType) {
+        if (!lr && !readOnly && company.defaultFreightType) {
           setLrValues((current) => ({
             ...current,
             freightType: company.defaultFreightType,
@@ -211,9 +228,12 @@ export default function LRDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, lr]);
+    // setLrValues intentionally omitted — stable enough for open/lr/readOnly
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lr, readOnly]);
 
   function handleSave() {
+    if (readOnly) return;
     const fieldErrors = validateLR(values, { requireMaterialDescription });
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -229,35 +249,54 @@ export default function LRDialog({
     onOpenChange(false);
   }
 
+  const title = readOnly
+    ? "View Lorry Receipt"
+    : isEditing
+      ? "Edit Lorry Receipt"
+      : "Create Lorry Receipt";
+
+  const description = readOnly
+    ? "LR details (read-only)."
+    : "Enter shipment, vehicle and commercial details.";
+
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={isEditing ? "Edit Lorry Receipt" : "Create Lorry Receipt"}
-      description="Enter shipment, vehicle and commercial details."
+      title={title}
+      description={description}
       size="fullscreen"
       loading={loading}
       loadingText="Saving Lorry Receipt..."
       footer={
-        <>
-          {draftHint ? (
-            <p className="mr-auto text-xs text-muted-foreground">{draftHint}</p>
-          ) : null}
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
+        readOnly ? (
+          <>
+            <Button variant="outline" onClick={handleCancel}>
+              Close
+            </Button>
+            {onRequestContinueDraft ? (
+              <Button onClick={onRequestContinueDraft}>Continue Draft</Button>
+            ) : null}
+            {onRequestEdit ? <Button onClick={onRequestEdit}>Edit</Button> : null}
+          </>
+        ) : (
+          <>
+            {draftHint ? (
+              <p className="mr-auto text-xs text-muted-foreground">{draftHint}</p>
+            ) : null}
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
 
-          <Button
-            onClick={handleSave}
-            disabled={loading}
-          >
-            {loading ? "Saving..." : "Save LR"}
-          </Button>
-        </>
+            <Button onClick={handleSave} disabled={loading}>
+              {loading ? "Saving..." : "Save LR"}
+            </Button>
+          </>
+        )
       }
     >
       <LRForm
@@ -266,6 +305,7 @@ export default function LRDialog({
         onChange={setLrValues}
         nextLrNumberPreview={nextLrNumberPreview}
         requireMaterialDescription={requireMaterialDescription}
+        readOnly={readOnly}
       />
     </FormDialog>
   );

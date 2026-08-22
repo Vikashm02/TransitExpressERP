@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Pencil, Printer, Share2, Trash2, UserCog } from "lucide-react";
+import { Eye, FileText, Pencil, Printer, Share2, Trash2, UserCog } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -16,6 +16,8 @@ interface LRTableProps {
   lrs: LRRecord[];
   loading?: boolean;
   pageSize?: number;
+  /** Open any visible LR in view mode. */
+  onView: (lr: LRRecord) => void;
   onEdit: (lr: LRRecord) => void;
   /** Resume incomplete draft — must NOT require Edit permission. */
   onContinueDraft: (lr: LRRecord) => void;
@@ -37,6 +39,7 @@ export default function LRTable({
   lrs,
   loading,
   pageSize,
+  onView,
   onEdit,
   onContinueDraft,
   onDelete,
@@ -81,30 +84,22 @@ export default function LRTable({
           />
         ) : null,
     },
-  ];
-
-  if (isAdmin) {
-    columns.push({
+    {
       key: "createdBy",
       header: "Created By",
       render: (row) =>
         row.createdBy
           ? resolveAssignedName?.(row.createdBy) ?? "Unknown"
           : "—",
-    });
+    },
+  ];
+
+  if (isAdmin) {
     columns.push({
       key: "assignedTo",
       header: "Assigned To",
       render: (row) => resolveAssignedName?.(row.assignedTo) ?? "Unassigned",
     });
-  }
-
-  function handleRowClick(row: LRRecord) {
-    if (isDraftEntry(row.entryStatus)) {
-      if (canContinueDraft) onContinueDraft(row);
-      return;
-    }
-    if (canEdit) onEdit(row);
   }
 
   // Fixed dashboard order: numeric LR number descending (never lexicographic).
@@ -126,8 +121,14 @@ export default function LRTable({
       emptyIcon={FileText}
       pageSize={pageSize}
       getRowClassName={(row) => draftRowClassName(row.entryStatus)}
-      onRowClick={handleRowClick}
+      onRowClick={onView}
       actions={[
+        {
+          label: "View",
+          icon: Eye,
+          variant: "outline",
+          onClick: onView,
+        },
         {
           label: "Print",
           icon: Printer,

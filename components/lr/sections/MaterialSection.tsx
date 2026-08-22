@@ -229,6 +229,8 @@ export default function MaterialSection({
           <FormField
             label="Package Type"
             htmlFor="lr-package-type"
+            required
+            error={errors.packageType}
           >
             <Input
               id="lr-package-type"

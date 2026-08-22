@@ -41,6 +41,11 @@ import { normalizeLrForDraftPersist } from "@/lib/draftPersistence";
 
 const PAGE_SIZE = 10;
 
+/** Status filter sentinel — matches entry_status draft, not lr.status. */
+const DRAFT_STATUS_FILTER = "__draft__";
+
+type LrDialogMode = "create" | "view" | "edit";
+
 export default function LRListPage() {
   const { isAdmin, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lr", "create_view");
@@ -57,8 +62,10 @@ export default function LRListPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [freightTypeFilter, setFreightTypeFilter] = useState("");
+  const [createdByFilter, setCreatedByFilter] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<LrDialogMode>("create");
   const [editingLR, setEditingLR] = useState<LRRecord | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -110,11 +117,10 @@ export default function LRListPage() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) return;
     getStaffUsers()
       .then(setStaff)
       .catch((error) => console.error(error));
-  }, [isAdmin]);
+  }, []);
 
   async function loadLRs() {
     try {
@@ -166,12 +172,17 @@ export default function LRListPage() {
           .filter(Boolean)
           .some((field) => field.toLowerCase().includes(query));
 
-      const matchesStatus = !statusFilter || lr.status === statusFilter;
+      const matchesStatus =
+        !statusFilter ||
+        (statusFilter === DRAFT_STATUS_FILTER
+          ? isDraftEntry(lr.entryStatus)
+          : lr.status === statusFilter);
       const matchesFreightType = !freightTypeFilter || lr.freightType === freightTypeFilter;
+      const matchesCreatedBy = !createdByFilter || lr.createdBy === createdByFilter;
 
-      return matchesSearch && matchesStatus && matchesFreightType;
+      return matchesSearch && matchesStatus && matchesFreightType && matchesCreatedBy;
     });
-  }, [lrs, search, statusFilter, freightTypeFilter]);
+  }, [lrs, search, statusFilter, freightTypeFilter, createdByFilter]);
 
   const stats = useMemo(() => {
     const open = lrs.filter((lr) => lr.status === "Open" || lr.status === "In Transit").length;
@@ -184,7 +195,15 @@ export default function LRListPage() {
 
   function handleAdd() {
     beginNewCreateSession();
+    setDialogMode("create");
     setEditingLR(null);
+    setDialogOpen(true);
+  }
+
+  function handleView(lr: LRRecord) {
+    beginExistingLrSession();
+    setDialogMode("view");
+    setEditingLR(lr);
     setDialogOpen(true);
   }
 
@@ -195,6 +214,7 @@ export default function LRListPage() {
       return;
     }
     beginExistingLrSession();
+    setDialogMode("edit");
     setEditingLR(lr);
     setDialogOpen(true);
   }
@@ -206,6 +226,7 @@ export default function LRListPage() {
       return;
     }
     beginExistingLrSession();
+    setDialogMode("edit");
     setEditingLR(lr);
     setDialogOpen(true);
   }
@@ -233,6 +254,7 @@ export default function LRListPage() {
 
     setDialogOpen(false);
     setEditingLR(null);
+    setDialogMode("create");
 
     if (wasNewCreate && draftIdToDelete != null) {
       try {
@@ -311,6 +333,7 @@ export default function LRListPage() {
 
       setDialogOpen(false);
       setEditingLR(null);
+      setDialogMode("create");
       clearCreateSessionTracking();
       await loadLRs();
     } catch (error) {
@@ -576,10 +599,13 @@ export default function LRListPage() {
             label: "Status",
             value: statusFilter,
             placeholder: "All statuses",
-            options: LR_STATUS_OPTIONS.map((status) => ({
-              label: status,
-              value: status,
-            })),
+            options: [
+              { label: "Draft", value: DRAFT_STATUS_FILTER },
+              ...LR_STATUS_OPTIONS.map((status) => ({
+                label: status,
+                value: status,
+              })),
+            ],
             onChange: setStatusFilter,
           },
           {
@@ -593,6 +619,17 @@ export default function LRListPage() {
             })),
             onChange: setFreightTypeFilter,
           },
+          {
+            key: "createdBy",
+            label: "Created By",
+            value: createdByFilter,
+            placeholder: "All creators",
+            options: staff.map((user) => ({
+              label: user.displayName,
+              value: user.id,
+            })),
+            onChange: setCreatedByFilter,
+          },
         ]}
       />
 
@@ -600,6 +637,7 @@ export default function LRListPage() {
         lrs={filteredLRs}
         loading={loading}
         pageSize={PAGE_SIZE}
+        onView={handleView}
         onEdit={handleEdit}
         onContinueDraft={handleContinueDraft}
         onDelete={setDeleteTarget}
@@ -620,8 +658,27 @@ export default function LRListPage() {
         onOpenChange={handleDialogOpenChange}
         lr={editingLR}
         loading={saving}
+        readOnly={dialogMode === "view"}
+        onRequestEdit={
+          dialogMode === "view" &&
+          editingLR &&
+          !isDraftEntry(editingLR.entryStatus) &&
+          canEdit
+            ? () => setDialogMode("edit")
+            : undefined
+        }
+        onRequestContinueDraft={
+          dialogMode === "view" &&
+          editingLR &&
+          isDraftEntry(editingLR.entryStatus) &&
+          canContinueDraft
+            ? () => handleContinueDraft(editingLR)
+            : undefined
+        }
         onSubmit={handleSubmit}
-        onAutosave={canContinueDraft ? handleAutosave : undefined}
+        onAutosave={
+          dialogMode !== "view" && canContinueDraft ? handleAutosave : undefined
+        }
       />
 
       <ConfirmDialog

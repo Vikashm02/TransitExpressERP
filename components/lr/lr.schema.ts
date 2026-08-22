@@ -118,7 +118,7 @@ export const lrSchema = z
       .string()
       .trim()
       .max(500, "Material description must be 500 characters or fewer."),
-    packageType: z.string().trim(),
+    packageType: z.string().trim().min(1, "Package Type is required."),
     packages: nonNegativeNumber("Packages cannot be negative."),
     loadingWeight: requiredPositiveNumber("Loading weight is required."),
     unloadingWeight: nonNegativeNumber("Unloading weight cannot be negative."),

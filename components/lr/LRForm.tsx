@@ -18,6 +18,8 @@ interface LRFormProps {
   nextLrNumberPreview?: string;
   /** When true, Material Description shows as required (new LR / draft finalize). */
   requireMaterialDescription?: boolean;
+  /** View mode: all controls non-interactive (matches POD/ASN read-only pattern). */
+  readOnly?: boolean;
 }
 
 export default function LRForm({
@@ -26,9 +28,10 @@ export default function LRForm({
   onChange,
   nextLrNumberPreview,
   requireMaterialDescription = false,
+  readOnly = false,
 }: LRFormProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" {...(readOnly ? { inert: true as const } : {})}>
       <LRHeader
         lr={lr}
         errors={errors}
