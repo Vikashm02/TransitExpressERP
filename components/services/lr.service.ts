@@ -371,6 +371,44 @@ export async function updateLR(id: number, values: LR): Promise<LRRecord> {
   return record;
 }
 
+/** Commercial fields owned by Financials — patched via update_lr_financials RPC
+ * (migration 046). Does not require lr.edit and never writes non-financial LR columns. */
+export type LRFinancialsCommercialPatch = {
+  billRate: number;
+  billRateType: string;
+  guaranteedWeight: number;
+  lorryHireRate: number;
+  lorryHireType: string;
+  lorryHireGuaranteedWeight: number;
+};
+
+/**
+ * Financials-only commercial update. Calls SECURITY DEFINER
+ * `update_lr_financials` which checks lorry_expenses create/edit + lr view.
+ * Does not use general `updateLR()` / lr.edit RLS.
+ */
+export async function updateLRFinancials(
+  lrId: string,
+  commercial: LRFinancialsCommercialPatch
+): Promise<LRRecord> {
+  const { data, error } = await supabase
+    .rpc("update_lr_financials", {
+      p_lr_id: lrId,
+      p_bill_rate: commercial.billRate,
+      p_bill_rate_type: commercial.billRateType,
+      p_guaranteed_weight: commercial.guaranteedWeight,
+      p_lorry_hire_rate: commercial.lorryHireRate,
+      p_lorry_hire_type: commercial.lorryHireType,
+      p_lorry_hire_guaranteed_weight: commercial.lorryHireGuaranteedWeight,
+    })
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error("Financials LR update returned no row.");
+
+  return fromRow(data as Record<string, unknown>);
+}
+
 /* ==========================================================
    REASSIGN LR (admin-only)
    A dedicated, minimal update — touches ONLY `assigned_to`, never the

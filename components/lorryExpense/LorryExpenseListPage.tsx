@@ -31,16 +31,26 @@ import {
   updateLorryExpense,
   type LorryExpenseRecord,
 } from "@/components/services/lorryExpense.service";
-import { getLRs, updateLR, type LRRecord } from "@/components/services/lr.service";
+import { getLRs, updateLRFinancials, type LRRecord } from "@/components/services/lr.service";
 import { syncVehicleOwnerFromBroker } from "@/components/services/vehicle.service";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import {
   calculateFinancialProfitLoss,
   calculateLorrySettlement,
 } from "@/lib/calculations/lorrySettlement";
-import type { BillRateType, LorryHireType } from "@/components/lr/lr.schema";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { isDraftEntry } from "@/lib/entryStatus";
+
+/** Supabase / RPC authorization failures for Financials writes. */
+function isFinancialsPermissionError(error: unknown): boolean {
+  const err = error as { code?: string; message?: string; details?: string } | null;
+  const text = `${err?.message ?? ""} ${err?.details ?? ""}`.toLowerCase();
+  if (text.includes("not permitted to edit financials")) return true;
+  // Postgres RLS denial on lorry_expenses insert/update
+  if (err?.code === "42501") return true;
+  if (text.includes("row-level security")) return true;
+  return false;
+}
 
 const PAGE_SIZE = 10;
 
@@ -276,13 +286,13 @@ export default function LorryExpenseListPage() {
         return;
       }
 
-      await updateLR(linkedLr.id, {
-        ...linkedLr,
+      // Narrow Financials RPC — does not use updateLR() / lr.edit.
+      await updateLRFinancials(String(linkedLr.id), {
         billRate: commercial.billRate,
-        billRateType: commercial.billRateType as BillRateType,
+        billRateType: commercial.billRateType,
         guaranteedWeight: commercial.guaranteedWeight,
         lorryHireRate: commercial.lorryHireRate,
-        lorryHireType: commercial.lorryHireType as LorryHireType,
+        lorryHireType: commercial.lorryHireType,
         lorryHireGuaranteedWeight: commercial.lorryHireGuaranteedWeight,
       });
 
@@ -324,7 +334,11 @@ export default function LorryExpenseListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to save Financials.");
+      if (isFinancialsPermissionError(error)) {
+        toast.error("You do not have permission to edit Financials for this LR.");
+      } else {
+        toast.error("Unable to save Financials.");
+      }
     } finally {
       setSaving(false);
     }
