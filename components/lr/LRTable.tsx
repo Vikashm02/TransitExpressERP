@@ -52,15 +52,14 @@ export default function LRTable({
   canShare = true,
 }: LRTableProps) {
   const columns: DataTableColumn<LRRecord>[] = [
-    { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
-    { key: "lrDate", header: "Date", sortable: true },
+    { key: "lrNumber", header: "LR No.", className: "font-medium" },
+    { key: "lrDate", header: "Date" },
     { key: "consignor", header: "Consignor" },
     { key: "consignee", header: "Consignee" },
     { key: "vehicleNumber", header: "Vehicle" },
     {
       key: "route",
       header: "Route",
-      sortAccessor: (row) => `${row.from} - ${row.to}`,
       render: (row) => `${row.from || "—"} → ${row.to || "—"}`,
     },
     { key: "freightType", header: "Freight Type" },
@@ -68,14 +67,12 @@ export default function LRTable({
       key: "billAmount",
       header: "Bill Amount",
       align: "right",
-      sortable: true,
       render: (row) => `₹ ${row.billAmount.toFixed(2)}`,
     },
-    { key: "status", header: "Status", type: "status", sortable: true },
+    { key: "status", header: "Status", type: "status" },
     {
       key: "entryStatus",
       header: "Entry",
-      sortable: true,
       render: (row) =>
         isDraftEntry(row.entryStatus) ? (
           <StatusBadge
@@ -110,17 +107,23 @@ export default function LRTable({
     if (canEdit) onEdit(row);
   }
 
+  // Fixed dashboard order: numeric LR number descending (never lexicographic).
+  // e.g. LR19311 > LR19310 > … > LR1932 > LR1931. No alternate column sorts.
+  const orderedLrs = [...lrs].sort((a, b) => {
+    const numA = Number(String(a.lrNumber || "").replace(/\D/g, "")) || 0;
+    const numB = Number(String(b.lrNumber || "").replace(/\D/g, "")) || 0;
+    return numB - numA;
+  });
+
   return (
     <DataTable
       columns={columns}
-      data={lrs}
+      data={orderedLrs}
       rowKey={(row) => row.id}
       loading={loading}
       emptyTitle="No LRs found"
       emptyDescription="Create your first Lorry Receipt to get started."
       emptyIcon={FileText}
-      sortable
-      defaultSort={{ key: "lrDate", direction: "desc" }}
       pageSize={pageSize}
       getRowClassName={(row) => draftRowClassName(row.entryStatus)}
       onRowClick={handleRowClick}
