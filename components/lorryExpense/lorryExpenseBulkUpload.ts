@@ -204,7 +204,10 @@ export async function parseAndValidateLorryExpenseUpload(
       messages.push(`LR Number "${lrNumber}" was not found in LR Entry.`);
     }
 
-    if (matchingLR && existingLorryExpenses.some((expense) => expense.lrId === matchingLR.id)) {
+    if (
+      matchingLR &&
+      existingLorryExpenses.some((expense) => String(expense.lrId) === String(matchingLR.id))
+    ) {
       messages.push(`LR "${lrNumber}" already has a Financials record — exactly one is allowed per LR.`);
     }
 
@@ -230,7 +233,7 @@ export async function parseAndValidateLorryExpenseUpload(
     const otherExpense = parseNumber(rawOtherExpense, "Other Expense");
 
     const candidate: LorryExpense = {
-      lrId: matchingLR?.id ?? 0,
+      lrId: matchingLR ? String(matchingLR.id) : "",
       expenseStatus: "completed",
       entryStatus: "final",
       driverAdvance,

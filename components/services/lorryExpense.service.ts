@@ -59,6 +59,8 @@ function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
   if (record.finalAmountPaid == null) record.finalAmountPaid = 0;
   if (record.remarks == null) record.remarks = "";
   record.expenseStatus = normalizeExpenseStatus(record.expenseStatus);
+  // Live `lorry_expenses.lr_id` is uuid; keep a string for Zod / UI.
+  record.lrId = String(record.lrId ?? "");
 
   return {
     ...(record as LorryExpense),
@@ -79,7 +81,8 @@ export async function getLorryExpenses(): Promise<LorryExpenseRecord[]> {
   return (data ?? []).map(fromRow);
 }
 
-export async function getLorryExpenseByLrId(lrId: number): Promise<LorryExpenseRecord | null> {
+/** `lrId` is the live `lrs.id` uuid string (`lorry_expenses.lr_id` is uuid). */
+export async function getLorryExpenseByLrId(lrId: string): Promise<LorryExpenseRecord | null> {
   const { data, error } = await supabase
     .from(TABLE)
     .select("*")

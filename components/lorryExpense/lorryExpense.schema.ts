@@ -31,7 +31,12 @@ export const LORRY_EXPENSE_STATUS_SELECT_OPTIONS = [
  * historical rows (hidden from new-entry UI).
  */
 export const lorryExpenseSchema = z.object({
-  lrId: z.number().int().positive("Select an LR."),
+  // Live `lrs.id` / `lorry_expenses.lr_id` are uuid (same convention as billing.schema lrIds).
+  lrId: z
+    .string()
+    .trim()
+    .min(1, "Select an LR.")
+    .uuid("Select an LR."),
   expenseStatus: z.enum(LORRY_EXPENSE_STATUS_OPTIONS),
   /** Draft vs finalized Financials entry (migration 034). */
   entryStatus: z.enum(["draft", "final"]).default("final"),

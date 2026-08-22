@@ -65,7 +65,7 @@ interface LorryExpenseDialogProps {
 }
 
 const emptyExpense: LorryExpense = {
-  lrId: 0,
+  lrId: "",
   expenseStatus: "pending",
   entryStatus: "final",
   driverAdvance: 0,
@@ -90,7 +90,8 @@ const emptyExpense: LorryExpense = {
 };
 
 function toEditableExpense(record: LorryExpenseRecord): LorryExpense {
-  return pickFields(record, Object.keys(emptyExpense) as (keyof LorryExpense)[]);
+  const picked = pickFields(record, Object.keys(emptyExpense) as (keyof LorryExpense)[]);
+  return { ...picked, lrId: String(picked.lrId ?? "") };
 }
 
 function money(value: number): string {
@@ -188,7 +189,7 @@ export default function LorryExpenseDialog({
       !readOnly &&
       Boolean(onAutosave) &&
       !loading &&
-      values.lrId > 0,
+      values.lrId.trim().length > 0,
     delayMs: 2500,
     onSave: async ({ values: next, existingId: id }) => {
       if (!onAutosave) return;
@@ -229,12 +230,18 @@ export default function LorryExpenseDialog({
   }, [open, lorryExpense, lr]);
 
   async function handleSelectLR(next: LRRecord) {
+    const lrId = String(next.id);
     setSelectedLR(next);
     setWorkingLr({ ...next });
-    setValues((prev) => ({ ...prev, lrId: next.id, dieselAdvance: 0 }));
+    setValues((prev) => ({ ...prev, lrId, dieselAdvance: 0 }));
+    setErrors((prev) => {
+      if (!prev.lrId) return prev;
+      const { lrId: _removed, ...rest } = prev;
+      return rest;
+    });
 
     try {
-      const existing = await getLorryExpenseByLrId(next.id);
+      const existing = await getLorryExpenseByLrId(lrId);
 
       if (existing) {
         setValues(toEditableExpense(existing));
@@ -276,7 +283,11 @@ export default function LorryExpenseDialog({
   }
 
   function handleSave() {
-    if (!workingLr || !values.lrId) return;
+    if (!workingLr || !values.lrId.trim()) {
+      setErrors({ lrId: "Select an LR." });
+      setCommercialErrors({});
+      return;
+    }
 
     const fieldErrors = validateLorryExpense(values);
     const nextCommercialErrors: Record<string, string> = {};
@@ -347,7 +358,7 @@ export default function LorryExpenseDialog({
               <Button variant="outline" onClick={handleClose} disabled={loading}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={loading || !values.lrId}>
+              <Button onClick={handleSave} disabled={loading || !values.lrId.trim()}>
                 {loading ? "Saving..." : "Save Financials"}
               </Button>
             </>
@@ -356,7 +367,13 @@ export default function LorryExpenseDialog({
       >
         <FormSection title="Linked LR">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <FormField label="LR Number" htmlFor="fin-lr-number" required className="sm:col-span-2">
+            <FormField
+              label="LR Number"
+              htmlFor="fin-lr-number"
+              required
+              className="sm:col-span-2"
+              error={errors.lrId}
+            >
               <div className="flex gap-3">
                 <Input
                   id="fin-lr-number"

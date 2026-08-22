@@ -110,7 +110,7 @@ export default function LorryExpenseListPage() {
     () =>
       expenses
         .map((expense) => {
-          const lr = lrs.find((record) => record.id === expense.lrId);
+          const lr = lrs.find((record) => String(record.id) === String(expense.lrId));
           const calc = lr ? calculateLR(lr) : null;
           const settlement = calculateLorrySettlement({
             lorryHireAmount: calc?.lorryHireAmount ?? 0,
@@ -270,7 +270,7 @@ export default function LorryExpenseListPage() {
     try {
       setSaving(true);
 
-      const linkedLr = lrs.find((record) => record.id === values.lrId);
+      const linkedLr = lrs.find((record) => String(record.id) === String(values.lrId));
       if (!linkedLr) {
         toast.error("Linked LR was not found.");
         return;
@@ -330,7 +330,9 @@ export default function LorryExpenseListPage() {
     }
   }
 
-  const editingLR = editingExpense ? lrs.find((lr) => lr.id === editingExpense.lrId) ?? null : null;
+  const editingLR = editingExpense
+    ? lrs.find((lr) => String(lr.id) === String(editingExpense.lrId)) ?? null
+    : null;
 
   async function handleDownloadTemplate() {
     try {
