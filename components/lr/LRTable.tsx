@@ -66,12 +66,6 @@ export default function LRTable({
       render: (row) => `${row.from || "—"} → ${row.to || "—"}`,
     },
     { key: "freightType", header: "Freight Type" },
-    {
-      key: "billAmount",
-      header: "Bill Amount",
-      align: "right",
-      render: (row) => `₹ ${row.billAmount.toFixed(2)}`,
-    },
     { key: "status", header: "Status", type: "status" },
     {
       key: "entryStatus",

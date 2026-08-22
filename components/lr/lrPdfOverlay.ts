@@ -323,11 +323,6 @@ function formatWeight(value: number): string {
   return `${value.toFixed(3)} MT`;
 }
 
-function formatRate(value: number): string {
-  if (!(value > 0)) return "-";
-  return value.toFixed(2);
-}
-
 function pickInvoiceDcNumber(lr: LRRecord): string {
   const dc = (lr.dcNumber || "").trim();
   if (dc) return dc;
@@ -689,7 +684,8 @@ export async function generateLrPdfBytes(
     [FIELDS.poNumber, lr.poNumber || ""],
     [FIELDS.actualWeight, formatWeight(lr.loadingWeight)],
     [FIELDS.chargedWeight, formatWeight(lr.chargedWeight)],
-    [FIELDS.rate, formatRate(lr.billRate)],
+    // Rate is left on stationery unpopulated — not drawn from Bill Rate / Financials
+    // (avoids value text and avoids a whiteout mask over the Rate cell).
     [FIELDS.freightType, lr.freightType || ""],
   ];
 
