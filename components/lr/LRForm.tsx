@@ -2,6 +2,7 @@
 
 import type { LR } from "./lr.schema";
 import type { FieldErrors } from "@/lib/validation";
+import type { LRRecord } from "@/components/services/lr.service";
 
 import LRHeader from "./sections/LRHeader";
 import PartySection from "./sections/PartySection";
@@ -20,6 +21,8 @@ interface LRFormProps {
   requireMaterialDescription?: boolean;
   /** View mode: all controls non-interactive (matches POD/ASN read-only pattern). */
   readOnly?: boolean;
+  /** Exclude this LR from DC duplicate warnings while editing. */
+  excludeLrId?: LRRecord["id"] | null;
 }
 
 export default function LRForm({
@@ -29,6 +32,7 @@ export default function LRForm({
   nextLrNumberPreview,
   requireMaterialDescription = false,
   readOnly = false,
+  excludeLrId = null,
 }: LRFormProps) {
   return (
     <div className="space-y-6" {...(readOnly ? { inert: true as const } : {})}>
@@ -72,6 +76,7 @@ export default function LRForm({
         lr={lr}
         errors={errors}
         onChange={onChange}
+        excludeLrId={excludeLrId}
       />
 
       <CommercialSection

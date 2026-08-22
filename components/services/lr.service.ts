@@ -264,6 +264,50 @@ export async function getLR(id: number): Promise<LRRecord> {
   return fromRow(data);
 }
 
+/** Targeted DC duplicate lookup — only id + lr_number for matching rows. */
+export type LrDcDuplicateMatch = {
+  id: LRRecord["id"];
+  lrNumber: string;
+};
+
+/**
+ * Find other LRs with the same DC number + DC date (informational duplicate warning).
+ * Respects RLS. Does not load full LR rows.
+ */
+export async function findLrsByDcNumberAndDate(options: {
+  dcNumber: string;
+  dcDate: string;
+  excludeId?: LRRecord["id"] | null;
+}): Promise<LrDcDuplicateMatch[]> {
+  const dcNumber = options.dcNumber.trim();
+  const dcDate = options.dcDate.trim();
+  if (!dcNumber || !dcDate) return [];
+
+  let query = supabase
+    .from(TABLE)
+    .select("id, lr_number, dc_number, dc_date")
+    .eq("dc_number", dcNumber)
+    .eq("dc_date", dcDate);
+
+  if (options.excludeId != null) {
+    query = query.neq("id", options.excludeId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const seen = new Set<string>();
+  const matches: LrDcDuplicateMatch[] = [];
+  for (const row of data ?? []) {
+    const lrNumber = String((row as { lr_number?: unknown }).lr_number ?? "").trim();
+    const id = (row as { id: LRRecord["id"] }).id;
+    if (!lrNumber || seen.has(lrNumber)) continue;
+    seen.add(lrNumber);
+    matches.push({ id, lrNumber });
+  }
+  return matches;
+}
+
 /* ==========================================================
    CREATE LR
 ========================================================== */

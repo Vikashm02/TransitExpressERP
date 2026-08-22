@@ -306,6 +306,7 @@ export default function LRDialog({
         nextLrNumberPreview={nextLrNumberPreview}
         requireMaterialDescription={requireMaterialDescription}
         readOnly={readOnly}
+        excludeLrId={lr?.id ?? null}
       />
     </FormDialog>
   );
