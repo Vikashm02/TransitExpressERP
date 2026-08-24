@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import FormDialog from "@/components/ui/FormDialog";
@@ -181,6 +181,8 @@ export default function LorryExpenseDialog({
 
   const isEditing = Boolean(lorryExpense);
   const lrLocked = isEditing;
+  /** Tracks dialog open edge so commercial LR state is seeded only on open / LR select — not on autosave prop churn. */
+  const wasOpenRef = useRef(false);
 
   useDebouncedAutosave({
     values: { values, existingId },
@@ -206,6 +208,8 @@ export default function LorryExpenseDialog({
     },
   });
 
+  // Expense form fields / draft id — may refresh when autosave creates/updates the row.
+  // Do NOT re-seed workingLr here (stale lr still has billRate/lorryHireRate 0 until final Save).
   useEffect(() => {
     if (!open) return;
 
@@ -213,8 +217,6 @@ export default function LorryExpenseDialog({
     setCommercialErrors({});
     setValues(lorryExpense ? { ...emptyExpense, ...toEditableExpense(lorryExpense) } : emptyExpense);
     setExistingId(lorryExpense?.id ?? null);
-    setSelectedLR(lr ?? null);
-    setWorkingLr(lr ? { ...lr } : null);
     setDraftHint(
       lorryExpense && isDraftEntry(lorryExpense.entryStatus)
         ? "Incomplete draft — continue editing, then Save."
@@ -227,7 +229,17 @@ export default function LorryExpenseDialog({
         setBeneficiarySuggestions(beneficiaries);
       })
       .catch((error) => console.error(error));
-  }, [open, lorryExpense, lr]);
+  }, [open, lorryExpense]);
+
+  // Seed linked LR + commercial rates only when the dialog opens (or via handleSelectLR).
+  // Autosave updates `lr` / `lorryExpense` object identity without closing — must not wipe rates.
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setSelectedLR(lr ?? null);
+      setWorkingLr(lr ? { ...lr } : null);
+    }
+    wasOpenRef.current = open;
+  }, [open, lr]);
 
   async function handleSelectLR(next: LRRecord) {
     const lrId = String(next.id);
