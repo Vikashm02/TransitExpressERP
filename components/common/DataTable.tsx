@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -63,7 +63,8 @@ interface DataTableProps<T> {
   emptyDescription?: string;
   emptyIcon?: LucideIcon;
 
-  /** Right-aligned per-row action buttons (Edit / Delete / etc). */
+  /** Per-row action buttons (Edit / Delete / etc). On desktop they render
+   * directly under the record; on mobile they stay under the card. */
   actions?: DataTableAction<T>[];
 
   /** Clicking the row (desktop table or mobile card) selects/opens it. */
@@ -202,7 +203,9 @@ export default function DataTable<T extends Record<string, any>>({
 
   const showPagination = Boolean(pageSize || (isPageControlled && totalItems));
   const hasActions = Boolean(actions && actions.length > 0);
-  const columnCount = columns.length + (hasActions ? 1 : 0);
+  // Actions render below each record on desktop (not a far-right column),
+  // so they do not add to the table column count / horizontal width.
+  const columnCount = columns.length;
 
   // Mobile card list (below `md`) shows the same columns/actions as the
   // desktop table, just stacked vertically instead of forced into a
@@ -217,6 +220,28 @@ export default function DataTable<T extends Record<string, any>>({
     if (column.render) return column.render(row, index);
     if (column.type === "status") return <StatusBadge status={String(row[column.key] ?? "")} />;
     return row[column.key];
+  }
+
+  function visibleActionsFor(row: T): DataTableAction<T>[] {
+    if (!actions?.length) return [];
+    return actions.filter((action) => !action.hidden?.(row));
+  }
+
+  function renderActionButtons(row: T) {
+    return visibleActionsFor(row).map((action) => {
+      const ActionIcon = action.icon;
+      return (
+        <Button
+          key={action.label}
+          size="sm"
+          variant={action.variant ?? "outline"}
+          onClick={() => action.onClick(row)}
+        >
+          {ActionIcon && <ActionIcon className="h-3.5 w-3.5" />}
+          {action.label}
+        </Button>
+      );
+    });
   }
 
   return (
@@ -236,9 +261,9 @@ export default function DataTable<T extends Record<string, any>>({
         </div>
       )}
 
-      {/* Desktop / tablet: unchanged table, horizontally scrollable
-       * within its own container if a row is ever wider than the
-       * viewport (see components/ui/table.tsx). */}
+      {/* Desktop / tablet: data columns stay in the table; per-row
+       * actions render on a second row directly under that record so
+       * staff do not need to scroll horizontally to reach them. */}
       <div
         className="hidden overflow-auto md:block"
         style={maxHeight ? { maxHeight } : undefined}
@@ -255,6 +280,9 @@ export default function DataTable<T extends Record<string, any>>({
                     key={column.key}
                     style={column.width ? { width: column.width } : undefined}
                     className={cn(
+                      // Keep headers readable; allow wrap if a label is long,
+                      // overriding ui/table whitespace-nowrap.
+                      "whitespace-normal break-words [overflow-wrap:anywhere]",
                       column.align === "right" && "text-right",
                       column.align === "center" && "text-center",
                       canSort && "cursor-pointer select-none hover:text-foreground",
@@ -279,12 +307,6 @@ export default function DataTable<T extends Record<string, any>>({
                   </TableHead>
                 );
               })}
-
-              {hasActions && (
-                <TableHead className="text-right">
-                  Actions
-                </TableHead>
-              )}
             </TableRow>
           </TableHeader>
 
@@ -322,13 +344,18 @@ export default function DataTable<T extends Record<string, any>>({
               pagedData.map((row, index) => {
                 const key = rowKey ? rowKey(row, index) : index;
                 const selected = selectedRowKey != null && selectedRowKey === key;
+                const rowActions = visibleActionsFor(row);
+                const rowClassName = cn(
+                  onRowClick && "cursor-pointer hover:bg-muted/60",
+                  selected && "bg-primary/8 ring-1 ring-inset ring-primary/25",
+                  getRowClassName?.(row)
+                );
                 return (
+                <Fragment key={key}>
                 <TableRow
-                  key={key}
                   className={cn(
-                    onRowClick && "cursor-pointer hover:bg-muted/60",
-                    selected && "bg-primary/8 ring-1 ring-inset ring-primary/25",
-                    getRowClassName?.(row)
+                    rowClassName,
+                    rowActions.length > 0 && "border-b-0 hover:bg-muted/60"
                   )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   onKeyDown={
@@ -348,6 +375,11 @@ export default function DataTable<T extends Record<string, any>>({
                     <TableCell
                       key={column.key}
                       className={cn(
+                        // Override ui/table whitespace-nowrap so long names
+                        // (consignor, consignee, vehicle, etc.) wrap within
+                        // the available desktop width instead of stretching
+                        // the table horizontally.
+                        "max-w-[18rem] whitespace-normal break-words align-top [overflow-wrap:anywhere]",
                         column.align === "right" && "text-right",
                         column.align === "center" && "text-center",
                         column.className
@@ -360,31 +392,26 @@ export default function DataTable<T extends Record<string, any>>({
                         : row[column.key]}
                     </TableCell>
                   ))}
-
-                  {hasActions && (
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-2">
-                        {actions!.map((action) => {
-                          if (action.hidden?.(row)) return null;
-
-                          const ActionIcon = action.icon;
-
-                          return (
-                            <Button
-                              key={action.label}
-                              size="sm"
-                              variant={action.variant ?? "outline"}
-                              onClick={() => action.onClick(row)}
-                            >
-                              {ActionIcon && <ActionIcon className="h-3.5 w-3.5" />}
-                              {action.label}
-                            </Button>
-                          );
-                        })}
+                </TableRow>
+                {rowActions.length > 0 && (
+                  <TableRow
+                    className={cn(
+                      rowClassName,
+                      "border-b"
+                    )}
+                  >
+                    <TableCell
+                      colSpan={Math.max(columnCount, 1)}
+                      className="whitespace-normal pt-0 pb-3"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex flex-wrap gap-2 border-t border-border/70 pt-2.5">
+                        {renderActionButtons(row)}
                       </div>
                     </TableCell>
-                  )}
-                </TableRow>
+                  </TableRow>
+                )}
+                </Fragment>
               );
               })
             )}
@@ -482,23 +509,7 @@ export default function DataTable<T extends Record<string, any>>({
                   className="flex flex-wrap gap-2 border-t pt-3"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {actions!.map((action) => {
-                    if (action.hidden?.(row)) return null;
-
-                    const ActionIcon = action.icon;
-
-                    return (
-                      <Button
-                        key={action.label}
-                        size="sm"
-                        variant={action.variant ?? "outline"}
-                        onClick={() => action.onClick(row)}
-                      >
-                        {ActionIcon && <ActionIcon className="h-3.5 w-3.5" />}
-                        {action.label}
-                      </Button>
-                    );
-                  })}
+                  {renderActionButtons(row)}
                 </div>
               )}
             </div>
