@@ -25,11 +25,11 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function CustomerListPage() {
-  const { isAdmin, hasPermission, hasAction } = useAuth();
+  const { isCreator, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("customers", "create_view");
   const canEdit = hasPermission("customers", "edit") || hasAction("customers", "edit");
   const canContinueDraft = canCreate || canEdit;
-  const canDelete = isAdmin;
+  const canDelete = isCreator;
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);

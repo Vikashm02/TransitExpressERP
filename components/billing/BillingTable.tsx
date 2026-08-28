@@ -19,7 +19,7 @@ interface BillingTableProps {
    * Print/Share are read-only/export actions and stay available to anyone
    * who can already view this page. */
   canEdit?: boolean;
-  /** Delete is admin-only (migration 047). */
+  /** Delete is Creator-only (migrations 047/048). */
   canDelete?: boolean;
 }
 

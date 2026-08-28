@@ -25,12 +25,12 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function BillingPartyListPage() {
-  const { isAdmin, hasPermission, hasAction } = useAuth();
+  const { isCreator, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("billing_parties", "create_view");
   const canEdit =
     hasPermission("billing_parties", "edit") || hasAction("billing_parties", "edit");
   const canContinueDraft = canCreate || canEdit;
-  const canDelete = isAdmin;
+  const canDelete = isCreator;
 
   const [billingParties, setBillingParties] = useState<BillingPartyRecord[]>([]);
   const [loading, setLoading] = useState(true);

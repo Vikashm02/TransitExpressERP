@@ -25,8 +25,8 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function MaterialListPage() {
-  const { isAdmin } = useAuth();
-  const canDelete = isAdmin;
+  const { isCreator } = useAuth();
+  const canDelete = isCreator;
   const [materials, setMaterials] = useState<MaterialRecord[]>([]);
   const [loading, setLoading] = useState(true);
 

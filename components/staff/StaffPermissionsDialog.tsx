@@ -124,7 +124,7 @@ export default function StaffPermissionsDialog({
           <DialogTitle>Edit Permissions{user ? ` — ${user.displayName}` : ""}</DialogTitle>
           <DialogDescription>
             Control View, Create, Edit, Print and Share independently for each module.
-            Delete is admin-only and cannot be granted to staff.
+            Delete is Creator-only and cannot be granted to staff.
           </DialogDescription>
         </DialogHeader>
 

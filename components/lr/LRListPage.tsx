@@ -48,11 +48,11 @@ const DRAFT_STATUS_FILTER = "__draft__";
 type LrDialogMode = "create" | "view" | "edit";
 
 export default function LRListPage() {
-  const { isAdmin, hasPermission, hasAction } = useAuth();
+  const { isAdmin, isCreator, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lr", "create_view");
   const canEdit = hasPermission("lr", "edit") || hasAction("lr", "edit");
   const canContinueDraft = canContinueDraftEntry({ canCreate, canEdit });
-  const canDelete = isAdmin;
+  const canDelete = isCreator;
   const canPrint = hasAction("lr", "print");
   const canShare = hasAction("lr", "share");
 

@@ -22,8 +22,8 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function DriverListPage() {
-  const { isAdmin } = useAuth();
-  const canDelete = isAdmin;
+  const { isCreator } = useAuth();
+  const canDelete = isCreator;
   const [drivers, setDrivers] = useState<DriverRecord[]>([]);
   const [loading, setLoading] = useState(true);
 

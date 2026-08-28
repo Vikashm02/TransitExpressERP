@@ -63,12 +63,12 @@ function money(value: number): string {
  * Broker, and Beneficiary. Permission key remains `lorry_expenses`.
  */
 export default function LorryExpenseListPage() {
-  const { isAdmin, hasPermission, hasAction } = useAuth();
+  const { isCreator, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lorry_expenses", "create_view");
   const canEdit =
     hasPermission("lorry_expenses", "edit") || hasAction("lorry_expenses", "edit");
   const canContinueDraft = canCreate || canEdit;
-  const canDelete = isAdmin;
+  const canDelete = isCreator;
 
   const [expenses, setExpenses] = useState<LorryExpenseRecord[]>([]);
   const [lrs, setLrs] = useState<LRRecord[]>([]);

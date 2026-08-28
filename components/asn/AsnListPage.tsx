@@ -21,11 +21,11 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function AsnListPage() {
-  const { hasPermission, hasAction, isAdmin } = useAuth();
+  const { hasPermission, hasAction, isCreator } = useAuth();
   const canCreate = hasPermission("asn_creations", "create_view");
   const canEdit =
     hasPermission("asn_creations", "edit") || hasAction("asn_creations", "edit");
-  const canDelete = isAdmin;
+  const canDelete = isCreator;
   const canPrint = hasAction("asn_creations", "print");
 
   const [asns, setAsns] = useState<AsnRecord[]>([]);

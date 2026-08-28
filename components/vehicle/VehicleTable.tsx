@@ -15,7 +15,7 @@ interface VehicleTableProps {
   onDelete: (vehicle: VehicleRecord) => void;
   /** Hides Edit when the caller lacks vehicle edit permission. */
   canEdit?: boolean;
-  /** Delete is admin-only (migration 047). */
+  /** Delete is Creator-only (migrations 047/048). */
   canDelete?: boolean;
 }
 

@@ -30,10 +30,10 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function BillingListPage() {
-  const { hasPermission, isAdmin } = useAuth();
+  const { hasPermission, isCreator } = useAuth();
   const canCreate = hasPermission("billing", "create_view");
   const canEdit = hasPermission("billing", "edit");
-  const canDelete = isAdmin;
+  const canDelete = isCreator;
 
   const [bills, setBills] = useState<BillRecord[]>([]);
   const [loading, setLoading] = useState(true);

@@ -22,8 +22,8 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function TransporterListPage() {
-  const { isAdmin } = useAuth();
-  const canDelete = isAdmin;
+  const { isCreator } = useAuth();
+  const canDelete = isCreator;
   const [transporters, setTransporters] = useState<TransporterRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
