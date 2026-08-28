@@ -91,18 +91,18 @@ export type PermissionKey =
 /** Which actions make sense per module (UI only — flags still stored). */
 export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]> = {
   company: ["view", "edit"],
-  customers: ["view", "create", "edit", "delete"],
-  billing_parties: ["view", "create", "edit", "delete"],
-  vehicle: ["view", "create", "edit", "delete"],
-  material: ["view", "create", "edit", "delete"],
-  lr: ["view", "create", "edit", "delete", "print", "share"],
-  pod: ["view", "create", "edit", "delete"],
-  delivery_challans: ["view", "create", "edit", "delete", "print", "share"],
-  asn_creations: ["view", "create", "edit", "delete", "print"],
-  lorry_expenses: ["view", "create", "edit", "delete"],
-  billing: ["view", "create", "edit", "delete", "print", "share"],
-  credit_notes: ["view", "create", "edit", "delete", "print"],
-  debit_notes: ["view", "create", "edit", "delete", "print"],
+  customers: ["view", "create", "edit"],
+  billing_parties: ["view", "create", "edit"],
+  vehicle: ["view", "create", "edit"],
+  material: ["view", "create", "edit"],
+  lr: ["view", "create", "edit", "print", "share"],
+  pod: ["view", "create", "edit"],
+  delivery_challans: ["view", "create", "edit", "print", "share"],
+  asn_creations: ["view", "create", "edit", "print"],
+  lorry_expenses: ["view", "create", "edit"],
+  billing: ["view", "create", "edit", "print", "share"],
+  credit_notes: ["view", "create", "edit", "print"],
+  debit_notes: ["view", "create", "edit", "print"],
   ledger: ["view", "print", "share"],
   reports: ["view", "print", "share"],
   notifications: ["view"],
@@ -152,7 +152,7 @@ export function levelToActions(level: PermissionLevel): ModuleActions {
     case "create_view":
       return { view: true, create: true, edit: false, delete: false, print: true, share: true };
     case "edit":
-      return { view: true, create: false, edit: true, delete: true, print: true, share: true };
+      return { view: true, create: false, edit: true, delete: false, print: true, share: true };
     default:
       return { ...EMPTY_MODULE_ACTIONS };
   }

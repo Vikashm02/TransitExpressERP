@@ -17,10 +17,13 @@ import {
   updateTransporter,
   type TransporterRecord,
 } from "@/components/services/transporter.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function TransporterListPage() {
+  const { isAdmin } = useAuth();
+  const canDelete = isAdmin;
   const [transporters, setTransporters] = useState<TransporterRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -233,6 +236,7 @@ export default function TransporterListPage() {
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
+        canDelete={canDelete}
       />
 
       <TransporterDialog

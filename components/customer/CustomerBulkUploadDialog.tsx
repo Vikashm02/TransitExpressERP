@@ -12,7 +12,8 @@ import {
   type CustomerUploadRow,
   type CustomerUploadRowError,
 } from "./customerBulkUpload";
-import { createCustomer, deleteCustomer, type CustomerRecord } from "@/components/services/customer.service";
+import { createCustomer, type CustomerRecord } from "@/components/services/customer.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 
 interface CustomerBulkUploadDialogProps {
   open: boolean;
@@ -95,8 +96,8 @@ export default function CustomerBulkUploadDialog({
       // insert time despite passing validation (e.g. a race) — the same
       // pattern createBill() already uses in billing.service.ts, since
       // there's no multi-row transaction available here either.
-      await Promise.all(
-        createdIds.map((id) => deleteCustomer(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("customers", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       toast.error("Import failed partway through and was rolled back. No customers were added. Please try again.");

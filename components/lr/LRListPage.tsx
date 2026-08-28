@@ -28,6 +28,7 @@ import {
   updateLR,
   type LRRecord,
 } from "@/components/services/lr.service";
+import { discardOwnLrDraft } from "@/components/services/uploadRollback.service";
 import { syncVehicleMasterFromLr } from "@/components/services/vehicle.service";
 import { allocateNextLrNumber } from "@/components/services/company.service";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
@@ -51,7 +52,7 @@ export default function LRListPage() {
   const canCreate = hasPermission("lr", "create_view");
   const canEdit = hasPermission("lr", "edit") || hasAction("lr", "edit");
   const canContinueDraft = canContinueDraftEntry({ canCreate, canEdit });
-  const canDelete = hasAction("lr", "delete");
+  const canDelete = isAdmin;
   const canPrint = hasAction("lr", "print");
   const canShare = hasAction("lr", "share");
 
@@ -258,7 +259,7 @@ export default function LRListPage() {
 
     if (wasNewCreate && draftIdToDelete != null) {
       try {
-        await deleteLR(draftIdToDelete);
+        await discardOwnLrDraft(draftIdToDelete);
         await loadLRs();
       } catch (error) {
         console.error(error);
@@ -410,7 +411,7 @@ export default function LRListPage() {
       ) {
         if (isNewCreateSession) {
           try {
-            await deleteLR(created.id);
+            await discardOwnLrDraft(created.id);
             await loadLRs();
           } catch (error) {
             console.error(error);

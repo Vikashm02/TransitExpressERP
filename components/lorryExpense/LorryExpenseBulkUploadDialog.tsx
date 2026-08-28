@@ -14,9 +14,9 @@ import {
 } from "./lorryExpenseBulkUpload";
 import {
   createLorryExpense,
-  deleteLorryExpense,
   type LorryExpenseRecord,
 } from "@/components/services/lorryExpense.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import type { LRRecord } from "@/components/services/lr.service";
 
 interface LorryExpenseBulkUploadDialogProps {
@@ -99,8 +99,8 @@ export default function LorryExpenseBulkUploadDialog({
       // insert time despite passing validation (e.g. a race) — the same
       // pattern createBill() already uses in billing.service.ts, since
       // there's no multi-row transaction available here either.
-      await Promise.all(
-        createdIds.map((id) => deleteLorryExpense(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("lorry_expenses", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       toast.error("Import failed partway through and was rolled back. No Lorry Expenses were added. Please try again.");

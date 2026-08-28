@@ -8,7 +8,8 @@ import FormDialog from "@/components/ui/FormDialog";
 import { Button } from "@/components/ui/button";
 
 import { parseAndValidatePodUpload, type PodUploadRow, type PodUploadRowError } from "./podBulkUpload";
-import { createPod, deletePod } from "@/components/services/pod.service";
+import { createPod } from "@/components/services/pod.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import { updateLR, type LRRecord } from "@/components/services/lr.service";
 
 interface PodBulkUploadDialogProps {
@@ -99,8 +100,8 @@ export default function PodBulkUploadDialog({
 
       // All-or-nothing: delete only PODs created by this upload, then restore
       // each LR this upload changed to its exact prior status.
-      await Promise.all(
-        createdIds.map((id) => deletePod(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("pods", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       await Promise.all(

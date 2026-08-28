@@ -3,6 +3,7 @@ import type { Bill } from "@/components/billing/billing.schema";
 import { getBillingParty, type BillingPartyRecord } from "./billingParty.service";
 import { getLRs, updateLR, type LRRecord } from "./lr.service";
 import { getPods } from "./pod.service";
+import { discardUnlinedBill } from "./uploadRollback.service";
 
 const BILLS_TABLE = "bills";
 const BILL_LRS_TABLE = "bill_lrs";
@@ -211,7 +212,7 @@ export async function createBill(values: Bill, lines: BillLineInput[]): Promise<
   );
 
   if (linesError) {
-    await supabase.from(BILLS_TABLE).delete().eq("id", billId);
+    await discardUnlinedBill(billId).catch((rollbackError) => console.error(rollbackError));
     throw linesError;
   }
 

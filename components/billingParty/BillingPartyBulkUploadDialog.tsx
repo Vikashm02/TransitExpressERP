@@ -14,9 +14,9 @@ import {
 } from "./billingPartyBulkUpload";
 import {
   createBillingParty,
-  deleteBillingParty,
   type BillingPartyRecord,
 } from "@/components/services/billingParty.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 
 interface BillingPartyBulkUploadDialogProps {
   open: boolean;
@@ -99,8 +99,8 @@ export default function BillingPartyBulkUploadDialog({
       // insert time despite passing validation (e.g. a race) — the same
       // pattern createBill() already uses in billing.service.ts, since
       // there's no multi-row transaction available here either.
-      await Promise.all(
-        createdIds.map((id) => deleteBillingParty(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("billing_parties", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       toast.error("Import failed partway through and was rolled back. No billing parties were added. Please try again.");

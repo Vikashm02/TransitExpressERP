@@ -14,9 +14,9 @@ import {
 } from "./materialBulkUpload";
 import {
   createMaterial,
-  deleteMaterial,
   type MaterialRecord,
 } from "@/components/services/material.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 
 interface MaterialBulkUploadDialogProps {
   open: boolean;
@@ -99,8 +99,8 @@ export default function MaterialBulkUploadDialog({
       // insert time despite passing validation (e.g. a race) — the same
       // pattern createBill() already uses in billing.service.ts, since
       // there's no multi-row transaction available here either.
-      await Promise.all(
-        createdIds.map((id) => deleteMaterial(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("materials", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       toast.error("Import failed partway through and was rolled back. No materials were added. Please try again.");

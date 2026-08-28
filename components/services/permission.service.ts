@@ -114,7 +114,8 @@ export async function setUserModuleActions(
       can_view: actions.view,
       can_create: actions.create,
       can_edit: actions.edit,
-      can_delete: actions.delete,
+      // Delete is universally admin-only (migration 047) — never grant via staff UI.
+      can_delete: false,
       can_print: actions.print,
       can_share: actions.share,
     },

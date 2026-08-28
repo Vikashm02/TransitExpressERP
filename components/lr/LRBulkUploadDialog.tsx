@@ -8,7 +8,8 @@ import FormDialog from "@/components/ui/FormDialog";
 import { Button } from "@/components/ui/button";
 
 import { parseAndValidateLRUpload, type LRUploadRow, type LRUploadRowError } from "./lrBulkUpload";
-import { createLR, deleteLR } from "@/components/services/lr.service";
+import { createLR } from "@/components/services/lr.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import { allocateNextLrNumber } from "@/components/services/company.service";
 import { getBillingParties } from "@/components/services/billingParty.service";
 import { getMaterials } from "@/components/services/material.service";
@@ -84,8 +85,8 @@ export default function LRBulkUploadDialog({
         }
       } catch (error) {
         // All-or-nothing: roll back every LR created so far in this batch.
-        await Promise.all(
-          createdIds.map((id) => deleteLR(id).catch((rollbackError) => console.error(rollbackError)))
+        await rollbackUploadBatch("lrs", createdIds).catch((rollbackError) =>
+          console.error(rollbackError)
         );
         throw error;
       }

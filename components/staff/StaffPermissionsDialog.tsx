@@ -123,7 +123,8 @@ export default function StaffPermissionsDialog({
         <DialogHeader className="shrink-0">
           <DialogTitle>Edit Permissions{user ? ` — ${user.displayName}` : ""}</DialogTitle>
           <DialogDescription>
-            Control View, Create, Edit, Delete, Print and Share independently for each module.
+            Control View, Create, Edit, Print and Share independently for each module.
+            Delete is admin-only and cannot be granted to staff.
           </DialogDescription>
         </DialogHeader>
 

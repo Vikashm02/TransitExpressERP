@@ -26,9 +26,10 @@ import { vehicleNumberMatchesQuery } from "@/lib/vehicleNumber";
 const PAGE_SIZE = 10;
 
 export default function VehicleListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isAdmin } = useAuth();
   const canCreate = hasPermission("vehicle", "create_view");
   const canEdit = hasPermission("vehicle", "edit");
+  const canDelete = isAdmin;
 
   const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,6 +265,7 @@ export default function VehicleListPage() {
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
         canEdit={canEdit}
+        canDelete={canDelete}
       />
 
       <VehicleDialog

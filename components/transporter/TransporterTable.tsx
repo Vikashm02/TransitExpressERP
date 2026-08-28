@@ -11,6 +11,8 @@ interface TransporterTableProps {
   pageSize?: number;
   onEdit: (transporter: TransporterRecord) => void;
   onDelete: (transporter: TransporterRecord) => void;
+  /** Delete is admin-only (migration 047). */
+  canDelete?: boolean;
 }
 
 export default function TransporterTable({
@@ -19,6 +21,7 @@ export default function TransporterTable({
   pageSize,
   onEdit,
   onDelete,
+  canDelete = false,
 }: TransporterTableProps) {
   const columns: DataTableColumn<TransporterRecord>[] = [
     { key: "code", header: "Code", sortable: true, width: "10%" },
@@ -55,6 +58,7 @@ export default function TransporterTable({
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
+          hidden: () => !canDelete,
         },
       ]}
     />

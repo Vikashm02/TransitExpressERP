@@ -14,9 +14,9 @@ import {
 } from "./vehicleBulkUpload";
 import {
   createVehicle,
-  deleteVehicle,
   type VehicleRecord,
 } from "@/components/services/vehicle.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 
 interface VehicleBulkUploadDialogProps {
   open: boolean;
@@ -96,8 +96,8 @@ export default function VehicleBulkUploadDialog({
       // insert time despite passing validation (e.g. a race) — the same
       // pattern createBill() already uses in billing.service.ts, since
       // there's no multi-row transaction available here either.
-      await Promise.all(
-        createdIds.map((id) => deleteVehicle(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("vehicles", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       toast.error("Import failed partway through and was rolled back. No vehicles were added. Please try again.");

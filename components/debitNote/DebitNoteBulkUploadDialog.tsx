@@ -14,9 +14,9 @@ import {
 } from "./debitNoteBulkUpload";
 import {
   createDebitNote,
-  deleteDebitNote,
   generateDebitNoteNumber,
 } from "@/components/services/debitNote.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import { getBillingParties, getBillingParty } from "@/components/services/billingParty.service";
 
 interface DebitNoteBulkUploadDialogProps {
@@ -101,8 +101,8 @@ export default function DebitNoteBulkUploadDialog({
       // All-or-nothing: roll back every Debit Note created so far in
       // this batch, the same compensating-rollback pattern already used
       // by the Credit Note, Customer Master, and Billing bulk uploads.
-      await Promise.all(
-        createdIds.map((id) => deleteDebitNote(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("debit_notes", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       toast.error("Import failed partway through and was rolled back. No debit notes were added. Please try again.");

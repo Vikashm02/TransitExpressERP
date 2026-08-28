@@ -12,7 +12,8 @@ import {
   type BillingUploadGroup,
   type BillingUploadRowError,
 } from "./billingBulkUpload";
-import { createBill, deleteBill } from "@/components/services/billing.service";
+import { createBill } from "@/components/services/billing.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import { getCompany, saveCompany } from "@/components/services/company.service";
 import { getBillingParties } from "@/components/services/billingParty.service";
 import { getLRs, updateLR, type LRRecord } from "@/components/services/lr.service";
@@ -134,8 +135,8 @@ export default function BillingBulkUploadDialog({
         // then restore each LR this upload marked Billed to its exact
         // prior status. The running number is never persisted unless
         // every bill succeeded, so it doesn't need to be rolled back.
-        await Promise.all(
-          createdIds.map((id) => deleteBill(id).catch((rollbackError) => console.error(rollbackError)))
+        await rollbackUploadBatch("bills", createdIds).catch((rollbackError) =>
+          console.error(rollbackError)
         );
 
         if (priorStatuses.size > 0) {

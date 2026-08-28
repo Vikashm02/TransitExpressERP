@@ -13,11 +13,10 @@ interface VehicleTableProps {
   pageSize?: number;
   onEdit: (vehicle: VehicleRecord) => void;
   onDelete: (vehicle: VehicleRecord) => void;
-  /** Staff / Sub-User Access Control — hides both Edit and Delete when
-   * the caller lacks "vehicle" edit permission (Delete rides on "edit"
-   * — no separate Delete level). Defaults to `true` for existing call
-   * sites. */
+  /** Hides Edit when the caller lacks vehicle edit permission. */
   canEdit?: boolean;
+  /** Delete is admin-only (migration 047). */
+  canDelete?: boolean;
 }
 
 export default function VehicleTable({
@@ -27,6 +26,7 @@ export default function VehicleTable({
   onEdit,
   onDelete,
   canEdit = true,
+  canDelete = false,
 }: VehicleTableProps) {
   const columns: DataTableColumn<VehicleRecord>[] = [
     { key: "vehicleNumber", header: "Vehicle Number", sortable: true, className: "font-medium" },
@@ -77,7 +77,7 @@ export default function VehicleTable({
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
-          hidden: () => !canEdit,
+          hidden: () => !canDelete,
         },
       ]}
     />

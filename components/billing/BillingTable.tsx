@@ -14,12 +14,13 @@ interface BillingTableProps {
   onPrint: (bill: BillRecord) => void;
   onShare: (bill: BillRecord) => void;
   onDelete: (bill: BillRecord) => void;
-  /** Staff / Sub-User Access Control — hides Edit and Delete when the
-   * caller lacks "billing" edit permission (there is no separate Delete
-   * level, so Delete rides on "edit"). Defaults to `true` for existing
-   * call sites. Print/Share are read-only/export actions and stay
-   * available to anyone who can already view this page. */
+  /** Staff / Sub-User Access Control — hides Edit when the caller lacks
+   * "billing" edit permission. Defaults to `true` for existing call sites.
+   * Print/Share are read-only/export actions and stay available to anyone
+   * who can already view this page. */
   canEdit?: boolean;
+  /** Delete is admin-only (migration 047). */
+  canDelete?: boolean;
 }
 
 export default function BillingTable({
@@ -32,6 +33,7 @@ export default function BillingTable({
   onShare,
   onDelete,
   canEdit = true,
+  canDelete = false,
 }: BillingTableProps) {
   const columns: DataTableColumn<BillRecord>[] = [
     { key: "billNumber", header: "Bill No.", sortable: true, className: "font-medium" },
@@ -90,7 +92,7 @@ export default function BillingTable({
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
-          hidden: () => !canEdit,
+          hidden: () => !canDelete,
         },
       ]}
     />

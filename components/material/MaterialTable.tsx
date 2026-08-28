@@ -11,6 +11,8 @@ interface MaterialTableProps {
   pageSize?: number;
   onEdit: (material: MaterialRecord) => void;
   onDelete: (material: MaterialRecord) => void;
+  /** Delete is admin-only (migration 047). */
+  canDelete?: boolean;
 }
 
 export default function MaterialTable({
@@ -19,6 +21,7 @@ export default function MaterialTable({
   pageSize,
   onEdit,
   onDelete,
+  canDelete = false,
 }: MaterialTableProps) {
   const columns: DataTableColumn<MaterialRecord>[] = [
     { key: "code", header: "Material Code", sortable: true, width: "12%" },
@@ -52,6 +55,7 @@ export default function MaterialTable({
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
+          hidden: () => !canDelete,
         },
       ]}
     />

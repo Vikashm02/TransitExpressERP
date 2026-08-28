@@ -14,9 +14,9 @@ import {
 } from "./creditNoteBulkUpload";
 import {
   createCreditNote,
-  deleteCreditNote,
   generateCreditNoteNumber,
 } from "@/components/services/creditNote.service";
+import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import { getBillingParties, getBillingParty } from "@/components/services/billingParty.service";
 
 interface CreditNoteBulkUploadDialogProps {
@@ -102,8 +102,8 @@ export default function CreditNoteBulkUploadDialog({
       // All-or-nothing: roll back every Credit Note created so far in
       // this batch, the same compensating-rollback pattern already used
       // by the Customer Master and Billing bulk uploads.
-      await Promise.all(
-        createdIds.map((id) => deleteCreditNote(id).catch((rollbackError) => console.error(rollbackError)))
+      await rollbackUploadBatch("credit_notes", createdIds).catch((rollbackError) =>
+        console.error(rollbackError)
       );
 
       toast.error("Import failed partway through and was rolled back. No credit notes were added. Please try again.");

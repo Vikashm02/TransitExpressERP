@@ -13,6 +13,8 @@ interface DriverTableProps {
   pageSize?: number;
   onEdit: (driver: DriverRecord) => void;
   onDelete: (driver: DriverRecord) => void;
+  /** Delete is admin-only (migration 047). */
+  canDelete?: boolean;
 }
 
 export default function DriverTable({
@@ -21,6 +23,7 @@ export default function DriverTable({
   pageSize,
   onEdit,
   onDelete,
+  canDelete = false,
 }: DriverTableProps) {
   const columns: DataTableColumn<DriverRecord>[] = [
     { key: "driverName", header: "Driver Name", sortable: true, className: "font-medium" },
@@ -61,6 +64,7 @@ export default function DriverTable({
           icon: Trash2,
           variant: "destructive",
           onClick: onDelete,
+          hidden: () => !canDelete,
         },
       ]}
     />

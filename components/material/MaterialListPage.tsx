@@ -20,10 +20,13 @@ import {
   updateMaterial,
   type MaterialRecord,
 } from "@/components/services/material.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
 
 export default function MaterialListPage() {
+  const { isAdmin } = useAuth();
+  const canDelete = isAdmin;
   const [materials, setMaterials] = useState<MaterialRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -227,6 +230,7 @@ export default function MaterialListPage() {
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
+        canDelete={canDelete}
       />
 
       <MaterialDialog
