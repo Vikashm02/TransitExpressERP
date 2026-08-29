@@ -41,6 +41,14 @@ export interface DataTableColumn<T> {
   width?: string;
   className?: string;
   headerClassName?: string;
+  /**
+   * How empty/null/blank string values are shown when `render` is not used.
+   * - `auto` (default): important identity/contact keys → "Missing"; others → "Not Available"
+   * - `important` / `optional`: force that treatment
+   * - `none`: leave the cell blank (legacy opt-out)
+   * Numeric `0` and boolean `false` are never treated as empty.
+   */
+  emptyDisplay?: "auto" | "important" | "optional" | "none";
 }
 
 export interface DataTableAction<T> {
@@ -103,6 +111,116 @@ interface DataTableProps<T> {
 }
 
 const DEFAULT_LOADING_ROWS = 5;
+
+/** Identity / contact fields — empty values get a subtle "Missing" pill. */
+const IMPORTANT_EMPTY_KEYS = new Set([
+  "gst",
+  "gstin",
+  "mobile",
+  "email",
+  "address",
+  "city",
+  "vehiclenumber",
+  "drivermobile",
+  "ownermobile",
+  "contactperson",
+  "drivername",
+  "transporter",
+  "licensenumber",
+]);
+
+/** Longer descriptive fields — allow a wider wrap width. */
+const LONG_TEXT_KEYS = new Set([
+  "name",
+  "customer",
+  "consignor",
+  "consignee",
+  "billingparty",
+  "billingpartyname",
+  "transporter",
+  "transportername",
+  "material",
+  "materialname",
+  "driver",
+  "drivername",
+  "ownername",
+  "address",
+  "remarks",
+  "description",
+  "materialdescription",
+]);
+
+/** Short codes / ids / dates — keep columns compact. */
+const COMPACT_KEYS = new Set([
+  "code",
+  "lrnumber",
+  "billnumber",
+  "asnnumber",
+  "status",
+  "date",
+  "lrdate",
+  "billdate",
+  "poddate",
+  "id",
+]);
+
+function normalizeColumnKey(key: string): string {
+  return key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
+/** True only for null/undefined/blank strings — never for 0 or false. */
+function isMissingCellValue(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  return false;
+}
+
+function isImportantEmptyKey(key: string): boolean {
+  return IMPORTANT_EMPTY_KEYS.has(normalizeColumnKey(key));
+}
+
+function isLongTextKey(key: string): boolean {
+  return LONG_TEXT_KEYS.has(normalizeColumnKey(key));
+}
+
+function isCompactKey(key: string): boolean {
+  return COMPACT_KEYS.has(normalizeColumnKey(key));
+}
+
+function EmptyValueHint({ important }: { important: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-tight",
+        important
+          ? "bg-amber-500/12 text-amber-900 ring-1 ring-inset ring-amber-500/30 dark:text-amber-100"
+          : "bg-muted/80 text-muted-foreground ring-1 ring-inset ring-border/60"
+      )}
+    >
+      {important ? "Missing" : "Not Available"}
+    </span>
+  );
+}
+
+function resolveEmptyDisplay(
+  column: DataTableColumn<unknown>
+): "important" | "optional" | "none" {
+  const mode = column.emptyDisplay ?? "auto";
+  if (mode === "auto") {
+    return isImportantEmptyKey(column.key) ? "important" : "optional";
+  }
+  return mode;
+}
+
+function desktopCellClassName(column: DataTableColumn<unknown>): string {
+  if (isCompactKey(column.key) || column.type === "status") {
+    return "max-w-[9rem] whitespace-normal break-words align-top [overflow-wrap:anywhere]";
+  }
+  if (isLongTextKey(column.key)) {
+    return "max-w-[16rem] whitespace-normal break-words align-top [overflow-wrap:anywhere]";
+  }
+  return "max-w-[14rem] whitespace-normal break-words align-top [overflow-wrap:anywhere]";
+}
 
 export default function DataTable<T extends Record<string, any>>({
   columns,
@@ -218,8 +336,25 @@ export default function DataTable<T extends Record<string, any>>({
 
   function renderCellValue(column: DataTableColumn<T>, row: T, index: number) {
     if (column.render) return column.render(row, index);
-    if (column.type === "status") return <StatusBadge status={String(row[column.key] ?? "")} />;
-    return row[column.key];
+
+    const raw = row[column.key];
+
+    if (column.type === "status") {
+      if (isMissingCellValue(raw)) {
+        const empty = resolveEmptyDisplay(column as DataTableColumn<unknown>);
+        if (empty === "none") return null;
+        return <EmptyValueHint important={empty === "important"} />;
+      }
+      return <StatusBadge status={String(raw)} />;
+    }
+
+    if (isMissingCellValue(raw)) {
+      const empty = resolveEmptyDisplay(column as DataTableColumn<unknown>);
+      if (empty === "none") return null;
+      return <EmptyValueHint important={empty === "important"} />;
+    }
+
+    return raw;
   }
 
   function visibleActionsFor(row: T): DataTableAction<T>[] {
@@ -375,21 +510,13 @@ export default function DataTable<T extends Record<string, any>>({
                     <TableCell
                       key={column.key}
                       className={cn(
-                        // Override ui/table whitespace-nowrap so long names
-                        // (consignor, consignee, vehicle, etc.) wrap within
-                        // the available desktop width instead of stretching
-                        // the table horizontally.
-                        "max-w-[18rem] whitespace-normal break-words align-top [overflow-wrap:anywhere]",
+                        desktopCellClassName(column as DataTableColumn<unknown>),
                         column.align === "right" && "text-right",
                         column.align === "center" && "text-center",
                         column.className
                       )}
                     >
-                      {column.render
-                        ? column.render(row, index)
-                        : column.type === "status"
-                        ? <StatusBadge status={String(row[column.key] ?? "")} />
-                        : row[column.key]}
+                      {renderCellValue(column, row, index)}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -493,7 +620,7 @@ export default function DataTable<T extends Record<string, any>>({
                       </dt>
                       <dd
                         className={cn(
-                          "truncate font-medium text-foreground",
+                          "break-words font-medium text-foreground [overflow-wrap:anywhere]",
                           column.align === "right" && "text-right"
                         )}
                       >
