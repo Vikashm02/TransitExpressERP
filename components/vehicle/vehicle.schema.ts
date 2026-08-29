@@ -18,6 +18,22 @@ export const VEHICLE_TYPE_OPTIONS = [
   "Pickup",
   "Tanker",
   "Mini Truck",
+  "12 WHEELES",
+  "16 WHEELER",
+  "14 WHEEL",
+  "20 FT CONTAINER",
+  "18 WHEEL'S",
+  "16 WHEEL'S",
+  "12 WHEEL'S",
+  "MULTI AXLE TRUCK",
+  "14 WHEEL'S",
+  "32 FT CONTAINER",
+  "20 FEET CONTAINER",
+  "32 FT TRAILER",
+  "40FT TRAILER",
+  "32FT TRAILER",
+  "6 WHEELE'S",
+  "MULTI AXLE TRAILER",
 ] as const;
 
 export const OWNER_TYPE_OPTIONS = ["Own Fleet", "Attached", "Market"] as const;
