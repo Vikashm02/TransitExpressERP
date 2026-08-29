@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import BlankableNumberInput from "@/components/common/BlankableNumberInput";
-import LRLookup from "@/components/lookup/LRLookup";
+import FinancialsLrAutocomplete from "./FinancialsLrAutocomplete";
 import {
   LORRY_EXPENSE_STATUS_SELECT_OPTIONS,
   LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS,
@@ -174,7 +174,6 @@ export default function LorryExpenseDialog({
   const [selectedLR, setSelectedLR] = useState<LRRecord | null>(null);
   const [workingLr, setWorkingLr] = useState<LR | null>(null);
   const [existingId, setExistingId] = useState<number | null>(null);
-  const [lookupOpen, setLookupOpen] = useState(false);
   const [brokerSuggestions, setBrokerSuggestions] = useState<string[]>([]);
   const [beneficiarySuggestions, setBeneficiarySuggestions] = useState<string[]>([]);
   const [draftHint, setDraftHint] = useState<string | null>(null);
@@ -265,6 +264,13 @@ export default function LorryExpenseDialog({
     } catch (error) {
       console.error(error);
     }
+  }
+
+  function handleClearLRSelection() {
+    setSelectedLR(null);
+    setWorkingLr(null);
+    setExistingId(null);
+    setValues((prev) => ({ ...prev, lrId: "", dieselAdvance: 0 }));
   }
 
   const lrCalc = workingLr ? calculateLR(workingLr) : null;
@@ -377,28 +383,35 @@ export default function LorryExpenseDialog({
           )
         }
       >
-        <FormSection title="Linked LR">
+        <FormSection title="Linked LR" className="relative z-20 overflow-visible">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <FormField
               label="LR Number"
               htmlFor="fin-lr-number"
               required
-              className="sm:col-span-2"
+              className="sm:col-span-2 overflow-visible"
               error={errors.lrId}
+              hint={
+                readOnly || lrLocked
+                  ? undefined
+                  : "Type LR digits (e.g. 19359) or the last 4 digits of the vehicle number."
+              }
             >
-              <div className="flex gap-3">
+              {readOnly || lrLocked ? (
                 <Input
                   id="fin-lr-number"
                   readOnly
                   placeholder="Select an LR"
                   value={selectedLR?.lrNumber ?? ""}
                 />
-                {!readOnly && !lrLocked && (
-                  <Button type="button" variant="outline" onClick={() => setLookupOpen(true)}>
-                    Search
-                  </Button>
-                )}
-              </div>
+              ) : (
+                <FinancialsLrAutocomplete
+                  id="fin-lr-number"
+                  selectedLR={selectedLR}
+                  onSelect={handleSelectLR}
+                  onClearSelection={handleClearLRSelection}
+                />
+              )}
             </FormField>
 
             {selectedLR && workingLr && (
@@ -785,15 +798,6 @@ export default function LorryExpenseDialog({
           </>
         )}
       </FormDialog>
-
-      <LRLookup
-        open={lookupOpen}
-        onClose={() => setLookupOpen(false)}
-        onSelect={(next) => {
-          handleSelectLR(next);
-          setLookupOpen(false);
-        }}
-      />
     </>
   );
 }
