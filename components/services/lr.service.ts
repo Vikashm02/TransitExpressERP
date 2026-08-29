@@ -432,6 +432,33 @@ export async function reassignLR(id: number, assignedTo: string): Promise<LRReco
 }
 
 /* ==========================================================
+   OWN DRAFT LRs (read-only reminder before Create LR)
+   Scoped to auth.uid() via supabase.auth.getUser() — caller
+   cannot pass another user id. Does not allocate LR numbers.
+========================================================== */
+
+export async function getOwnDraftLRs(): Promise<LRRecord[]> {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+
+  const userId = authData.user?.id;
+  if (!userId) {
+    throw new Error("Not authenticated");
+  }
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("*")
+    .eq("entry_status", "draft")
+    .eq("created_by", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map(fromRow);
+}
+
+/* ==========================================================
    DELETE LR
 ========================================================== */
 

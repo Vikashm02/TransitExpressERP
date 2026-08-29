@@ -24,6 +24,7 @@ import {
   createLR,
   deleteLR,
   getLRs,
+  getOwnDraftLRs,
   reassignLR,
   updateLR,
   type LRRecord,
@@ -39,6 +40,8 @@ import {
   isDraftLrNumber,
 } from "@/lib/entryStatus";
 import { normalizeLrForDraftPersist } from "@/lib/draftPersistence";
+import LrSeriesStatus from "./LrSeriesStatus";
+import PendingDraftLrsDialog from "./PendingDraftLrsDialog";
 
 const PAGE_SIZE = 10;
 
@@ -81,6 +84,12 @@ export default function LRListPage() {
   const [reassigning, setReassigning] = useState(false);
 
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [pendingDraftsOpen, setPendingDraftsOpen] = useState(false);
+  const [pendingDrafts, setPendingDrafts] = useState<LRRecord[]>([]);
+  const [pendingDraftSelectedId, setPendingDraftSelectedId] = useState<LRRecord["id"] | null>(
+    null
+  );
+  const [checkingDrafts, setCheckingDrafts] = useState(false);
   /** Prevents overlapping autosaves from reserving two numbers for one draft. */
   const autosaveInFlightRef = useRef(false);
   /**
@@ -195,10 +204,61 @@ export default function LRListPage() {
   }, [lrs]);
 
   function handleAdd() {
+    void handleCreateLrClick();
+  }
+
+  function openNewLrCreateDialog() {
     beginNewCreateSession();
     setDialogMode("create");
     setEditingLR(null);
     setDialogOpen(true);
+  }
+
+  /**
+   * Create LR entry point — if the signed-in user already has drafts,
+   * nudge them before opening a brand-new create session. Does not
+   * allocate an LR number.
+   */
+  async function handleCreateLrClick() {
+    if (!canCreate || checkingDrafts) return;
+
+    try {
+      setCheckingDrafts(true);
+      const drafts = await getOwnDraftLRs();
+      if (drafts.length === 0) {
+        openNewLrCreateDialog();
+        return;
+      }
+      setPendingDrafts(drafts);
+      setPendingDraftSelectedId(drafts[0]?.id ?? null);
+      setPendingDraftsOpen(true);
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to check for pending drafts. Opening Create LR.");
+      openNewLrCreateDialog();
+    } finally {
+      setCheckingDrafts(false);
+    }
+  }
+
+  function handlePendingDraftsOpenChange(open: boolean) {
+    setPendingDraftsOpen(open);
+    if (!open) {
+      setPendingDrafts([]);
+      setPendingDraftSelectedId(null);
+    }
+  }
+
+  function handleOpenPendingDraft() {
+    const draft = pendingDrafts.find((row) => row.id === pendingDraftSelectedId);
+    if (!draft) return;
+    handlePendingDraftsOpenChange(false);
+    handleContinueDraft(draft);
+  }
+
+  function handleCreateNewDespiteDrafts() {
+    handlePendingDraftsOpenChange(false);
+    openNewLrCreateDialog();
   }
 
   function handleView(lr: LRRecord) {
@@ -549,7 +609,10 @@ export default function LRListPage() {
         buttonText="Create LR"
         onAdd={handleAdd}
         showAddButton={canCreate}
+        disabled={checkingDrafts}
       />
+
+      <LrSeriesStatus lrNumbers={lrs.map((lr) => lr.lrNumber)} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -680,6 +743,16 @@ export default function LRListPage() {
         onAutosave={
           dialogMode !== "view" && canContinueDraft ? handleAutosave : undefined
         }
+      />
+
+      <PendingDraftLrsDialog
+        open={pendingDraftsOpen}
+        onOpenChange={handlePendingDraftsOpenChange}
+        drafts={pendingDrafts}
+        selectedId={pendingDraftSelectedId}
+        onSelect={setPendingDraftSelectedId}
+        onOpenDraft={handleOpenPendingDraft}
+        onCreateNew={handleCreateNewDespiteDrafts}
       />
 
       <ConfirmDialog
