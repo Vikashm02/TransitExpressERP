@@ -33,6 +33,8 @@ interface LRTableProps {
   canDelete?: boolean;
   canPrint?: boolean;
   canShare?: boolean;
+  /** Open Consignee Intelligence for the exact consignee name on this row. */
+  onConsigneeClick?: (lr: LRRecord) => void;
 }
 
 export default function LRTable({
@@ -53,12 +55,38 @@ export default function LRTable({
   canDelete = true,
   canPrint = true,
   canShare = true,
+  onConsigneeClick,
 }: LRTableProps) {
   const columns: DataTableColumn<LRRecord>[] = [
     { key: "lrNumber", header: "LR No.", className: "font-medium" },
     { key: "lrDate", header: "Date" },
     { key: "consignor", header: "Consignor" },
-    { key: "consignee", header: "Consignee" },
+    {
+      key: "consignee",
+      header: "Consignee",
+      render: (row) => {
+        const name = (row.consignee || "").trim();
+        if (!name) return "—";
+        if (!onConsigneeClick) return name;
+        return (
+          <button
+            type="button"
+            className="text-left font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={(event) => {
+              event.stopPropagation();
+              onConsigneeClick(row);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.stopPropagation();
+              }
+            }}
+          >
+            {name}
+          </button>
+        );
+      },
+    },
     { key: "vehicleNumber", header: "Vehicle" },
     {
       key: "route",

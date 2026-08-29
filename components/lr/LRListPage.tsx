@@ -42,6 +42,9 @@ import {
 import { normalizeLrForDraftPersist } from "@/lib/draftPersistence";
 import LrSeriesStatus from "./LrSeriesStatus";
 import PendingDraftLrsDialog from "./PendingDraftLrsDialog";
+import ConsigneeIntelligenceDrawer, {
+  type ConsigneeIntelligenceTarget,
+} from "@/components/consigneeIntelligence/ConsigneeIntelligenceDrawer";
 
 const PAGE_SIZE = 10;
 
@@ -78,6 +81,10 @@ export default function LRListPage() {
 
   const [shareTarget, setShareTarget] = useState<LRRecord | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+
+  const [consigneeIntelOpen, setConsigneeIntelOpen] = useState(false);
+  const [consigneeIntelTarget, setConsigneeIntelTarget] =
+    useState<ConsigneeIntelligenceTarget | null>(null);
 
   const [reassignTarget, setReassignTarget] = useState<LRRecord | null>(null);
   const [reassignValue, setReassignValue] = useState("");
@@ -715,8 +722,25 @@ export default function LRListPage() {
         canDelete={canDelete}
         canPrint={canPrint}
         canShare={canShare}
+        onConsigneeClick={(lr) => {
+          const name = (lr.consignee || "").trim();
+          if (!name) return;
+          setConsigneeIntelTarget({
+            consigneeName: name,
+            consigneeGst: lr.consigneeGST || null,
+          });
+          setConsigneeIntelOpen(true);
+        }}
       />
 
+      <ConsigneeIntelligenceDrawer
+        open={consigneeIntelOpen}
+        onOpenChange={(open) => {
+          setConsigneeIntelOpen(open);
+          if (!open) setConsigneeIntelTarget(null);
+        }}
+        target={consigneeIntelTarget}
+      />
       <LRDialog
         open={dialogOpen}
         onOpenChange={handleDialogOpenChange}
