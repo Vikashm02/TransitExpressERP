@@ -11,8 +11,8 @@ import MasterAutocomplete, {
   type MasterAutocompleteOption,
 } from "@/components/lookup/MasterAutocomplete";
 import {
-  getBillingParties,
-  type BillingPartyRecord,
+  getLrBillingPartyLookup,
+  type LrBillingPartyLookupRow,
 } from "@/components/services/billingParty.service";
 
 import { BILLING_PARTY_OPTIONS, BOOKING_BRANCH_OPTIONS, type LR } from "../lr.schema";
@@ -38,20 +38,17 @@ export default function LRHeader({
   onChange,
   nextLrNumberPreview = "",
 }: LRHeaderProps) {
-  const [parties, setParties] = useState<BillingPartyRecord[]>([]);
+  const [parties, setParties] = useState<LrBillingPartyLookupRow[]>([]);
   const [loadingParties, setLoadingParties] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingParties(true);
-    getBillingParties()
+    getLrBillingPartyLookup()
       .then((data) => {
         if (!cancelled) {
-          setParties(
-            data.filter(
-              (p) => (p as BillingPartyRecord & { entryStatus?: string }).entryStatus !== "draft"
-            )
-          );
+          // RPC already returns finalized rows only.
+          setParties(data.filter((p) => p.entryStatus !== "draft"));
         }
       })
       .catch((error) => console.error(error))

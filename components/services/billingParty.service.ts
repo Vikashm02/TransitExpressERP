@@ -54,6 +54,37 @@ export async function getBillingParties(): Promise<BillingPartyRecord[]> {
   return (data ?? []).map(fromRow);
 }
 
+/**
+ * Restricted Billing Party lookup for LR Create/Edit only.
+ * Uses get_lr_billing_party_lookup (migration 052) — requires lr create/edit,
+ * NOT billing_parties:view. Does not replace getBillingParties() / Master.
+ */
+export type LrBillingPartyLookupRow = Pick<
+  BillingPartyRecord,
+  "id" | "name" | "code" | "gst" | "city" | "entryStatus"
+>;
+
+export async function getLrBillingPartyLookup(): Promise<LrBillingPartyLookupRow[]> {
+  const { data, error } = await supabase.rpc("get_lr_billing_party_lookup");
+
+  if (error) throw error;
+
+  const rows = Array.isArray(data) ? data : [];
+
+  return rows.map((item) => {
+    const row = item as Record<string, unknown>;
+    const entryStatus = row.entry_status === "draft" ? "draft" : "final";
+    return {
+      id: Number(row.id),
+      name: String(row.name ?? ""),
+      code: String(row.code ?? ""),
+      gst: String(row.gst ?? ""),
+      city: String(row.city ?? ""),
+      entryStatus,
+    };
+  });
+}
+
 /* ==========================================================
    GET ONE BILLING PARTY
 ========================================================== */
