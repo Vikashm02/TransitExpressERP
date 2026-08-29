@@ -45,6 +45,9 @@ import PendingDraftLrsDialog from "./PendingDraftLrsDialog";
 import ConsigneeIntelligenceDrawer, {
   type ConsigneeIntelligenceTarget,
 } from "@/components/consigneeIntelligence/ConsigneeIntelligenceDrawer";
+import MaterialIntelligenceDrawer, {
+  type MaterialIntelligenceTarget,
+} from "@/components/materialIntelligence/MaterialIntelligenceDrawer";
 
 const PAGE_SIZE = 10;
 
@@ -85,6 +88,10 @@ export default function LRListPage() {
   const [consigneeIntelOpen, setConsigneeIntelOpen] = useState(false);
   const [consigneeIntelTarget, setConsigneeIntelTarget] =
     useState<ConsigneeIntelligenceTarget | null>(null);
+
+  const [materialIntelOpen, setMaterialIntelOpen] = useState(false);
+  const [materialIntelTarget, setMaterialIntelTarget] =
+    useState<MaterialIntelligenceTarget | null>(null);
 
   const [reassignTarget, setReassignTarget] = useState<LRRecord | null>(null);
   const [reassignValue, setReassignValue] = useState("");
@@ -731,6 +738,12 @@ export default function LRListPage() {
           });
           setConsigneeIntelOpen(true);
         }}
+        onMaterialClick={(lr) => {
+          const name = (lr.material || "").trim();
+          if (!name) return;
+          setMaterialIntelTarget({ materialName: name });
+          setMaterialIntelOpen(true);
+        }}
       />
 
       <ConsigneeIntelligenceDrawer
@@ -740,6 +753,26 @@ export default function LRListPage() {
           if (!open) setConsigneeIntelTarget(null);
         }}
         target={consigneeIntelTarget}
+      />
+
+      <MaterialIntelligenceDrawer
+        open={materialIntelOpen}
+        onOpenChange={(open) => {
+          setMaterialIntelOpen(open);
+          if (!open) setMaterialIntelTarget(null);
+        }}
+        target={materialIntelTarget}
+        onOpenConsignee={(consigneeName) => {
+          const name = consigneeName.trim();
+          if (!name) return;
+          setMaterialIntelOpen(false);
+          setMaterialIntelTarget(null);
+          setConsigneeIntelTarget({
+            consigneeName: name,
+            consigneeGst: null,
+          });
+          setConsigneeIntelOpen(true);
+        }}
       />
       <LRDialog
         open={dialogOpen}

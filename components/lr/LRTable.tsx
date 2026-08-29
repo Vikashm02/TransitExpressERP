@@ -35,6 +35,8 @@ interface LRTableProps {
   canShare?: boolean;
   /** Open Consignee Intelligence for the exact consignee name on this row. */
   onConsigneeClick?: (lr: LRRecord) => void;
+  /** Open Material Intelligence for the exact material name on this row. */
+  onMaterialClick?: (lr: LRRecord) => void;
 }
 
 export default function LRTable({
@@ -56,6 +58,7 @@ export default function LRTable({
   canPrint = true,
   canShare = true,
   onConsigneeClick,
+  onMaterialClick,
 }: LRTableProps) {
   const columns: DataTableColumn<LRRecord>[] = [
     { key: "lrNumber", header: "LR No.", className: "font-medium" },
@@ -75,6 +78,32 @@ export default function LRTable({
             onClick={(event) => {
               event.stopPropagation();
               onConsigneeClick(row);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.stopPropagation();
+              }
+            }}
+          >
+            {name}
+          </button>
+        );
+      },
+    },
+    {
+      key: "material",
+      header: "Material",
+      render: (row) => {
+        const name = (row.material || "").trim();
+        if (!name) return "—";
+        if (!onMaterialClick) return name;
+        return (
+          <button
+            type="button"
+            className="text-left font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMaterialClick(row);
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
