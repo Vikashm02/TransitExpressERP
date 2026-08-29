@@ -9,8 +9,8 @@ import MasterAutocomplete, {
   type MasterAutocompleteOption,
 } from "@/components/lookup/MasterAutocomplete";
 import {
-  getCustomers,
-  type CustomerRecord,
+  getLrCustomerLookup,
+  type LrCustomerLookupRow,
 } from "@/components/services/customer.service";
 
 import type { LR } from "../lr.schema";
@@ -55,6 +55,7 @@ const ROLE_CONFIG: Record<
 /**
  * Consignor / Consignee must be selected from Customer Master.
  * Free-text names are not accepted.
+ * Uses getLrCustomerLookup() (LR create/edit RPC) — not getCustomers() RLS.
  */
 export default function PartySection({
   role,
@@ -63,16 +64,17 @@ export default function PartySection({
   onChange,
 }: PartySectionProps) {
   const config = ROLE_CONFIG[role];
-  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+  const [customers, setCustomers] = useState<LrCustomerLookupRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getCustomers()
+    getLrCustomerLookup()
       .then((data) => {
         if (!cancelled) {
-          setCustomers(data.filter((c) => (c as CustomerRecord & { entryStatus?: string }).entryStatus !== "draft"));
+          // RPC already returns finalized rows only.
+          setCustomers(data.filter((c) => c.entryStatus !== "draft"));
         }
       })
       .catch((error) => console.error(error))

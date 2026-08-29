@@ -54,6 +54,38 @@ export async function getCustomers(): Promise<CustomerRecord[]> {
   return (data ?? []).map(fromRow);
 }
 
+/**
+ * Restricted Customer Master lookup for LR Consignor / Consignee only.
+ * Uses get_lr_customer_lookup (migration 051) — requires lr create/edit,
+ * NOT customers:view. Does not replace getCustomers() / Customer Master.
+ */
+export type LrCustomerLookupRow = Pick<
+  CustomerRecord,
+  "id" | "name" | "code" | "gst" | "city" | "address" | "entryStatus"
+>;
+
+export async function getLrCustomerLookup(): Promise<LrCustomerLookupRow[]> {
+  const { data, error } = await supabase.rpc("get_lr_customer_lookup");
+
+  if (error) throw error;
+
+  const rows = Array.isArray(data) ? data : [];
+
+  return rows.map((item) => {
+    const row = item as Record<string, unknown>;
+    const entryStatus = row.entry_status === "draft" ? "draft" : "final";
+    return {
+      id: Number(row.id),
+      name: String(row.name ?? ""),
+      code: String(row.code ?? ""),
+      gst: String(row.gst ?? ""),
+      city: String(row.city ?? ""),
+      address: String(row.address ?? ""),
+      entryStatus,
+    };
+  });
+}
+
 /* ==========================================================
    GET ONE CUSTOMER
 ========================================================== */
