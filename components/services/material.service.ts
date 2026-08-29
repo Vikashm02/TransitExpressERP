@@ -60,6 +60,38 @@ export async function getMaterials(): Promise<MaterialRecord[]> {
   return (data ?? []).map(fromRow);
 }
 
+/**
+ * Restricted Material lookup for LR Create/Edit only.
+ * Uses get_lr_material_lookup (migration 053) — requires lr create/edit,
+ * NOT material:view. Does not replace getMaterials() / Master.
+ */
+export type LrMaterialLookupRow = Pick<
+  MaterialRecord,
+  "id" | "code" | "materialName" | "category" | "unit" | "description" | "status"
+>;
+
+export async function getLrMaterialLookup(): Promise<LrMaterialLookupRow[]> {
+  const { data, error } = await supabase.rpc("get_lr_material_lookup");
+
+  if (error) throw error;
+
+  const rows = Array.isArray(data) ? data : [];
+
+  return rows.map((item) => {
+    const row = item as Record<string, unknown>;
+    const status = row.status === "Inactive" ? "Inactive" : "Active";
+    return {
+      id: Number(row.id),
+      code: String(row.material_code ?? ""),
+      materialName: String(row.material_name ?? ""),
+      category: String(row.category ?? ""),
+      unit: String(row.unit ?? ""),
+      description: String(row.description ?? ""),
+      status,
+    };
+  });
+}
+
 /* ==========================================================
    GET ONE MATERIAL
 ========================================================== */

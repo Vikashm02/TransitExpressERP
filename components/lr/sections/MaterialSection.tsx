@@ -9,8 +9,8 @@ import FormSection from "@/components/ui/FormSection";
 
 import MaterialLookup from "@/components/lookup/MaterialLookup";
 import {
-  getMaterials,
-  type MaterialRecord,
+  getLrMaterialLookup,
+  type LrMaterialLookupRow,
 } from "@/components/services/material.service";
 
 import LRNumericInput from "../LRNumericInput";
@@ -37,14 +37,14 @@ export default function MaterialSection({
   requireMaterialDescription = false,
 }: MaterialSectionProps) {
   const [lookupOpen, setLookupOpen] = useState(false);
-  const [materials, setMaterials] = useState<MaterialRecord[]>([]);
+  const [materials, setMaterials] = useState<LrMaterialLookupRow[]>([]);
   const [debouncedDescription, setDebouncedDescription] = useState(
     lr.materialDescription ?? "",
   );
 
   useEffect(() => {
     let cancelled = false;
-    getMaterials()
+    getLrMaterialLookup()
       .then((rows) => {
         if (!cancelled) setMaterials(rows);
       })
@@ -83,7 +83,7 @@ export default function MaterialSection({
   }
 
   /** Manual lookup selection — preserves staff-entered materialDescription. */
-  function handleMaterialSelect(material: MaterialRecord) {
+  function handleMaterialSelect(material: LrMaterialLookupRow) {
     onChange({
       ...lr,
       material: material.materialName,
@@ -285,6 +285,7 @@ export default function MaterialSection({
         open={lookupOpen}
         onClose={() => setLookupOpen(false)}
         onSelect={handleMaterialSelect}
+        loadMaterials={getLrMaterialLookup}
       />
     </>
   );

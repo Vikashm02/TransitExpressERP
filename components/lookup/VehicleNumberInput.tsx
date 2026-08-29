@@ -11,7 +11,7 @@ import {
   vehicleNumberMatchesQuery,
 } from "@/lib/vehicleNumber";
 import { useControlledInputCaret } from "@/hooks/useControlledInputCaret";
-import type { VehicleRecord } from "@/components/services/vehicle.service";
+import type { LrVehicleLookupRow } from "@/components/services/vehicle.service";
 
 interface VehicleNumberInputProps {
   id?: string;
@@ -20,11 +20,11 @@ interface VehicleNumberInputProps {
   disabled?: boolean;
   className?: string;
   /** Vehicles available for typeahead (already loaded by parent). */
-  vehicles: VehicleRecord[];
+  vehicles: LrVehicleLookupRow[];
   loading?: boolean;
   onChange: (vehicleNumber: string) => void;
   /** Fired when the user picks a master row — parent can fill type/hire/etc. */
-  onSelectVehicle?: (vehicle: VehicleRecord) => void;
+  onSelectVehicle?: (vehicle: LrVehicleLookupRow) => void;
 }
 
 /**
@@ -90,7 +90,7 @@ export default function VehicleNumberInput({
     onChange(next.value);
   }
 
-  function commit(vehicle: VehicleRecord) {
+  function commit(vehicle: LrVehicleLookupRow) {
     const number = canonicalizeVehicleNumber(vehicle.vehicleNumber) || vehicle.vehicleNumber;
     onChange(number);
     onSelectVehicle?.(vehicle);

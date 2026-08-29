@@ -103,6 +103,51 @@ export async function getVehicles(): Promise<VehicleRecord[]> {
   return (data ?? []).map(fromRow);
 }
 
+/**
+ * Restricted Vehicle lookup for LR Create/Edit only.
+ * Uses get_lr_vehicle_lookup (migration 054) — requires lr create/edit,
+ * NOT vehicle:view. Does not replace getVehicles() / Master.
+ */
+export type LrVehicleLookupRow = Pick<
+  VehicleRecord,
+  | "id"
+  | "vehicleNumber"
+  | "vehicleType"
+  | "transporter"
+  | "driverName"
+  | "driverMobile"
+  | "hireRate"
+  | "hireType"
+  | "ownerName"
+  | "ownerType"
+  | "mobile"
+>;
+
+export async function getLrVehicleLookup(): Promise<LrVehicleLookupRow[]> {
+  const { data, error } = await supabase.rpc("get_lr_vehicle_lookup");
+
+  if (error) throw error;
+
+  const rows = Array.isArray(data) ? data : [];
+
+  return rows.map((item) => {
+    const row = item as Record<string, unknown>;
+    return {
+      id: Number(row.id),
+      vehicleNumber: String(row.vehicle_number ?? ""),
+      vehicleType: String(row.vehicle_type ?? ""),
+      transporter: String(row.transporter ?? ""),
+      driverName: String(row.driver_name ?? ""),
+      driverMobile: String(row.driver_mobile ?? ""),
+      hireRate: Number(row.hire_rate ?? 0),
+      hireType: (row.hire_type === "Per Ton" ? "Per Ton" : "Fixed") as VehicleRecord["hireType"],
+      ownerName: String(row.owner_name ?? ""),
+      ownerType: String(row.owner_type ?? "") as VehicleRecord["ownerType"],
+      mobile: String(row.mobile ?? ""),
+    };
+  });
+}
+
 /* ==========================================================
    GET ONE VEHICLE
 ========================================================== */

@@ -13,8 +13,8 @@ import VehicleNumberInput from "@/components/lookup/VehicleNumberInput";
 import TransporterLookup from "@/components/lookup/TransporterLookup";
 import DriverLookup from "@/components/lookup/DriverLookup";
 import {
-  getVehicles,
-  type VehicleRecord,
+  getLrVehicleLookup,
+  type LrVehicleLookupRow,
 } from "@/components/services/vehicle.service";
 import type { TransporterRecord } from "@/components/services/transporter.service";
 import type { DriverRecord } from "@/components/services/driver.service";
@@ -39,9 +39,9 @@ function toOptions(values: readonly string[]) {
 }
 
 function findExactVehicle(
-  vehicles: VehicleRecord[],
+  vehicles: LrVehicleLookupRow[],
   vehicleNumber: string
-): VehicleRecord | undefined {
+): LrVehicleLookupRow | undefined {
   const key = normalizeVehicleNumberKey(vehicleNumber);
   if (!key) return undefined;
   return vehicles.find(
@@ -57,7 +57,7 @@ export default function VehicleSection({
   const [vehicleLookupOpen, setVehicleLookupOpen] = useState(false);
   const [transporterLookupOpen, setTransporterLookupOpen] = useState(false);
   const [driverLookupOpen, setDriverLookupOpen] = useState(false);
-  const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
+  const [vehicles, setVehicles] = useState<LrVehicleLookupRow[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
   const [newVehicleHint, setNewVehicleHint] = useState(false);
   /** Avoid re-applying the same master row and wiping user edits on blur. */
@@ -66,7 +66,7 @@ export default function VehicleSection({
   useEffect(() => {
     let cancelled = false;
     setVehiclesLoading(true);
-    getVehicles()
+    getLrVehicleLookup()
       .then((data) => {
         if (!cancelled) setVehicles(data);
       })
@@ -83,7 +83,7 @@ export default function VehicleSection({
     onChange({ ...lr, [key]: value });
   }
 
-  function applyVehicle(vehicle: VehicleRecord) {
+  function applyVehicle(vehicle: LrVehicleLookupRow) {
     const vehicleNumber =
       canonicalizeVehicleNumber(vehicle.vehicleNumber) || vehicle.vehicleNumber;
     const key = normalizeVehicleNumberKey(vehicleNumber);
@@ -283,6 +283,7 @@ export default function VehicleSection({
         open={vehicleLookupOpen}
         onClose={() => setVehicleLookupOpen(false)}
         onSelect={applyVehicle}
+        loadVehicles={getLrVehicleLookup}
       />
 
       <TransporterLookup

@@ -3,26 +3,50 @@
 import { useEffect, useMemo, useState } from "react";
 
 import LookupDialog from "./LookupDialog";
-import { getVehicles, type VehicleRecord } from "@/components/services/vehicle.service";
+import {
+  getVehicles,
+  type VehicleRecord,
+} from "@/components/services/vehicle.service";
 import {
   canonicalizeVehicleNumber,
   vehicleNumberMatchesQuery,
 } from "@/lib/vehicleNumber";
 
+export type VehicleLookupItem = Pick<
+  VehicleRecord,
+  | "id"
+  | "vehicleNumber"
+  | "vehicleType"
+  | "ownerName"
+  | "ownerType"
+  | "mobile"
+  | "transporter"
+  | "driverName"
+  | "driverMobile"
+  | "hireRate"
+  | "hireType"
+>;
+
 interface VehicleLookupProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (vehicle: VehicleRecord) => void;
+  onSelect: (vehicle: VehicleLookupItem) => void;
+  /**
+   * Optional loader for LR restricted lookup.
+   * Defaults to getVehicles() (Vehicle Master path).
+   */
+  loadVehicles?: () => Promise<VehicleLookupItem[]>;
 }
 
 export default function VehicleLookup({
   open,
   onClose,
   onSelect,
+  loadVehicles = getVehicles,
 }: VehicleLookupProps) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
-  const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleLookupItem[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -31,7 +55,7 @@ export default function VehicleLookup({
 
     setLoading(true);
 
-    getVehicles()
+    loadVehicles()
       .then((data) => {
         if (!cancelled) setVehicles(data);
       })
@@ -45,7 +69,7 @@ export default function VehicleLookup({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, loadVehicles]);
 
   const filteredVehicles = useMemo(() => {
     const query = search.trim();

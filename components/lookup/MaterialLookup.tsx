@@ -3,22 +3,36 @@
 import { useEffect, useMemo, useState } from "react";
 
 import LookupDialog from "./LookupDialog";
-import { getMaterials, type MaterialRecord } from "@/components/services/material.service";
+import {
+  getMaterials,
+  type MaterialRecord,
+} from "@/components/services/material.service";
+
+export type MaterialLookupItem = Pick<
+  MaterialRecord,
+  "id" | "code" | "materialName" | "category" | "unit" | "description" | "status"
+>;
 
 interface MaterialLookupProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (material: MaterialRecord) => void;
+  onSelect: (material: MaterialLookupItem) => void;
+  /**
+   * Optional loader for LR restricted lookup.
+   * Defaults to getMaterials() (Material Master path).
+   */
+  loadMaterials?: () => Promise<MaterialLookupItem[]>;
 }
 
 export default function MaterialLookup({
   open,
   onClose,
   onSelect,
+  loadMaterials = getMaterials,
 }: MaterialLookupProps) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
-  const [materials, setMaterials] = useState<MaterialRecord[]>([]);
+  const [materials, setMaterials] = useState<MaterialLookupItem[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -27,7 +41,7 @@ export default function MaterialLookup({
 
     setLoading(true);
 
-    getMaterials()
+    loadMaterials()
       .then((data) => {
         if (!cancelled) setMaterials(data);
       })
@@ -41,7 +55,7 @@ export default function MaterialLookup({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, loadMaterials]);
 
   const filteredMaterials = useMemo(() => {
     const query = search.trim().toLowerCase();
