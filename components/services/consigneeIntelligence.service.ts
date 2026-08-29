@@ -28,6 +28,7 @@ export interface MaterialEvolutionMonth {
 
 export interface ConsigneeFrequency {
   lrCount: number;
+  observationDays: number | null;
   lastLrDate: string | null;
   daysSinceLast: number | null;
   averageInterval: number | null;
@@ -37,15 +38,32 @@ export interface ConsigneeFrequency {
   insufficientHistory: boolean;
 }
 
-export interface DemandMonth {
+export interface WorkDemandMonth {
   month: string;
   lrCount: number;
-  weight: number;
+  change: number | null;
+  percentageChange: number | null;
+  comparisonAvailable: boolean;
 }
 
-export interface ConsigneeDemand {
-  months: DemandMonth[];
-  direction: "Increasing" | "Decreasing" | "Stable" | "Irregular" | string;
+export interface ProductDemandMaterial {
+  material: string;
+  lrCount: number;
+  percentage: number;
+}
+
+export interface ProductDemandMonth {
+  month: string;
+  lrCount: number;
+  materials: ProductDemandMaterial[];
+}
+
+export interface ProductDemandInsight {
+  material: string;
+  fromPercentage: number;
+  toPercentage: number;
+  deltaPercentagePoints: number;
+  message: string;
 }
 
 export interface ConsigneeRecentLr {
@@ -62,11 +80,18 @@ export interface ConsigneeIntelligenceResult {
     key: ConsigneeIntelligenceWindow | string;
     from: string | null;
     to: string | null;
+    observationDays: number | null;
   };
   materialMix: MaterialMixItem[];
   materialEvolution: MaterialEvolutionMonth[];
   frequency: ConsigneeFrequency;
-  demand: ConsigneeDemand;
+  workDemand: {
+    months: WorkDemandMonth[];
+  };
+  productDemand: {
+    months: ProductDemandMonth[];
+    insights: ProductDemandInsight[];
+  };
   recentLrs: ConsigneeRecentLr[];
   meta: {
     lrCount: number;
@@ -98,7 +123,7 @@ function asNullableString(value: unknown): string | null {
 
 /**
  * Load Consignee Intelligence aggregates for an exact consignee name.
- * Server-side via get_consignee_intelligence (migration 049).
+ * Server-side via get_consignee_intelligence (migrations 049 / 050).
  * Does not load the full LR table into the browser.
  */
 export async function getConsigneeIntelligence(options: {
@@ -125,14 +150,21 @@ export async function getConsigneeIntelligence(options: {
   const identity = (raw.identity ?? {}) as Record<string, unknown>;
   const win = (raw.window ?? {}) as Record<string, unknown>;
   const frequency = (raw.frequency ?? {}) as Record<string, unknown>;
-  const demand = (raw.demand ?? {}) as Record<string, unknown>;
+  const workDemand = (raw.work_demand ?? {}) as Record<string, unknown>;
+  const productDemand = (raw.product_demand ?? {}) as Record<string, unknown>;
   const meta = (raw.meta ?? {}) as Record<string, unknown>;
 
   const mixRaw = Array.isArray(raw.material_mix) ? raw.material_mix : [];
   const evolutionRaw = Array.isArray(raw.material_evolution)
     ? raw.material_evolution
     : [];
-  const demandMonthsRaw = Array.isArray(demand.months) ? demand.months : [];
+  const workMonthsRaw = Array.isArray(workDemand.months) ? workDemand.months : [];
+  const productMonthsRaw = Array.isArray(productDemand.months)
+    ? productDemand.months
+    : [];
+  const insightsRaw = Array.isArray(productDemand.insights)
+    ? productDemand.insights
+    : [];
   const recentRaw = Array.isArray(raw.recent_lrs) ? raw.recent_lrs : [];
 
   return {
@@ -145,6 +177,7 @@ export async function getConsigneeIntelligence(options: {
       key: asString(win.key) || windowKey,
       from: asNullableString(win.from),
       to: asNullableString(win.to),
+      observationDays: asNullableNumber(win.observation_days),
     },
     materialMix: mixRaw.map((item) => {
       const row = item as Record<string, unknown>;
@@ -173,6 +206,7 @@ export async function getConsigneeIntelligence(options: {
     }),
     frequency: {
       lrCount: asNumber(frequency.lr_count),
+      observationDays: asNullableNumber(frequency.observation_days),
       lastLrDate: asNullableString(frequency.last_lr_date),
       daysSinceLast: asNullableNumber(frequency.days_since_last),
       averageInterval: asNullableNumber(frequency.average_interval),
@@ -181,16 +215,45 @@ export async function getConsigneeIntelligence(options: {
       estimatedNext: asNullableString(frequency.estimated_next),
       insufficientHistory: Boolean(frequency.insufficient_history),
     },
-    demand: {
-      months: demandMonthsRaw.map((item) => {
+    workDemand: {
+      months: workMonthsRaw.map((item) => {
         const row = item as Record<string, unknown>;
         return {
           month: asString(row.month),
           lrCount: asNumber(row.lr_count),
-          weight: asNumber(row.weight),
+          change: asNullableNumber(row.change),
+          percentageChange: asNullableNumber(row.percentage_change),
+          comparisonAvailable: Boolean(row.comparison_available),
         };
       }),
-      direction: asString(demand.direction) || "Irregular",
+    },
+    productDemand: {
+      months: productMonthsRaw.map((item) => {
+        const row = item as Record<string, unknown>;
+        const materialsRaw = Array.isArray(row.materials) ? row.materials : [];
+        return {
+          month: asString(row.month),
+          lrCount: asNumber(row.lr_count),
+          materials: materialsRaw.map((mat) => {
+            const m = mat as Record<string, unknown>;
+            return {
+              material: asString(m.material),
+              lrCount: asNumber(m.lr_count),
+              percentage: asNumber(m.percentage),
+            };
+          }),
+        };
+      }),
+      insights: insightsRaw.map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          material: asString(row.material),
+          fromPercentage: asNumber(row.from_percentage),
+          toPercentage: asNumber(row.to_percentage),
+          deltaPercentagePoints: asNumber(row.delta_percentage_points),
+          message: asString(row.message),
+        };
+      }),
     },
     recentLrs: recentRaw.map((item) => {
       const row = item as Record<string, unknown>;

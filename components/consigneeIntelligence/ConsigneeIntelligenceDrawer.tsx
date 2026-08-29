@@ -19,7 +19,8 @@ import {
 } from "@/components/services/consigneeIntelligence.service";
 import { MaterialMixDonut, materialColor } from "./MaterialMixDonut";
 import { MaterialEvolutionChart } from "./MaterialEvolutionChart";
-import { DemandTrendChart } from "./DemandTrendChart";
+import { WorkDemandChart } from "./WorkDemandChart";
+import { ProductDemandChart } from "./ProductDemandChart";
 
 export interface ConsigneeIntelligenceTarget {
   consigneeName: string;
@@ -99,7 +100,7 @@ export default function ConsigneeIntelligenceDrawer({
         if (!cancelled) {
           setData(null);
           setError(
-            "Unable to load consignee intelligence. If this persists, ensure the analytics migration is applied."
+            "Unable to load consignee intelligence. If this persists, ensure migration 050 is applied."
           );
         }
       })
@@ -166,7 +167,7 @@ export default function ConsigneeIntelligenceDrawer({
             </p>
           ) : (
             <div className="space-y-8">
-              {/* Material Trend — Current Mix */}
+              {/* Material Trend — Current Mix (loading weight) */}
               <section className="space-y-3">
                 <div>
                   <h3 className="font-heading text-base font-semibold">Material Trend</h3>
@@ -227,7 +228,11 @@ export default function ConsigneeIntelligenceDrawer({
                 <div>
                   <h3 className="font-heading text-base font-semibold">Work Frequency</h3>
                   <p className="text-xs text-muted-foreground">
-                    Based on consecutive LR dates in the selected window
+                    Typical interval = observation period ÷ LR count in the selected
+                    window
+                    {data.frequency.observationDays != null
+                      ? ` (${data.frequency.observationDays} days · ${data.frequency.lrCount} LR${data.frequency.lrCount === 1 ? "" : "s"})`
+                      : ""}
                   </p>
                 </div>
 
@@ -243,50 +248,66 @@ export default function ConsigneeIntelligenceDrawer({
                   <FreqStat
                     label="Typical interval"
                     value={
-                      data.frequency.insufficientHistory
+                      data.frequency.insufficientHistory ||
+                      data.frequency.typicalInterval == null
                         ? "Insufficient history"
-                        : formatDays(
-                            data.frequency.typicalInterval != null
-                              ? Math.round(data.frequency.typicalInterval)
-                              : null
-                          )
+                        : formatDays(Math.round(data.frequency.typicalInterval))
                     }
                   />
                   <FreqStat
                     label="Estimated next"
                     value={
-                      data.frequency.insufficientHistory
+                      data.frequency.insufficientHistory || !data.frequency.estimatedNext
                         ? "Insufficient history"
                         : formatDisplayDate(data.frequency.estimatedNext)
                     }
                     hint={
-                      data.frequency.insufficientHistory
-                        ? undefined
-                        : "Estimate — not a guarantee"
+                      data.frequency.estimatedNext
+                        ? "Estimate — not a guarantee"
+                        : undefined
                     }
                   />
                 </div>
-
-                {!data.frequency.insufficientHistory ? (
-                  <p className="text-xs text-muted-foreground">
-                    Average interval:{" "}
-                    {formatDays(
-                      data.frequency.averageInterval != null
-                        ? Math.round(data.frequency.averageInterval)
-                        : null
-                    )}
-                    {" · "}
-                    Median interval:{" "}
-                    {formatDays(
-                      data.frequency.medianInterval != null
-                        ? Math.round(data.frequency.medianInterval)
-                        : null
-                    )}
-                  </p>
-                ) : null}
               </section>
 
-              {/* Material Evolution */}
+              {/* Work Demand */}
+              <section className="space-y-3">
+                <div>
+                  <h3 className="font-heading text-base font-semibold">Work Demand</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Monthly LR count — how many transportation tasks we received
+                  </p>
+                </div>
+                {data.workDemand.months.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No monthly work-demand series available.
+                  </p>
+                ) : (
+                  <WorkDemandChart months={data.workDemand.months} />
+                )}
+              </section>
+
+              {/* Product Demand */}
+              <section className="space-y-3">
+                <div>
+                  <h3 className="font-heading text-base font-semibold">Product Demand</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Monthly share of LR tasks by material (not loading weight)
+                  </p>
+                </div>
+                {data.productDemand.months.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No product-demand series available.
+                  </p>
+                ) : (
+                  <ProductDemandChart
+                    months={data.productDemand.months}
+                    insights={data.productDemand.insights}
+                  />
+                )}
+              </section>
+
+              {/* Material Evolution (weight-based, unchanged concept) */}
               <section className="space-y-3">
                 <div>
                   <h3 className="font-heading text-base font-semibold">
@@ -302,30 +323,6 @@ export default function ConsigneeIntelligenceDrawer({
                   </p>
                 ) : (
                   <MaterialEvolutionChart months={data.materialEvolution} />
-                )}
-              </section>
-
-              {/* Demand Trend */}
-              <section className="space-y-3">
-                <div className="flex flex-wrap items-end justify-between gap-2">
-                  <div>
-                    <h3 className="font-heading text-base font-semibold">
-                      Demand Trend
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Monthly LR count and loading weight
-                    </p>
-                  </div>
-                  <span className="rounded-md border px-2 py-1 text-xs font-medium">
-                    {data.demand.direction}
-                  </span>
-                </div>
-                {data.demand.months.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No monthly demand series available.
-                  </p>
-                ) : (
-                  <DemandTrendChart months={data.demand.months} />
                 )}
               </section>
 
