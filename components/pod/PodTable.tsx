@@ -1,10 +1,25 @@
 "use client";
 
 import { ClipboardCheck, Eye, Pencil, Trash2 } from "lucide-react";
+import { format, isValid, parseISO } from "date-fns";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type { PodRecord } from "@/components/services/pod.service";
+
+/** Same presentation as FormDatePicker (`dd MMM yyyy`). */
+const POD_DATE_DISPLAY = "dd MMM yyyy";
+
+function formatPodListDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  try {
+    const parsed = parseISO(value);
+    if (!isValid(parsed)) return value;
+    return format(parsed, POD_DATE_DISPLAY);
+  } catch {
+    return value;
+  }
+}
 
 /** POD rows joined (client-side, read-only) with their linked LR's
  * Consignee for display — Consignee itself is never stored on `pods`.
@@ -41,8 +56,25 @@ export default function PodTable({
   const columns: DataTableColumn<PodListRow>[] = [
     { key: "lrNumber", header: "LR Number", sortable: true, className: "font-medium" },
     { key: "consignee", header: "Consignee", sortable: true },
-    { key: "podDate", header: "POD Date", sortable: true },
-    { key: "unloadingDate", header: "Unloading Date", sortable: true },
+    {
+      key: "podDate",
+      header: "POD Date",
+      sortable: true,
+      render: (row) => formatPodListDate(row.podDate),
+    },
+    {
+      key: "unloadingDate",
+      header: "Unloading Date",
+      sortable: true,
+      render: (row) => formatPodListDate(row.unloadingDate),
+    },
+    {
+      key: "createdAt",
+      header: "Created Date",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => formatPodListDate(row.created_at),
+    },
     {
       key: "createdByName",
       header: "Created By",
