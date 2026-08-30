@@ -90,6 +90,14 @@ export async function getPod(id: number): Promise<PodRecord> {
    CREATE POD
 ========================================================== */
 
+function isUniqueLrViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: string; message?: string };
+  if (e.code === "23505") return true;
+  const msg = String(e.message ?? "").toLowerCase();
+  return msg.includes("pods_lr_number_unique") || msg.includes("duplicate key");
+}
+
 export async function createPod(values: Pod): Promise<PodRecord> {
   const { data, error } = await supabase
     .from(TABLE)
@@ -97,7 +105,14 @@ export async function createPod(values: Pod): Promise<PodRecord> {
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (isUniqueLrViolation(error)) {
+      throw new Error(
+        `A POD already exists for ${values.lrNumber.trim() || "this LR"}. Each LR can have only one POD.`
+      );
+    }
+    throw error;
+  }
 
   const record = fromRow(data);
   void emitNotificationEvent({
@@ -135,15 +150,38 @@ export async function updatePod(id: number, values: Pod): Promise<PodRecord> {
 }
 
 /* ==========================================================
-   DELETE POD (bulk-upload rollback only)
-   The POD module has no Delete action anywhere in its UI (PodListPage
-   only ever Adds/Edits/Views) — this exists solely so PodBulkUploadDialog
-   can perform a compensating rollback if an all-or-nothing bulk import
-   fails partway through. It is intentionally not exported from/used by
-   any other POD screen.
+   DELETE POD
+   UI Delete is Admin-only (AuthProvider isAdmin / DB is_admin()).
+   Also used by PodBulkUploadDialog for compensating rollback.
+   Removes the POD row and best-effort cleans the proof object when
+   the URL is in the pod-assets bucket and not shared.
 ========================================================== */
 
+function podAssetPathFromPublicUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const marker = `/object/public/${ASSETS_BUCKET}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  const path = decodeURIComponent(url.slice(idx + marker.length).split("?")[0] ?? "");
+  if (!path || path.includes("..") || path.startsWith("/")) return null;
+  return path;
+}
+
 export async function deletePod(id: number): Promise<void> {
+  const existing = await getPod(id);
+  const path = podAssetPathFromPublicUrl(existing.proofUrl);
+
+  if (path) {
+    // Best-effort storage cleanup. If DELETE policy is missing, row delete
+    // still proceeds so Admin is not blocked by orphaned object cleanup.
+    const { error: storageError } = await supabase.storage
+      .from(ASSETS_BUCKET)
+      .remove([path]);
+    if (storageError) {
+      console.warn("POD proof storage cleanup failed:", storageError.message);
+    }
+  }
+
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
 
   if (error) throw error;
@@ -151,9 +189,9 @@ export async function deletePod(id: number): Promise<void> {
   void emitNotificationEvent({
     ruleKey: "pod.deleted",
     title: "POD deleted",
-    body: `POD record #${id} was deleted.`,
+    body: `POD for ${existing.lrNumber} was deleted.`,
     href: "/pod",
-    payload: { podId: id },
+    payload: { podId: id, lrNumber: existing.lrNumber },
   });
 }
 

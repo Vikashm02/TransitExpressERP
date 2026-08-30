@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import FormDialog from "@/components/ui/FormDialog";
 import { Button } from "@/components/ui/button";
 import PodForm from "./PodForm";
-import LRLookup from "@/components/lookup/LRLookup";
 import { validatePod, type Pod } from "./pod.schema";
 import { uploadPodProof, type PodRecord } from "@/components/services/pod.service";
 import { getLRs, type LRRecord } from "@/components/services/lr.service";
@@ -55,24 +54,46 @@ export default function PodDialog({
   const [values, setValues] = useState<Pod>(emptyPod);
   const [errors, setErrors] = useState<FieldErrors<Pod>>({});
   const [lrs, setLrs] = useState<LRRecord[]>([]);
-  const [lookupOpen, setLookupOpen] = useState(false);
+  const [selectedLR, setSelectedLR] = useState<LRRecord | null>(null);
   const [uploadingProof, setUploadingProof] = useState(false);
 
   const isEditing = Boolean(pod);
-  const selectedLR = lrs.find((lr) => lr.lrNumber === values.lrNumber) ?? null;
 
   useEffect(() => {
     if (open) {
       setValues(pod ? { ...emptyPod, ...toEditablePod(pod) } : emptyPod);
       setErrors({});
+      setSelectedLR(null);
       getLRs()
-        .then(setLrs)
+        .then((data) => {
+          setLrs(data);
+          if (pod?.lrNumber) {
+            setSelectedLR(
+              data.find((lr) => lr.lrNumber === pod.lrNumber) ?? null
+            );
+          }
+        })
         .catch((error) => console.error(error));
     }
   }, [open, pod]);
 
+  useEffect(() => {
+    if (!values.lrNumber) {
+      setSelectedLR(null);
+      return;
+    }
+    const match = lrs.find((lr) => lr.lrNumber === values.lrNumber) ?? null;
+    setSelectedLR(match);
+  }, [values.lrNumber, lrs]);
+
   function handleSelectLR(lr: LRRecord) {
+    setSelectedLR(lr);
     setValues((prev) => ({ ...prev, lrNumber: lr.lrNumber }));
+  }
+
+  function handleClearLR() {
+    setSelectedLR(null);
+    setValues((prev) => ({ ...prev, lrNumber: "" }));
   }
 
   async function handleProofSelect(file: File) {
@@ -124,30 +145,21 @@ export default function PodDialog({
         readOnly
           ? "Proof of delivery details."
           : isEditing
-          ? "Update the proof of delivery details below."
-          : "Enter the proof of delivery details below."
+            ? "Update the proof of delivery details below."
+            : "Enter the proof of delivery details below."
       }
       loading={loading}
       loadingText="Saving POD..."
       footer={
         readOnly ? (
-          <Button onClick={handleClose}>
-            Close
-          </Button>
+          <Button onClick={handleClose}>Close</Button>
         ) : (
           <>
-            <Button
-              variant="outline"
-              onClick={handleClose}
-              disabled={loading}
-            >
+            <Button variant="outline" onClick={handleClose} disabled={loading}>
               Cancel
             </Button>
 
-            <Button
-              onClick={handleSave}
-              disabled={loading}
-            >
+            <Button onClick={handleSave} disabled={loading}>
               {loading ? "Saving..." : "Save POD"}
             </Button>
           </>
@@ -159,16 +171,12 @@ export default function PodDialog({
         errors={errors}
         onChange={setValues}
         selectedLR={selectedLR}
-        onSearchLR={() => setLookupOpen(true)}
+        onSelectLR={handleSelectLR}
+        onClearLR={handleClearLR}
         onProofSelect={handleProofSelect}
         uploadingProof={uploadingProof}
         readOnly={readOnly}
-      />
-
-      <LRLookup
-        open={lookupOpen}
-        onClose={() => setLookupOpen(false)}
-        onSelect={handleSelectLR}
+        lockLrNumber={isEditing}
       />
     </FormDialog>
   );

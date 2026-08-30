@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardCheck, Eye, Pencil } from "lucide-react";
+import { ClipboardCheck, Eye, Pencil, Trash2 } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -16,9 +16,12 @@ interface PodTableProps {
   pageSize?: number;
   onView: (pod: PodRecord) => void;
   onEdit: (pod: PodRecord) => void;
+  onDelete?: (pod: PodRecord) => void;
   /** Staff / Sub-User Access Control — hides Edit when the caller lacks
    * "pod" edit permission. Defaults to `true` for existing call sites. */
   canEdit?: boolean;
+  /** Admin-only delete visibility (AuthProvider isAdmin). */
+  canDelete?: boolean;
 }
 
 export default function PodTable({
@@ -27,7 +30,9 @@ export default function PodTable({
   pageSize,
   onView,
   onEdit,
+  onDelete,
   canEdit = true,
+  canDelete = false,
 }: PodTableProps) {
   const columns: DataTableColumn<PodListRow>[] = [
     { key: "lrNumber", header: "LR Number", sortable: true, className: "font-medium" },
@@ -73,6 +78,13 @@ export default function PodTable({
           variant: "outline",
           onClick: onEdit,
           hidden: () => !canEdit,
+        },
+        {
+          label: "Delete",
+          icon: Trash2,
+          variant: "outline",
+          onClick: (row) => onDelete?.(row),
+          hidden: () => !canDelete || !onDelete,
         },
       ]}
     />

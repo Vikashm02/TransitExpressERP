@@ -6,6 +6,7 @@ import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import LearningPageChrome from "@/components/help/LearningPageChrome";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { podPageHelp } from "@/lib/help";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import PodDialog from "./PodDialog";
@@ -16,6 +17,7 @@ import { downloadPodUploadTemplate } from "./podBulkUpload";
 
 import {
   createPod,
+  deletePod,
   getPods,
   updatePod,
   type PodRecord,
@@ -26,9 +28,10 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const PAGE_SIZE = 10;
 
 export default function PodListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isAdmin } = useAuth();
   const canCreate = hasPermission("pod", "create_view");
   const canEdit = hasPermission("pod", "edit");
+  const canDelete = isAdmin;
 
   const [pods, setPods] = useState<PodRecord[]>([]);
   const [lrs, setLrs] = useState<LRRecord[]>([]);
@@ -42,6 +45,9 @@ export default function PodListPage() {
   const [saving, setSaving] = useState(false);
 
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<PodRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -140,9 +146,32 @@ export default function PodListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      toast.error(editingPod ? "Unable to update POD." : "Unable to create POD.");
+      const detail =
+        error instanceof Error && error.message
+          ? error.message
+          : editingPod
+            ? "Unable to update POD."
+            : "Unable to create POD.";
+      toast.error(detail);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget || !canDelete) return;
+
+    try {
+      setDeleting(true);
+      await deletePod(deleteTarget.id);
+      toast.success(`POD for ${deleteTarget.lrNumber} deleted.`);
+      setDeleteTarget(null);
+      setPods((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to delete POD. Admin authorization is required.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -227,7 +256,9 @@ export default function PodListPage() {
         pageSize={PAGE_SIZE}
         onView={handleView}
         onEdit={handleEdit}
+        onDelete={(pod) => setDeleteTarget(pod)}
         canEdit={canEdit}
+        canDelete={canDelete}
       />
 
       <PodDialog
@@ -244,6 +275,23 @@ export default function PodListPage() {
         onOpenChange={setBulkUploadOpen}
         existingLRs={lrs}
         onImported={loadData}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+        title="Delete POD?"
+        description={
+          deleteTarget
+            ? `This will permanently remove the POD for ${deleteTarget.lrNumber}. The LR itself is not deleted and will become eligible for Add POD again.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleting}
+        onConfirm={() => void handleConfirmDelete()}
       />
     </div>
   );
