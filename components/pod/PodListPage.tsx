@@ -23,6 +23,7 @@ import {
   type PodRecord,
 } from "@/components/services/pod.service";
 import { getLRs, updateLR, type LRRecord } from "@/components/services/lr.service";
+import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
@@ -35,6 +36,7 @@ export default function PodListPage() {
 
   const [pods, setPods] = useState<PodRecord[]>([]);
   const [lrs, setLrs] = useState<LRRecord[]>([]);
+  const [staff, setStaff] = useState<AppUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -56,9 +58,14 @@ export default function PodListPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const [podData, lrData] = await Promise.all([getPods(), getLRs()]);
+      const [podData, lrData, staffData] = await Promise.all([
+        getPods(),
+        getLRs(),
+        getStaffUsers(),
+      ]);
       setPods(podData);
       setLrs(lrData);
+      setStaff(staffData);
     } catch (error) {
       console.error(error);
       toast.error("Unable to load PODs.");
@@ -67,15 +74,27 @@ export default function PodListPage() {
     }
   }
 
+  const staffNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const user of staff) {
+      map.set(user.id, user.displayName);
+    }
+    return map;
+  }, [staff]);
+
   /** Consignee is never stored on `pods` (see pod.schema.ts) — resolved
-   * here, read-only, from the matching LR purely for display. */
+   * here, read-only, from the matching LR purely for display.
+   * Created By is resolved once from app_users via getStaffUsers(). */
   const podRows: PodListRow[] = useMemo(
     () =>
       pods.map((pod) => ({
         ...pod,
         consignee: lrs.find((lr) => lr.lrNumber === pod.lrNumber)?.consignee ?? "",
+        createdByName: pod.createdBy
+          ? staffNameById.get(pod.createdBy) ?? "Unknown User"
+          : "Unknown User",
       })),
-    [pods, lrs]
+    [pods, lrs, staffNameById]
   );
 
   const filteredPods = useMemo(() => {

@@ -7,8 +7,12 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import type { PodRecord } from "@/components/services/pod.service";
 
 /** POD rows joined (client-side, read-only) with their linked LR's
- * Consignee for display — Consignee itself is never stored on `pods`. */
-export type PodListRow = PodRecord & { consignee: string };
+ * Consignee for display — Consignee itself is never stored on `pods`.
+ * createdByName is resolved from app_users (never show UUID). */
+export type PodListRow = PodRecord & {
+  consignee: string;
+  createdByName: string;
+};
 
 interface PodTableProps {
   pods: PodListRow[];
@@ -39,6 +43,11 @@ export default function PodTable({
     { key: "consignee", header: "Consignee", sortable: true },
     { key: "podDate", header: "POD Date", sortable: true },
     { key: "unloadingDate", header: "Unloading Date", sortable: true },
+    {
+      key: "createdByName",
+      header: "Created By",
+      render: (row) => row.createdByName,
+    },
     {
       key: "podUploaded",
       header: "POD Uploaded",
