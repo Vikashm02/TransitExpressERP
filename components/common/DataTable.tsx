@@ -112,6 +112,25 @@ interface DataTableProps<T> {
 
 const DEFAULT_LOADING_ROWS = 5;
 
+/**
+ * Premium action control zone — deliberately stronger than a pale table wash
+ * so staff instantly see the control bar. Same Transjit primary family only.
+ */
+const ACTION_STRIP_CLASS = cn(
+  "flex flex-wrap items-center gap-2.5 transition-colors",
+  "border-t border-primary/25",
+  "border-l-[3px] border-l-primary",
+  "bg-primary/[0.10] hover:bg-primary/[0.14]"
+);
+
+/** Contained action chips inside the strip (non-destructive). */
+const ACTION_BUTTON_CLASS = cn(
+  "border-border/80 bg-card text-foreground",
+  "shadow-sm shadow-primary/5",
+  "hover:border-primary/40 hover:bg-primary/[0.12] hover:text-primary",
+  "hover:shadow-md hover:shadow-primary/10"
+);
+
 /** Identity / contact fields — empty values get a subtle "Missing" pill. */
 const IMPORTANT_EMPTY_KEYS = new Set([
   "gst",
@@ -365,11 +384,17 @@ export default function DataTable<T extends Record<string, any>>({
   function renderActionButtons(row: T) {
     return visibleActionsFor(row).map((action) => {
       const ActionIcon = action.icon;
+      const isDestructive = action.variant === "destructive";
       return (
         <Button
           key={action.label}
           size="sm"
           variant={action.variant ?? "outline"}
+          className={
+            isDestructive
+              ? "shadow-sm hover:shadow-md"
+              : ACTION_BUTTON_CLASS
+          }
           onClick={() => action.onClick(row)}
         >
           {ActionIcon && <ActionIcon className="h-3.5 w-3.5" />}
@@ -523,16 +548,23 @@ export default function DataTable<T extends Record<string, any>>({
                 {rowActions.length > 0 && (
                   <TableRow
                     className={cn(
-                      rowClassName,
-                      "border-b"
+                      "border-b hover:bg-transparent",
+                      // Preserve module row styling (e.g. draft highlight)
+                      // without inheriting data-row pointer/hover chrome.
+                      getRowClassName?.(row)
                     )}
                   >
                     <TableCell
                       colSpan={Math.max(columnCount, 1)}
-                      className="whitespace-normal pt-0 pb-3"
+                      className="whitespace-normal p-0"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex flex-wrap gap-2 border-t border-border/70 pt-2.5">
+                      <div
+                        className={cn(
+                          ACTION_STRIP_CLASS,
+                          "rounded-br-lg px-4 py-3"
+                        )}
+                      >
                         {renderActionButtons(row)}
                       </div>
                     </TableCell>
@@ -633,7 +665,10 @@ export default function DataTable<T extends Record<string, any>>({
 
               {hasActions && (
                 <div
-                  className="flex flex-wrap gap-2 border-t pt-3"
+                  className={cn(
+                    ACTION_STRIP_CLASS,
+                    "-mx-4 -mb-4 mt-1 rounded-b-xl px-4 py-3"
+                  )}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {renderActionButtons(row)}
