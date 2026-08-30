@@ -167,15 +167,22 @@ export default function ConsigneeSupplyReportPage() {
               title="Total weight"
               value={formatMt(data.overview.totalWeight)}
               subtitle="Transported loading weight"
+              valuePresentation="number"
             />
-            <StatCard title="Total LRs" value={data.overview.lrCount} />
+            <StatCard
+              title="Total LRs"
+              value={data.overview.lrCount}
+              valuePresentation="number"
+            />
             <StatCard
               title="Unique consignees"
               value={data.overview.uniqueConsignees}
+              valuePresentation="number"
             />
             <StatCard
               title="Unique materials"
               value={data.overview.uniqueMaterials}
+              valuePresentation="number"
             />
             <StatCard
               title="Avg weight / LR"
@@ -184,6 +191,7 @@ export default function ConsigneeSupplyReportPage() {
                   ? "—"
                   : formatMt(data.overview.avgWeightPerLr)
               }
+              valuePresentation="number"
             />
             <StatCard
               title="Top consignee"
@@ -193,6 +201,7 @@ export default function ConsigneeSupplyReportPage() {
                   ? formatMt(data.overview.topConsignee.weight)
                   : undefined
               }
+              valuePresentation="text"
             />
             <StatCard
               title="Top material"
@@ -202,11 +211,13 @@ export default function ConsigneeSupplyReportPage() {
                   ? formatMt(data.overview.topMaterial.weight)
                   : undefined
               }
+              valuePresentation="text"
             />
             <StatCard
               title="Period"
               value={formatDisplayDate(data.overview.periodFrom)}
               subtitle={`to ${formatDisplayDate(data.overview.periodTo)}`}
+              valuePresentation="text"
             />
           </section>
 

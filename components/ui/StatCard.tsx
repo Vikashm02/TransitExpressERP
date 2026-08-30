@@ -16,6 +16,12 @@ interface StatCardProps {
   subtitle?: string;
   trend?: StatCardTrend;
   className?: string;
+  /**
+   * Value typography. Default preserves existing ERP dashboards.
+   * - number: compact metric size (Supply Intelligence KPIs)
+   * - text: smaller wrapping size for long names / period labels
+   */
+  valuePresentation?: "default" | "number" | "text";
 }
 
 const TREND_STYLES: Record<
@@ -27,6 +33,18 @@ const TREND_STYLES: Record<
   neutral: { text: "text-muted-foreground", Icon: Minus },
 };
 
+const VALUE_PRESENTATION_CLASS: Record<
+  NonNullable<StatCardProps["valuePresentation"]>,
+  string
+> = {
+  default:
+    "font-heading text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-[1.65rem]",
+  number:
+    "font-heading text-xl font-semibold tabular-nums tracking-tight text-foreground sm:text-2xl",
+  text:
+    "font-heading text-base font-semibold leading-snug tracking-tight text-foreground sm:text-lg break-words [overflow-wrap:anywhere]",
+};
+
 export default function StatCard({
   icon: Icon,
   title,
@@ -34,6 +52,7 @@ export default function StatCard({
   subtitle,
   trend,
   className,
+  valuePresentation = "default",
 }: StatCardProps) {
   const trendStyle = TREND_STYLES[trend?.direction ?? "up"];
   const TrendIcon = trendStyle.Icon;
@@ -52,9 +71,7 @@ export default function StatCard({
             {title}
           </p>
 
-          <p className="font-heading text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-[1.65rem]">
-            {value}
-          </p>
+          <p className={VALUE_PRESENTATION_CLASS[valuePresentation]}>{value}</p>
 
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
 
