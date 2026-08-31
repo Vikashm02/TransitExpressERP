@@ -87,6 +87,11 @@ export default function PodTable({
       render: (row) => formatPodListDate(row.unloadingDate),
     },
     {
+      key: "unloadingWeight",
+      header: "Unloading Weight",
+      sortable: true,
+    },
+    {
       key: "createdAt",
       header: "Created Date",
       sortable: true,
