@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { matchesFinancialsLrQuery } from "@/components/lorryExpense/FinancialsLrAutocomplete";
 import { getLRs, type LRRecord } from "@/components/services/lr.service";
 import { getPods } from "@/components/services/pod.service";
+import { isDraftEntry } from "@/lib/entryStatus";
 
 interface PodLrAutocompleteProps {
   id?: string;
@@ -57,7 +58,12 @@ export default function PodLrAutocomplete({
           pods.map((p) => p.lrNumber.trim().toLowerCase()).filter(Boolean)
         );
         setEligibleLrs(
-          lrs.filter((lr) => !taken.has(lr.lrNumber.trim().toLowerCase()))
+          lrs.filter(
+            (lr) =>
+              !isDraftEntry(lr.entryStatus) &&
+              Boolean(lr.lrNumber?.trim()) &&
+              !taken.has(lr.lrNumber.trim().toLowerCase())
+          )
         );
         loadedRef.current = true;
       })

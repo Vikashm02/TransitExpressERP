@@ -22,21 +22,20 @@ function emptyIfPlaceholder(value: string | undefined, placeholder: string): str
 /**
  * Normalize LR values for a database draft insert/update.
  *
- * Root cause of missing drafts: `lrs.lr_date` is NOT NULL. Autosave was
- * sending `lrDate: ""`, which Postgres rejects — the insert never
- * persisted, so nothing appeared after logout.
+ * Placeholders fill NOT NULL columns; final Save still runs full Zod validation.
  *
- * Placeholders are only for DB NOT NULL columns; final Save still runs
- * full Zod validation. The real LR number is reserved atomically on
- * first draft persist (see allocate_next_lr_number / migration 036).
- *
- * When loading a draft into the form, call `prepareLrForDraftForm` so
- * these sentinels never appear as fake field data.
+ * Real LR numbers are reserved once on first meaningful draft persist via
+ * create_numbered_lr_draft() / allocate_next_lr_number(). Subsequent autosaves
+ * keep the same number — never allocate again.
  */
 export function normalizeLrForDraftPersist(values: LR): LR {
   return {
     ...values,
     entryStatus: "draft",
+    lrNumber:
+      values.lrNumber?.trim() && !values.lrNumber.trim().startsWith("DRAFT-")
+        ? values.lrNumber.trim()
+        : values.lrNumber?.trim() ?? "",
     lrDate: values.lrDate?.trim() || todayIsoDate(),
     bookingBranch: values.bookingBranch?.trim() || LR_DRAFT_TEXT_PLACEHOLDER,
     consignor: values.consignor?.trim() || LR_DRAFT_TEXT_PLACEHOLDER,

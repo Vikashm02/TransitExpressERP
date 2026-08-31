@@ -22,6 +22,7 @@ import { downloadLRUploadTemplate } from "./lrBulkUpload";
 
 import {
   createLR,
+  createNumberedLrDraft,
   deleteLR,
   getLRs,
   getOwnDraftLRs,
@@ -29,7 +30,6 @@ import {
   updateLR,
   type LRRecord,
 } from "@/components/services/lr.service";
-import { discardOwnLrDraft } from "@/components/services/uploadRollback.service";
 import { syncVehicleMasterFromLr } from "@/components/services/vehicle.service";
 import { allocateNextLrNumber } from "@/components/services/company.service";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
@@ -38,6 +38,7 @@ import {
   canContinueDraftEntry,
   isDraftEntry,
   isDraftLrNumber,
+  needsLrNumberAllocation,
 } from "@/lib/entryStatus";
 import { normalizeLrForDraftPersist } from "@/lib/draftPersistence";
 import LrSeriesStatus from "./LrSeriesStatus";
@@ -104,22 +105,29 @@ export default function LRListPage() {
     null
   );
   const [checkingDrafts, setCheckingDrafts] = useState(false);
-  /** Prevents overlapping autosaves from reserving two numbers for one draft. */
+  /** Prevents overlapping autosaves from overlapping create/update work. */
   const autosaveInFlightRef = useRef(false);
   /**
-   * Create-session discard tracking (Cancel on brand-new LR only).
-   * Never treat Continue-draft / Edit-final as a new-create session.
+   * In-flight first create for this session. Concurrent autosaves await this
+   * instead of calling create_numbered_lr_draft a second time.
+   * DB RPC is still the source of truth for allocation atomicity.
+   */
+  const createDraftPromiseRef = useRef<Promise<LRRecord> | null>(null);
+  /**
+   * Create-session tracking. Never treat Continue-draft / Edit-final as a
+   * new-create session.
    */
   const openedAsNewCreateRef = useRef(false);
   const sessionCreatedDraftIdRef = useRef<number | null>(null);
   const createSessionDiscardedRef = useRef(false);
-  /** Bumped on each dialog open and on discard so late autosaves are ignored. */
+  /** Bumped on each dialog open and on close so late autosaves are ignored. */
   const createSessionTokenRef = useRef(0);
 
   function beginNewCreateSession() {
     createSessionTokenRef.current += 1;
     openedAsNewCreateRef.current = true;
     sessionCreatedDraftIdRef.current = null;
+    createDraftPromiseRef.current = null;
     createSessionDiscardedRef.current = false;
   }
 
@@ -127,12 +135,14 @@ export default function LRListPage() {
     createSessionTokenRef.current += 1;
     openedAsNewCreateRef.current = false;
     sessionCreatedDraftIdRef.current = null;
+    createDraftPromiseRef.current = null;
     createSessionDiscardedRef.current = false;
   }
 
   function clearCreateSessionTracking() {
     openedAsNewCreateRef.current = false;
     sessionCreatedDraftIdRef.current = null;
+    createDraftPromiseRef.current = null;
     createSessionDiscardedRef.current = false;
   }
 
@@ -321,27 +331,19 @@ export default function LRListPage() {
       return;
     }
 
-    // Mark discarded before closing so in-flight/debounced autosave bails out.
-    const wasNewCreate = openedAsNewCreateRef.current;
-    const draftIdToDelete = sessionCreatedDraftIdRef.current;
+    // Closing must NOT delete a numbered draft. Once Consignor/Consignee
+    // reserved a real LR number, that draft + number remain until explicit
+    // finalize or controlled draft management.
     createSessionDiscardedRef.current = true;
     createSessionTokenRef.current += 1;
 
     setDialogOpen(false);
     setEditingLR(null);
     setDialogMode("create");
-
-    if (wasNewCreate && draftIdToDelete != null) {
-      try {
-        await discardOwnLrDraft(draftIdToDelete);
-        await loadLRs();
-      } catch (error) {
-        console.error(error);
-        toast.error("Unable to discard the unsaved draft.");
-      }
-    }
-
     clearCreateSessionTracking();
+
+    // Refresh so any kept numbered draft appears in the list.
+    void loadLRs();
   }
 
   async function handleSubmit(values: LR) {
@@ -357,10 +359,10 @@ export default function LRListPage() {
             return;
           }
 
-          // Number was reserved when the draft was first persisted.
-          // Legacy DRAFT-* rows (pre-036) get one atomic allocation on finalize.
+          // Numbered drafts already hold a reserved lr_number — keep it.
+          // Allocate only for legacy empty / DRAFT-* rows.
           let lrNumber = editingLR.lrNumber;
-          if (isDraftLrNumber(lrNumber) || !lrNumber.trim()) {
+          if (needsLrNumberAllocation(lrNumber)) {
             lrNumber = await allocateNextLrNumber();
           }
 
@@ -383,10 +385,34 @@ export default function LRListPage() {
           successMessage = "LR updated successfully.";
         }
       } else {
-        // Direct final create (no prior draft) — reserve atomically once.
-        const lrNumber = await allocateNextLrNumber();
-        await createLR({ ...values, lrNumber, entryStatus: "final" });
-        successMessage = `LR ${lrNumber} created successfully.`;
+        // Direct Save before React has editingLR, but a numbered draft may
+        // already exist for this create session — finalize that row; never
+        // allocate a second number.
+        if (createDraftPromiseRef.current) {
+          const draft = await createDraftPromiseRef.current;
+          const finalized = await updateLR(draft.id, {
+            ...values,
+            lrNumber: draft.lrNumber,
+            entryStatus: "final",
+          });
+          successMessage = `LR ${finalized.lrNumber} saved successfully.`;
+        } else if (sessionCreatedDraftIdRef.current != null) {
+          const draftId = sessionCreatedDraftIdRef.current;
+          const knownNumber = !needsLrNumberAllocation(values.lrNumber)
+            ? values.lrNumber.trim()
+            : "";
+          const finalized = await updateLR(draftId, {
+            ...values,
+            // Empty lrNumber is omitted by toRow — reserved DB number is kept.
+            lrNumber: knownNumber,
+            entryStatus: "final",
+          });
+          successMessage = `LR ${finalized.lrNumber} saved successfully.`;
+        } else {
+          const lrNumber = await allocateNextLrNumber();
+          await createLR({ ...values, lrNumber, entryStatus: "final" });
+          successMessage = `LR ${lrNumber} created successfully.`;
+        }
       }
 
       // Vehicle Master sync only after LR save succeeds (not on draft autosave).
@@ -424,14 +450,35 @@ export default function LRListPage() {
   }
 
   async function handleAutosave(values: LR) {
-    // First persist reserves a real LR number atomically. Later autosaves
-    // keep that number. Opening the form alone does not consume a number.
+    // Hybrid numbering:
+    // - Empty new form → no DB row, no allocate
+    // - Consignor OR Consignee → create_numbered_lr_draft once (allocates)
+    // - Later autosaves → update same draft; never allocate again
     if (createSessionDiscardedRef.current) return;
-    if (autosaveInFlightRef.current) return;
-    autosaveInFlightRef.current = true;
 
     const tokenAtStart = createSessionTokenRef.current;
     const isNewCreateSession = openedAsNewCreateRef.current;
+    const hasMeaningfulParty =
+      values.consignor.trim().length > 0 || values.consignee.trim().length > 0;
+
+    // Resolve target draft id without relying only on React state (race-safe).
+    let draftId = editingLR?.id ?? sessionCreatedDraftIdRef.current;
+
+    if (draftId == null && createDraftPromiseRef.current) {
+      try {
+        const pending = await createDraftPromiseRef.current;
+        draftId = pending.id;
+      } catch {
+        // First create failed; allow a retry below if still meaningful.
+      }
+    }
+
+    if (draftId == null && !hasMeaningfulParty) return;
+    if (createSessionDiscardedRef.current) return;
+    if (tokenAtStart !== createSessionTokenRef.current) return;
+
+    if (autosaveInFlightRef.current) return;
+    autosaveInFlightRef.current = true;
 
     try {
       if (createSessionDiscardedRef.current) return;
@@ -439,23 +486,22 @@ export default function LRListPage() {
 
       const draftValues = normalizeLrForDraftPersist(values);
 
-      if (editingLR) {
-        if (createSessionDiscardedRef.current) return;
-        if (tokenAtStart !== createSessionTokenRef.current) return;
-
-        const reservedNumber =
-          editingLR.lrNumber && !isDraftLrNumber(editingLR.lrNumber)
+      if (draftId != null) {
+        const keepNumber =
+          editingLR?.id === draftId &&
+          editingLR.lrNumber &&
+          !isDraftLrNumber(editingLR.lrNumber)
             ? editingLR.lrNumber
             : draftValues.lrNumber && !isDraftLrNumber(draftValues.lrNumber)
               ? draftValues.lrNumber
-              : await allocateNextLrNumber();
+              : editingLR?.lrNumber && !isDraftLrNumber(editingLR.lrNumber)
+                ? editingLR.lrNumber
+                : "";
 
-        if (createSessionDiscardedRef.current) return;
-        if (tokenAtStart !== createSessionTokenRef.current) return;
-
-        const updated = await updateLR(editingLR.id, {
+        const updated = await updateLR(draftId, {
           ...draftValues,
-          lrNumber: reservedNumber,
+          // Never blank out a reserved number on update.
+          ...(keepNumber ? { lrNumber: keepNumber } : {}),
         });
 
         if (createSessionDiscardedRef.current) return;
@@ -465,33 +511,29 @@ export default function LRListPage() {
         return;
       }
 
-      if (!values.consignor.trim() && !values.customer.trim()) return;
-      if (createSessionDiscardedRef.current) return;
-      if (tokenAtStart !== createSessionTokenRef.current) return;
+      // First persist: allocate + insert in one DB transaction (once).
+      if (!hasMeaningfulParty) return;
 
-      const lrNumber = await allocateNextLrNumber();
-      if (createSessionDiscardedRef.current) return;
-      if (tokenAtStart !== createSessionTokenRef.current) return;
+      const createPromise = createNumberedLrDraft(draftValues);
+      createDraftPromiseRef.current = createPromise;
 
-      const created = await createLR({
-        ...draftValues,
-        lrNumber,
-      });
+      let created: LRRecord;
+      try {
+        created = await createPromise;
+      } finally {
+        if (createDraftPromiseRef.current === createPromise) {
+          createDraftPromiseRef.current = null;
+        }
+      }
 
-      // Cancel won the race: remove only this exact create, do not reattach.
+      sessionCreatedDraftIdRef.current = created.id;
+
+      // Dialog closed while create was in flight — KEEP the numbered draft.
       if (
         createSessionDiscardedRef.current ||
         tokenAtStart !== createSessionTokenRef.current
       ) {
-        if (isNewCreateSession) {
-          try {
-            await discardOwnLrDraft(created.id);
-            await loadLRs();
-          } catch (error) {
-            console.error(error);
-            toast.error("Unable to discard the unsaved draft.");
-          }
-        }
+        void loadLRs();
         return;
       }
 

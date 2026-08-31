@@ -24,8 +24,9 @@ export function entryStatusBadgeStatus(status: string | null | undefined): "Pend
 
 /**
  * Legacy helper for pre-036 temporary draft numbers (`DRAFT-*`).
- * New drafts must use allocate_next_lr_number() instead.
- * Kept only so isDraftLrNumber / finalize can recognize old rows.
+ * New drafts reserve a real LR number on first Consignor/Consignee via
+ * create_numbered_lr_draft (migration 062). Kept so finalize can recognize
+ * old DRAFT-* rows.
  */
 export function makeDraftLrNumber(): string {
   const token =
@@ -35,8 +36,17 @@ export function makeDraftLrNumber(): string {
   return `DRAFT-${token}`;
 }
 
+/** True when the value is a legacy DRAFT-* placeholder (not a real LR). */
 export function isDraftLrNumber(lrNumber: string | null | undefined): boolean {
   return Boolean(lrNumber?.startsWith("DRAFT-"));
+}
+
+/** Needs allocate_next_lr_number() before the row can become final. */
+export function needsLrNumberAllocation(
+  lrNumber: string | null | undefined
+): boolean {
+  const trimmed = lrNumber?.trim() ?? "";
+  return !trimmed || isDraftLrNumber(trimmed);
 }
 
 /**

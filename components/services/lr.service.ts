@@ -151,6 +151,15 @@ function toRow(values: LR) {
     row[toSnakeCase(field)] = emptyToNull(values[field]);
   }
 
+  // Never persist blank lr_number as "" (UNIQUE). Callers must supply a real
+  // number for inserts; empty → omit/null only for defensive updates of drafts
+  // that somehow lack a number (should not happen after migration 062 RPC).
+  if (!values.lrNumber?.trim()) {
+    delete row.lr_number;
+  } else {
+    row.lr_number = values.lrNumber.trim();
+  }
+
   const calc = calculateLR(values);
   row.bill_amount = calc.billAmount;
   row.lorry_hire_amount = calc.lorryHireAmount;
@@ -217,6 +226,8 @@ function fromRow(row: Record<string, unknown>): LRRecord {
   if (normalized.status == null || normalized.status === "") {
     normalized.status = "Open";
   }
+
+  normalized.lrNumber = asLrString(normalized.lrNumber);
 
   return {
     ...(normalized as LR),
@@ -332,6 +343,37 @@ export async function createLR(values: LR): Promise<LRRecord> {
     });
   }
   return record;
+}
+
+/**
+ * First meaningful draft persist: atomically allocates the next LR number
+ * and inserts entry_status=draft in one DB transaction (migration 062).
+ * Do not call for updates — use updateLR and keep the existing number.
+ */
+export async function createNumberedLrDraft(values: LR): Promise<LRRecord> {
+  const draftValues = {
+    ...values,
+    entryStatus: "draft" as const,
+  };
+  const payload = toRow(draftValues);
+  // Server assigns lr_number via allocate_next_lr_number().
+  delete payload.lr_number;
+  delete payload.id;
+  delete payload.created_at;
+  delete payload.updated_at;
+  delete payload.created_by;
+  delete payload.updated_by;
+
+  const { data, error } = await supabase.rpc("create_numbered_lr_draft", {
+    p_payload: payload,
+  });
+
+  if (error) throw error;
+  if (!data || typeof data !== "object") {
+    throw new Error("create_numbered_lr_draft returned no row.");
+  }
+
+  return fromRow(data as Record<string, unknown>);
 }
 
 export async function updateLR(id: number, values: LR): Promise<LRRecord> {

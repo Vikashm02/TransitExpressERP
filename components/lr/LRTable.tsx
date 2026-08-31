@@ -10,6 +10,7 @@ import {
   entryStatusBadgeStatus,
   entryStatusLabel,
   isDraftEntry,
+  isDraftLrNumber,
 } from "@/lib/entryStatus";
 
 interface LRTableProps {
@@ -61,7 +62,17 @@ export default function LRTable({
   onMaterialClick,
 }: LRTableProps) {
   const columns: DataTableColumn<LRRecord>[] = [
-    { key: "lrNumber", header: "LR No.", className: "font-medium" },
+    {
+      key: "lrNumber",
+      header: "LR No.",
+      className: "font-medium",
+      render: (row) =>
+        row.lrNumber?.trim() && !isDraftLrNumber(row.lrNumber)
+          ? row.lrNumber
+          : isDraftEntry(row.entryStatus)
+            ? "—"
+            : row.lrNumber || "—",
+    },
     { key: "lrDate", header: "Date" },
     { key: "consignor", header: "Consignor" },
     {

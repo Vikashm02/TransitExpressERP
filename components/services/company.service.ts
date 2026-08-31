@@ -87,7 +87,11 @@ export async function getCompany(): Promise<CompanyRecord | null> {
 /**
  * Atomically reserves the next LR document number from company_settings
  * (migration 036). Uses SELECT … FOR UPDATE inside the RPC so concurrent
- * draft/final creates never receive the same number.
+ * creators never receive the same number.
+ *
+ * Call via create_numbered_lr_draft on first meaningful draft, or directly
+ * on final create / bulk upload / legacy DRAFT-* finalize. Never on dialog
+ * open or empty cancel.
  */
 export async function allocateNextLrNumber(): Promise<string> {
   const { data, error } = await supabase.rpc("allocate_next_lr_number");

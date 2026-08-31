@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import FormDialog from "@/components/ui/FormDialog";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import type { FieldErrors } from "@/lib/validation";
 import type { LRRecord } from "@/components/services/lr.service";
 import { getCompany } from "@/components/services/company.service";
 import { pickFields } from "@/lib/utils";
-import { formatNextDocumentNumber } from "@/lib/permissions";
 import { isDraftEntry, isDraftLrNumber } from "@/lib/entryStatus";
 import { prepareLrForDraftForm } from "@/lib/draftPersistence";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
@@ -140,8 +139,11 @@ export default function LRDialog({
 }: LRDialogProps) {
   const [values, setValues] = useState<LR>(emptyLR);
   const [errors, setErrors] = useState<FieldErrors<LR>>({});
-  const [nextLrNumberPreview, setNextLrNumberPreview] = useState("");
   const [draftHint, setDraftHint] = useState<string | null>(null);
+  /** Track which persisted row the form was seeded from (avoid wipe on autosave). */
+  const seededLrIdRef = useRef<number | null>(null);
+  /** True when this dialog open started as Create (no lr) — number attach must not reset form. */
+  const openedAsCreateRef = useRef(false);
 
   /** Central path: typing, paste, lookups, load, and freight default all go through here. */
   function setLrValues(next: LR | ((prev: LR) => LR)) {
@@ -167,7 +169,7 @@ export default function LRDialog({
       !readOnly &&
       Boolean(onAutosave) &&
       !loading &&
-      (values.consignor.trim().length > 0 || values.customer.trim().length > 0),
+      (values.consignor.trim().length > 0 || values.consignee.trim().length > 0),
     delayMs: 2500,
     onSave: async (next) => {
       if (readOnly || !onAutosave) return;
@@ -181,9 +183,51 @@ export default function LRDialog({
   });
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      seededLrIdRef.current = null;
+      openedAsCreateRef.current = false;
+      return;
+    }
 
     setErrors({});
+
+    // Same draft row after first create / autosave: only sync reserved number.
+    if (lr && seededLrIdRef.current === lr.id) {
+      const reserved =
+        lr.lrNumber?.trim() && !isDraftLrNumber(lr.lrNumber) ? lr.lrNumber.trim() : "";
+      if (reserved) {
+        setValues((prev) =>
+          prev.lrNumber === reserved
+            ? prev
+            : normalizeLrTextFields({ ...prev, lrNumber: reserved, entryStatus: "draft" })
+        );
+      }
+      setDraftHint(
+        readOnly
+          ? null
+          : lr.entryStatus === "draft"
+            ? "Incomplete draft — continue editing, then Save."
+            : null
+      );
+      return;
+    }
+
+    // Create session: first time a draft row appears — attach id + number only.
+    if (lr && openedAsCreateRef.current && seededLrIdRef.current == null && !readOnly) {
+      const reserved =
+        lr.lrNumber?.trim() && !isDraftLrNumber(lr.lrNumber) ? lr.lrNumber.trim() : "";
+      seededLrIdRef.current = lr.id;
+      setValues((prev) =>
+        normalizeLrTextFields({
+          ...prev,
+          ...(reserved ? { lrNumber: reserved } : {}),
+          entryStatus: "draft",
+        })
+      );
+      setDraftHint("Incomplete draft — continue editing, then Save.");
+      return;
+    }
+
     setDraftHint(
       readOnly
         ? null
@@ -193,28 +237,23 @@ export default function LRDialog({
     );
 
     if (lr) {
+      openedAsCreateRef.current = false;
+      seededLrIdRef.current = lr.id;
       setValues(normalizeLrTextFields({ ...emptyLR, ...toEditableLR(lr) }));
-      if (!isDraftLrNumber(lr.lrNumber)) {
-        setNextLrNumberPreview("");
-        return;
-      }
-    } else {
-      setValues(normalizeLrTextFields(emptyLR));
+      return;
     }
+
+    openedAsCreateRef.current = true;
+    seededLrIdRef.current = null;
+    setValues(normalizeLrTextFields(emptyLR));
 
     let cancelled = false;
 
     getCompany()
       .then((company) => {
         if (cancelled || !company) return;
-        setNextLrNumberPreview(
-          formatNextDocumentNumber(
-            company.lrPrefix,
-            company.lrPrefixLength,
-            company.lrRunningNumber
-          )
-        );
-        if (!lr && !readOnly && company.defaultFreightType) {
+        // Seed default freight only — never show a fake next LR number.
+        if (!readOnly && company.defaultFreightType) {
           setLrValues((current) => ({
             ...current,
             freightType: company.defaultFreightType,
@@ -303,7 +342,6 @@ export default function LRDialog({
         lr={values}
         errors={errors}
         onChange={setLrValues}
-        nextLrNumberPreview={nextLrNumberPreview}
         requireMaterialDescription={requireMaterialDescription}
         readOnly={readOnly}
         excludeLrId={lr?.id ?? null}

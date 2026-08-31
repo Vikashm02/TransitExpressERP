@@ -24,7 +24,7 @@ interface LRHeaderProps {
   lr: LR;
   errors?: FieldErrors<LR>;
   onChange: (lr: LR) => void;
-  /** Preview only — does not allocate. Shown when creating a new LR. */
+  /** Unused — kept for call-site compatibility. Never show a fake preview. */
   nextLrNumberPreview?: string;
 }
 
@@ -36,7 +36,7 @@ export default function LRHeader({
   lr,
   errors = {},
   onChange,
-  nextLrNumberPreview = "",
+  nextLrNumberPreview: _nextLrNumberPreview = "",
 }: LRHeaderProps) {
   const [parties, setParties] = useState<LrBillingPartyLookupRow[]>([]);
   const [loadingParties, setLoadingParties] = useState(false);
@@ -75,11 +75,11 @@ export default function LRHeader({
     onChange({ ...lr, [key]: value });
   }
 
-  const displayNumber = lr.lrNumber?.trim()
-    ? lr.lrNumber
-    : nextLrNumberPreview;
+  const hasReservedNumber =
+    Boolean(lr.lrNumber?.trim()) && !isDraftLrNumber(lr.lrNumber);
 
-  const hasReservedNumber = Boolean(lr.lrNumber?.trim()) && !isDraftLrNumber(lr.lrNumber);
+  // Only show the actual reserved database number — never a fake preview.
+  const displayNumber = hasReservedNumber ? lr.lrNumber : "";
 
   return (
     <FormSection title="LR Information" subtitle="Basic booking information">
@@ -93,14 +93,19 @@ export default function LRHeader({
               ? lr.entryStatus === "draft"
                 ? "Reserved for this draft. Completing the LR keeps this number."
                 : undefined
-              : "Preview only. Opening this form does not reserve a number — the next LR number is reserved when the draft is first autosaved."
+              : "Not assigned yet — reserved when Consignor or Consignee is entered"
           }
         >
           <Input
             id="lr-number"
             readOnly
-            placeholder="Reserved on first draft save"
+            placeholder="Not assigned yet"
             value={displayNumber}
+            className={
+              hasReservedNumber
+                ? "font-semibold tracking-wide text-foreground"
+                : "text-muted-foreground"
+            }
           />
         </FormField>
 

@@ -7,7 +7,7 @@ export const lrPageHelp: PageHelpContent = {
     "इस page पर Lorry Receipt (LR) बनाते और देखते हैं।",
     "Create LR से नया form खुलता है। अधूरा काम Draft रह सकता है — list में Continue से पूरा करें।",
     "पूरा होने पर Save LR दबाएँ। Search और Status / Freight Type filters से list छान सकते हैं।",
-    "Cancel पर नया Create session का autosave draft हट सकता है; Continue Draft / Edit अलग हैं।",
+    "Consignor या Consignee भरते ही real LR number reserve हो जाता है और draft save होता है। Cancel करने पर numbered draft list में रहता है — number वापस नहीं जाता।",
   ],
   tourSteps: [
     {
@@ -16,11 +16,11 @@ export const lrPageHelp: PageHelpContent = {
     },
     {
       title: "Draft और Continue",
-      body: "Draft का मतलब काम अधूरा है। Continue से वही LR फिर खोलकर पूरा करें।",
+      body: "Draft का मतलब काम अधूरा है। Continue से वही LR (उसी number के साथ) फिर खोलकर पूरा करें।",
     },
     {
       title: "Save LR",
-      body: "Form भरने के बाद Save LR से record save होता है।",
+      body: "Form भरने के बाद Save LR से record final होता है — LR number वही रहता है।",
     },
     {
       title: "Search / filters",
@@ -32,7 +32,7 @@ export const lrPageHelp: PageHelpContent = {
 /** Field help — important / confusing LR fields only. */
 export const lrFieldHelp = {
   lrNumber:
-    "यह LR की पहचान का number है। नया form खोलते ही reserve नहीं होता — पहली draft autosave पर number reserve होता है।",
+    "खाली form पर number नहीं लगता। Consignor या Consignee भरते ही next real LR number reserve हो जाता है। वही number final Save तक रहता है।",
   lrDate: "यह LR बनाने / booking की तारीख है।",
   bookingBranch: "जिस branch से booking हो रही है, उसे यहाँ चुनें।",
   billingParty:
