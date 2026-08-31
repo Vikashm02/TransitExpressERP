@@ -70,6 +70,27 @@ export async function getPods(): Promise<PodRecord[]> {
   return (data ?? []).map(fromRow);
 }
 
+/**
+ * Lightweight read-only index: which LRs already have a POD.
+ * Selects only id + lr_number — no proof URLs or other heavy fields.
+ * Relationship is pods.lr_number ↔ lrs.lr_number (existing schema).
+ */
+export type PodLrIndexRow = {
+  id: number;
+  lrNumber: string;
+};
+
+export async function getPodLrIndex(): Promise<PodLrIndexRow[]> {
+  const { data, error } = await supabase.from(TABLE).select("id, lr_number");
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as number,
+    lrNumber: String((row as { lr_number?: unknown }).lr_number ?? "").trim(),
+  })).filter((row) => row.lrNumber.length > 0);
+}
+
 /* ==========================================================
    GET ONE POD
 ========================================================== */

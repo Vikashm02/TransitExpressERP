@@ -17,6 +17,11 @@ interface PodDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Pass a record to view/edit; omit/null to add a new POD. */
   pod?: PodRecord | null;
+  /**
+   * When creating (no `pod`), preselect this LR number in the form.
+   * Used by LR list → Create POD. Does not allocate or invent LRs.
+   */
+  initialLrNumber?: string | null;
   /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
   loading?: boolean;
   /** Renders every field disabled and hides Save — used by the "View" action. */
@@ -47,6 +52,7 @@ export default function PodDialog({
   open,
   onOpenChange,
   pod,
+  initialLrNumber = null,
   loading = false,
   readOnly = false,
   onSubmit,
@@ -58,24 +64,31 @@ export default function PodDialog({
   const [uploadingProof, setUploadingProof] = useState(false);
 
   const isEditing = Boolean(pod);
+  const preselectedLr = (initialLrNumber ?? "").trim();
+  const lockLrNumber = isEditing || Boolean(preselectedLr);
 
   useEffect(() => {
     if (open) {
-      setValues(pod ? { ...emptyPod, ...toEditablePod(pod) } : emptyPod);
+      const createSeed =
+        preselectedLr.length > 0
+          ? { ...emptyPod, lrNumber: preselectedLr }
+          : emptyPod;
+      setValues(pod ? { ...emptyPod, ...toEditablePod(pod) } : createSeed);
       setErrors({});
       setSelectedLR(null);
       getLRs()
         .then((data) => {
           setLrs(data);
-          if (pod?.lrNumber) {
+          const targetNumber = pod?.lrNumber?.trim() || preselectedLr;
+          if (targetNumber) {
             setSelectedLR(
-              data.find((lr) => lr.lrNumber === pod.lrNumber) ?? null
+              data.find((lr) => lr.lrNumber === targetNumber) ?? null
             );
           }
         })
         .catch((error) => console.error(error));
     }
-  }, [open, pod]);
+  }, [open, pod, preselectedLr]);
 
   useEffect(() => {
     if (!values.lrNumber) {
@@ -176,7 +189,7 @@ export default function PodDialog({
         onProofSelect={handleProofSelect}
         uploadingProof={uploadingProof}
         readOnly={readOnly}
-        lockLrNumber={isEditing}
+        lockLrNumber={lockLrNumber}
       />
     </FormDialog>
   );

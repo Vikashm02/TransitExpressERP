@@ -1,6 +1,16 @@
 "use client";
 
-import { Eye, FileText, Pencil, Printer, Share2, Trash2, UserCog } from "lucide-react";
+import {
+  ClipboardCheck,
+  Eye,
+  FileText,
+  Pencil,
+  Plus,
+  Printer,
+  Share2,
+  Trash2,
+  UserCog,
+} from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -12,6 +22,7 @@ import {
   isDraftEntry,
   isDraftLrNumber,
 } from "@/lib/entryStatus";
+import { cn } from "@/lib/utils";
 
 interface LRTableProps {
   lrs: LRRecord[];
@@ -38,6 +49,33 @@ interface LRTableProps {
   onConsigneeClick?: (lr: LRRecord) => void;
   /** Open Material Intelligence for the exact material name on this row. */
   onMaterialClick?: (lr: LRRecord) => void;
+  /**
+   * Derived POD presence: lr_number → pods.id.
+   * Read-only lookup from existing POD rows; never written onto LRs.
+   */
+  podIdByLrNumber?: ReadonlyMap<string, number>;
+  canCreatePod?: boolean;
+  canEditPod?: boolean;
+  onCreatePod?: (lr: LRRecord) => void;
+  onViewPod?: (lr: LRRecord) => void;
+  onEditPod?: (lr: LRRecord) => void;
+}
+
+function displayLrNumber(row: LRRecord): string {
+  if (row.lrNumber?.trim() && !isDraftLrNumber(row.lrNumber)) {
+    return row.lrNumber;
+  }
+  if (isDraftEntry(row.entryStatus)) return "—";
+  return row.lrNumber || "—";
+}
+
+/** Same eligibility rules as POD autocomplete: finalized LR with a real number. */
+function canOfferCreatePod(row: LRRecord): boolean {
+  return (
+    !isDraftEntry(row.entryStatus) &&
+    Boolean(row.lrNumber?.trim()) &&
+    !isDraftLrNumber(row.lrNumber)
+  );
 }
 
 export default function LRTable({
@@ -60,18 +98,45 @@ export default function LRTable({
   canShare = true,
   onConsigneeClick,
   onMaterialClick,
+  podIdByLrNumber,
+  canCreatePod = false,
+  canEditPod = false,
+  onCreatePod,
+  onViewPod,
+  onEditPod,
 }: LRTableProps) {
   const columns: DataTableColumn<LRRecord>[] = [
     {
       key: "lrNumber",
       header: "LR No.",
       className: "font-medium",
-      render: (row) =>
-        row.lrNumber?.trim() && !isDraftLrNumber(row.lrNumber)
-          ? row.lrNumber
-          : isDraftEntry(row.entryStatus)
-            ? "—"
-            : row.lrNumber || "—",
+      render: (row) => {
+        const number = displayLrNumber(row);
+        const key = row.lrNumber?.trim() ?? "";
+        const hasPod = Boolean(key && podIdByLrNumber?.has(key));
+        return (
+          <div className="flex min-w-0 flex-col gap-0.5 leading-tight">
+            <span className="truncate">{number}</span>
+            {podIdByLrNumber ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 text-[11px] font-medium",
+                  hasPod ? "text-success" : "text-warning-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    hasPod ? "bg-success" : "bg-warning"
+                  )}
+                  aria-hidden
+                />
+                {hasPod ? "POD Created" : "POD Pending"}
+              </span>
+            ) : null}
+          </div>
+        );
+      },
     },
     { key: "lrDate", header: "Date" },
     { key: "consignor", header: "Consignor" },
@@ -218,6 +283,43 @@ export default function LRTable({
           variant: "outline",
           onClick: onEdit,
           hidden: (row) => isDraftEntry(row.entryStatus) || !canEdit,
+        },
+        {
+          label: "Create POD",
+          icon: Plus,
+          variant: "outline",
+          onClick: (row) => onCreatePod?.(row),
+          hidden: (row) => {
+            if (!canCreatePod || !onCreatePod) return true;
+            if (!canOfferCreatePod(row)) return true;
+            const key = row.lrNumber?.trim() ?? "";
+            return Boolean(key && podIdByLrNumber?.has(key));
+          },
+        },
+        {
+          label: "Edit POD",
+          icon: ClipboardCheck,
+          variant: "outline",
+          onClick: (row) => onEditPod?.(row),
+          hidden: (row) => {
+            if (!canEditPod || !onEditPod) return true;
+            const key = row.lrNumber?.trim() ?? "";
+            return !(key && podIdByLrNumber?.has(key));
+          },
+        },
+        {
+          label: "View POD",
+          icon: ClipboardCheck,
+          variant: "outline",
+          onClick: (row) => onViewPod?.(row),
+          hidden: (row) => {
+            // Prefer Edit POD when the user can edit; otherwise View if they
+            // have any POD module access (create_view or edit).
+            if (canEditPod) return true;
+            if (!canCreatePod || !onViewPod) return true;
+            const key = row.lrNumber?.trim() ?? "";
+            return !(key && podIdByLrNumber?.has(key));
+          },
         },
         {
           label: "Delete",

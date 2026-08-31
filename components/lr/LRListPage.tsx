@@ -19,6 +19,8 @@ import LRTable from "./LRTable";
 import ShareLRDialog from "./ShareLRDialog";
 import { FREIGHT_TYPE_OPTIONS, LR_STATUS_OPTIONS, type LR } from "./lr.schema";
 import { downloadLRUploadTemplate } from "./lrBulkUpload";
+import PodDialog from "@/components/pod/PodDialog";
+import type { Pod } from "@/components/pod/pod.schema";
 
 import {
   createLR,
@@ -30,6 +32,13 @@ import {
   updateLR,
   type LRRecord,
 } from "@/components/services/lr.service";
+import {
+  createPod,
+  getPod,
+  getPodLrIndex,
+  updatePod,
+  type PodRecord,
+} from "@/components/services/pod.service";
 import { syncVehicleMasterFromLr } from "@/components/services/vehicle.service";
 import { allocateNextLrNumber } from "@/components/services/company.service";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
@@ -65,6 +74,8 @@ export default function LRListPage() {
   const canDelete = isCreator;
   const canPrint = hasAction("lr", "print");
   const canShare = hasAction("lr", "share");
+  const canCreatePod = hasPermission("pod", "create_view");
+  const canEditPod = hasPermission("pod", "edit");
 
   const [lrs, setLRs] = useState<LRRecord[]>([]);
   const [staff, setStaff] = useState<AppUserProfile[]>([]);
@@ -105,6 +116,16 @@ export default function LRListPage() {
     null
   );
   const [checkingDrafts, setCheckingDrafts] = useState(false);
+
+  /** Derived POD presence for the LR list (lr_number → pods.id). Read-only. */
+  const [podIdByLrNumber, setPodIdByLrNumber] = useState<Map<string, number>>(
+    () => new Map()
+  );
+  const [podDialogOpen, setPodDialogOpen] = useState(false);
+  const [podDialogRecord, setPodDialogRecord] = useState<PodRecord | null>(null);
+  const [podDialogInitialLr, setPodDialogInitialLr] = useState<string | null>(null);
+  const [podDialogViewOnly, setPodDialogViewOnly] = useState(false);
+  const [podSaving, setPodSaving] = useState(false);
   /** Prevents overlapping autosaves from overlapping create/update work. */
   const autosaveInFlightRef = useRef(false);
   /**
@@ -159,8 +180,13 @@ export default function LRListPage() {
   async function loadLRs() {
     try {
       setLoading(true);
-      const data = await getLRs();
+      const [data, podIndex] = await Promise.all([getLRs(), getPodLrIndex()]);
       setLRs(data);
+      const map = new Map<string, number>();
+      for (const row of podIndex) {
+        if (!map.has(row.lrNumber)) map.set(row.lrNumber, row.id);
+      }
+      setPodIdByLrNumber(map);
     } catch (error) {
       console.error(error);
       toast.error("Unable to load LRs.");
@@ -323,6 +349,100 @@ export default function LRListPage() {
   function handleShare(lr: LRRecord) {
     setShareTarget(lr);
     setShareOpen(true);
+  }
+
+  function handlePodDialogOpenChange(open: boolean) {
+    setPodDialogOpen(open);
+    if (!open) {
+      setPodDialogRecord(null);
+      setPodDialogInitialLr(null);
+      setPodDialogViewOnly(false);
+    }
+  }
+
+  function handleCreatePod(lr: LRRecord) {
+    if (!canCreatePod) {
+      toast.error("You do not have permission to create a POD.");
+      return;
+    }
+    if (isDraftEntry(lr.entryStatus) || isDraftLrNumber(lr.lrNumber) || !lr.lrNumber.trim()) {
+      toast.error("POD can only be created for a finalized LR with a real LR number.");
+      return;
+    }
+    if (podIdByLrNumber.has(lr.lrNumber.trim())) {
+      toast.error(`A POD already exists for ${lr.lrNumber}.`);
+      return;
+    }
+    setPodDialogRecord(null);
+    setPodDialogInitialLr(lr.lrNumber.trim());
+    setPodDialogViewOnly(false);
+    setPodDialogOpen(true);
+  }
+
+  async function openExistingPod(lr: LRRecord, viewOnly: boolean) {
+    const podId = podIdByLrNumber.get(lr.lrNumber.trim());
+    if (podId == null) {
+      toast.error(`No POD found for ${lr.lrNumber}.`);
+      return;
+    }
+    try {
+      const pod = await getPod(podId);
+      setPodDialogRecord(pod);
+      setPodDialogInitialLr(null);
+      setPodDialogViewOnly(viewOnly);
+      setPodDialogOpen(true);
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to open POD.");
+    }
+  }
+
+  function handleViewPod(lr: LRRecord) {
+    void openExistingPod(lr, true);
+  }
+
+  function handleEditPod(lr: LRRecord) {
+    if (!canEditPod) {
+      toast.error("You do not have permission to edit a POD.");
+      return;
+    }
+    void openExistingPod(lr, false);
+  }
+
+  /** Same as POD module: mark linked LR Delivered after POD save (status only). */
+  async function markLRDeliveredFromPod(lrNumber: string) {
+    const lr = lrs.find((record) => record.lrNumber === lrNumber);
+    if (!lr || lr.status === "Delivered") return;
+    await updateLR(lr.id, { ...lr, status: "Delivered" });
+  }
+
+  async function handlePodSubmit(values: Pod) {
+    try {
+      setPodSaving(true);
+
+      if (podDialogRecord) {
+        await updatePod(podDialogRecord.id, values);
+        toast.success("POD updated successfully.");
+      } else {
+        await createPod(values);
+        toast.success("POD created successfully.");
+      }
+
+      await markLRDeliveredFromPod(values.lrNumber);
+      handlePodDialogOpenChange(false);
+      await loadLRs();
+    } catch (error) {
+      console.error(error);
+      const detail =
+        error instanceof Error && error.message
+          ? error.message
+          : podDialogRecord
+            ? "Unable to update POD."
+            : "Unable to create POD.";
+      toast.error(detail);
+    } finally {
+      setPodSaving(false);
+    }
   }
 
   async function handleDialogOpenChange(open: boolean) {
@@ -771,6 +891,12 @@ export default function LRListPage() {
         canDelete={canDelete}
         canPrint={canPrint}
         canShare={canShare}
+        podIdByLrNumber={podIdByLrNumber}
+        canCreatePod={canCreatePod}
+        canEditPod={canEditPod}
+        onCreatePod={handleCreatePod}
+        onViewPod={handleViewPod}
+        onEditPod={handleEditPod}
         onConsigneeClick={(lr) => {
           const name = (lr.consignee || "").trim();
           if (!name) return;
@@ -842,6 +968,16 @@ export default function LRListPage() {
         onAutosave={
           dialogMode !== "view" && canContinueDraft ? handleAutosave : undefined
         }
+      />
+
+      <PodDialog
+        open={podDialogOpen}
+        onOpenChange={handlePodDialogOpenChange}
+        pod={podDialogRecord}
+        initialLrNumber={podDialogInitialLr}
+        loading={podSaving}
+        readOnly={podDialogViewOnly}
+        onSubmit={handlePodSubmit}
       />
 
       <PendingDraftLrsDialog
