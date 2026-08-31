@@ -823,12 +823,12 @@ export default function LRListPage() {
         />
         <StatCard
           icon={FilePenLine}
-          title="Total Draft"
+          title="Drafts"
           value={stats.totalDraft}
         />
         <StatCard
           icon={ClipboardList}
-          title="Total Pending POD"
+          title="Pending POD"
           value={stats.totalPendingPod}
         />
       </div>
