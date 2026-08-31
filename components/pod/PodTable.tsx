@@ -21,6 +21,18 @@ function formatPodListDate(value: string | null | undefined): string {
   }
 }
 
+/**
+ * Sequential sort key for document numbers like LR19372.
+ * Uses the trailing digit run so ordering is numeric (19372 > 1939),
+ * not lexical, and does not hard-code a prefix.
+ */
+function lrNumberSortValue(lrNumber: string): number {
+  const match = lrNumber.trim().match(/(\d+)\s*$/);
+  if (!match) return 0;
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /** POD rows joined (client-side, read-only) with their linked LR's
  * Consignee for display — Consignee itself is never stored on `pods`.
  * createdByName is resolved from app_users (never show UUID). */
@@ -54,7 +66,13 @@ export default function PodTable({
   canDelete = false,
 }: PodTableProps) {
   const columns: DataTableColumn<PodListRow>[] = [
-    { key: "lrNumber", header: "LR Number", sortable: true, className: "font-medium" },
+    {
+      key: "lrNumber",
+      header: "LR Number",
+      sortable: true,
+      className: "font-medium",
+      sortAccessor: (row) => lrNumberSortValue(row.lrNumber),
+    },
     { key: "consignee", header: "Consignee", sortable: true },
     {
       key: "podDate",
@@ -104,7 +122,7 @@ export default function PodTable({
       emptyDescription="Add your first proof of delivery to get started."
       emptyIcon={ClipboardCheck}
       sortable
-      defaultSort={{ key: "podDate", direction: "desc" }}
+      defaultSort={{ key: "lrNumber", direction: "desc" }}
       pageSize={pageSize}
       actions={[
         {
