@@ -13,12 +13,9 @@ import {
 } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
-import StatusBadge from "@/components/ui/StatusBadge";
 import type { LRRecord } from "@/components/services/lr.service";
 import {
   draftRowClassName,
-  entryStatusBadgeStatus,
-  entryStatusLabel,
   isDraftEntry,
   isDraftLrNumber,
 } from "@/lib/entryStatus";
@@ -78,6 +75,27 @@ function canOfferCreatePod(row: LRRecord): boolean {
   );
 }
 
+/**
+ * Compact POD status for the LR list (presentation only).
+ * Sits at the bottom of the LR No. cell, above the action strip.
+ * Theme-aware semantic accents — readable in light and dark mode.
+ */
+function PodStatusChip({ hasPod }: { hasPod: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit max-w-full items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-none ring-1",
+        hasPod
+          ? "bg-success/15 text-success ring-success/30 dark:bg-success/25 dark:text-success dark:ring-success/45"
+          : "bg-warning/20 text-warning ring-warning/35 dark:bg-warning/30 dark:text-warning dark:ring-warning/50"
+      )}
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden />
+      {hasPod ? "POD Created" : "POD Pending"}
+    </span>
+  );
+}
+
 export default function LRTable({
   lrs,
   loading,
@@ -109,31 +127,15 @@ export default function LRTable({
     {
       key: "lrNumber",
       header: "LR No.",
-      className: "font-medium",
+      className: "align-top font-medium",
       render: (row) => {
         const number = displayLrNumber(row);
         const key = row.lrNumber?.trim() ?? "";
         const hasPod = Boolean(key && podIdByLrNumber?.has(key));
         return (
-          <div className="flex min-w-0 flex-col gap-0.5 leading-tight">
-            <span className="truncate">{number}</span>
-            {podIdByLrNumber ? (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 text-[11px] font-medium",
-                  hasPod ? "text-success" : "text-warning-foreground"
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
-                    hasPod ? "bg-success" : "bg-warning"
-                  )}
-                  aria-hidden
-                />
-                {hasPod ? "POD Created" : "POD Pending"}
-              </span>
-            ) : null}
+          <div className="flex min-h-[3.5rem] min-w-0 flex-col items-start justify-between gap-2 py-0.5">
+            <span className="truncate font-medium leading-tight">{number}</span>
+            {podIdByLrNumber ? <PodStatusChip hasPod={hasPod} /> : null}
           </div>
         );
       },
@@ -198,19 +200,7 @@ export default function LRTable({
       header: "Route",
       render: (row) => `${row.from || "—"} → ${row.to || "—"}`,
     },
-    { key: "freightType", header: "Freight Type" },
     { key: "status", header: "Status", type: "status" },
-    {
-      key: "entryStatus",
-      header: "Entry",
-      render: (row) =>
-        isDraftEntry(row.entryStatus) ? (
-          <StatusBadge
-            status={entryStatusBadgeStatus(row.entryStatus)}
-            label={entryStatusLabel(row.entryStatus)}
-          />
-        ) : null,
-    },
     {
       key: "createdBy",
       header: "Created By",
@@ -221,13 +211,9 @@ export default function LRTable({
     },
   ];
 
-  if (isAdmin) {
-    columns.push({
-      key: "assignedTo",
-      header: "Assigned To",
-      render: (row) => resolveAssignedName?.(row.assignedTo) ?? "Unassigned",
-    });
-  }
+  // Assigned To is intentionally NOT shown on the landing page (horizontal
+  // space). Reassign remains available in the action bar; assignment data
+  // and service logic are unchanged.
 
   // Fixed dashboard order: numeric LR number descending (never lexicographic).
   // e.g. LR19311 > LR19310 > … > LR1932 > LR1931. No alternate column sorts.
