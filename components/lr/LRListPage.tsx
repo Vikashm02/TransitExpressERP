@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Banknote, FileDown, FileText, PackageCheck, Truck, Upload } from "lucide-react";
+import {
+  ClipboardList,
+  FileDown,
+  FilePenLine,
+  FileText,
+  PackageCheck,
+  Truck,
+  Upload,
+} from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import LearningPageChrome from "@/components/help/LearningPageChrome";
@@ -248,10 +256,17 @@ export default function LRListPage() {
     const open = lrs.filter((lr) => lr.status === "Open" || lr.status === "In Transit").length;
     const delivered = lrs.filter((lr) => lr.status === "Delivered").length;
     const billed = lrs.filter((lr) => lr.status === "Billed").length;
-    const totalBillAmount = lrs.reduce((sum, lr) => sum + lr.billAmount, 0);
+    const totalDraft = lrs.filter((lr) => isDraftEntry(lr.entryStatus)).length;
+    // Same source of truth as LRTable PodStatusChip: pending when lr_number is
+    // absent from the getPodLrIndex() map (or blank → not in map).
+    const totalPendingPod = lrs.filter((lr) => {
+      const key = lr.lrNumber?.trim() ?? "";
+      const hasPod = Boolean(key && podIdByLrNumber.has(key));
+      return !hasPod;
+    }).length;
 
-    return { open, delivered, billed, totalBillAmount };
-  }, [lrs]);
+    return { open, delivered, billed, totalDraft, totalPendingPod };
+  }, [lrs, podIdByLrNumber]);
 
   function handleAdd() {
     void handleCreateLrClick();
@@ -790,7 +805,7 @@ export default function LRListPage() {
 
       <LrSeriesStatus lrNumbers={lrs.map((lr) => lr.lrNumber)} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           icon={FileText}
           title="Total LRs"
@@ -807,9 +822,14 @@ export default function LRListPage() {
           value={stats.delivered + stats.billed}
         />
         <StatCard
-          icon={Banknote}
-          title="Total Bill Amount"
-          value={`₹ ${stats.totalBillAmount.toFixed(2)}`}
+          icon={FilePenLine}
+          title="Total Draft"
+          value={stats.totalDraft}
+        />
+        <StatCard
+          icon={ClipboardList}
+          title="Total Pending POD"
+          value={stats.totalPendingPod}
         />
       </div>
 
