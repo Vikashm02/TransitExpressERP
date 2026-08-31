@@ -51,8 +51,8 @@ export function objectToCamelCase<T = Record<string, unknown>>(
  * a Postgres `GENERATED ALWAYS AS IDENTITY` column on every table in this
  * app — Supabase rejects (HTTP 400, code 428C9) *any* update payload that
  * includes it, regardless of value. `created_at`/`updated_at` and the
- * Operations audit columns (`created_by`/`updated_by`) are likewise set by
- * the database / triggers, never the client.
+ * Operations audit columns (`created_by`/`updated_by`/`draft_created_by`) are
+ * likewise set by the database / triggers, never the client.
  *
  * Edit dialogs across the app seed their form state from the full DB
  * record (`{ ...emptyX, ...record }`), which means `id`/`created_at`
@@ -66,8 +66,10 @@ const SERVER_OWNED_FIELDS = [
   "updated_at",
   "created_by",
   "updated_by",
+  "draft_created_by",
   "createdBy",
   "updatedBy",
+  "draftCreatedBy",
 ] as const;
 
 export function omitServerFields<T extends Record<string, unknown>>(

@@ -10,14 +10,15 @@ import { emitNotificationEvent } from "@/components/services/notification.servic
  * (re)computed from `calculateLR()` at save time so the persisted values
  * can never drift from the source formulas (see lrCalculations.ts).
  *
- * `createdBy`/`assignedTo` are likewise NOT part of the editable `LR`
- * schema — they are entirely controlled server-side by the
- * `lrs_enforce_ownership()` trigger (migration 017), never sent by the
- * client on create/update. `null` on either means "created before the
- * ownership migration" (visible to admins only — see the matching RLS
- * policy) rather than an invented owner. Reassigning `assignedTo` for
- * an existing LR goes through the dedicated `reassignLR()` below, not
- * `updateLR()`. */
+ * `createdBy`/`assignedTo`/`draftCreatedBy` are likewise NOT part of the
+ * editable `LR` schema — they are entirely controlled server-side by
+ * ownership/audit triggers (017 / 034 / 064), never sent by the client on
+ * create/update. After migration 064, finalized `createdBy` is the first
+ * finalizer; `draftCreatedBy` is who reserved the numbered draft (null for
+ * direct final / bulk). `null` createdBy means "created before the
+ * ownership migration" rather than an invented owner. Reassigning
+ * `assignedTo` for an existing LR goes through the dedicated `reassignLR()`
+ * below, not `updateLR()`. */
 export interface LRRecord extends LR {
   id: number;
   billAmount: number;
@@ -25,6 +26,8 @@ export interface LRRecord extends LR {
   profitAmount: number;
   createdBy: string | null;
   updatedBy: string | null;
+  /** Immutable draft starter (migration 064). Null for direct-final LRs. */
+  draftCreatedBy: string | null;
   assignedTo: string | null;
   /** Draft vs finalized entry (migration 034). Defaults to final. */
   entryStatus: "draft" | "final";
@@ -181,6 +184,7 @@ function fromRow(row: Record<string, unknown>): LRRecord {
     profit_amount,
     created_by,
     updated_by,
+    draft_created_by,
     assigned_to,
     entry_status,
     ...rest
@@ -237,6 +241,7 @@ function fromRow(row: Record<string, unknown>): LRRecord {
     profitAmount: asLrNumber(profit_amount),
     createdBy: (created_by as string | null) ?? null,
     updatedBy: (updated_by as string | null) ?? null,
+    draftCreatedBy: (draft_created_by as string | null) ?? null,
     assignedTo: (assigned_to as string | null) ?? null,
     entryStatus: entry_status === "draft" ? "draft" : "final",
     created_at: created_at as string | undefined,
@@ -363,6 +368,7 @@ export async function createNumberedLrDraft(values: LR): Promise<LRRecord> {
   delete payload.updated_at;
   delete payload.created_by;
   delete payload.updated_by;
+  delete payload.draft_created_by;
 
   const { data, error } = await supabase.rpc("create_numbered_lr_draft", {
     p_payload: payload,
@@ -477,6 +483,9 @@ export async function reassignLR(id: number, assignedTo: string): Promise<LRReco
    OWN DRAFT LRs (read-only reminder before Create LR)
    Scoped to auth.uid() via supabase.auth.getUser() — caller
    cannot pass another user id. Does not allocate LR numbers.
+   Ownership: draft_created_by (064+). Pre-064 drafts have null
+   draft_created_by → fall back to created_by (still the inserter
+   while the row remains draft).
 ========================================================== */
 
 export async function getOwnDraftLRs(): Promise<LRRecord[]> {
@@ -492,7 +501,9 @@ export async function getOwnDraftLRs(): Promise<LRRecord[]> {
     .from(TABLE)
     .select("*")
     .eq("entry_status", "draft")
-    .eq("created_by", userId)
+    .or(
+      `draft_created_by.eq.${userId},and(draft_created_by.is.null,created_by.eq.${userId})`
+    )
     .order("created_at", { ascending: false });
 
   if (error) throw error;
