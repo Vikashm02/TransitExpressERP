@@ -10,6 +10,11 @@ export interface CustomerRecord extends Customer {
 
 const TABLE = "customers";
 
+/** Matches auto-generated codes only: C + digits (e.g. C001, C026, C1000). */
+const CUSTOMER_CODE_PATTERN = /^C(\d+)$/;
+
+const CODE_ALLOCATION_ATTEMPTS = 5;
+
 /** Supabase returns raw snake_case columns; `id`/`created_at` pass through unchanged. */
 function fromRow(row: Record<string, unknown>): CustomerRecord {
   const { id, created_at, ...rest } = row;
@@ -23,20 +28,54 @@ function fromRow(row: Record<string, unknown>): CustomerRecord {
   };
 }
 
+function formatCustomerCode(n: number): string {
+  return `C${String(n).padStart(3, "0")}`;
+}
+
 /**
- * Business codes follow the same "C001", "C002", ... convention the module
- * always displayed. Sequenced off the current row count, which is adequate
- * for a low-concurrency master data table.
+ * Next auto code from existing values: max numeric suffix among `C###`
+ * patterns + 1. Non-matching codes are ignored so historical outliers
+ * cannot break allocation. Pure helper — safe to unit-test without DB.
+ */
+export function nextCustomerCodeFromExisting(codes: readonly string[]): string {
+  let max = 0;
+
+  for (const raw of codes) {
+    const match = CUSTOMER_CODE_PATTERN.exec(raw.trim());
+    if (!match) continue;
+    const n = Number.parseInt(match[1], 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+
+  return formatCustomerCode(max + 1);
+}
+
+/**
+ * Allocates the next unused C### by scanning existing codes (max + 1),
+ * not by row count — so gaps from deletes do not collide.
  */
 async function generateCustomerCode(): Promise<string> {
-  const { count, error } = await supabase
-    .from(TABLE)
-    .select("*", { count: "exact", head: true });
+  const { data, error } = await supabase.from(TABLE).select("code");
 
   if (error) throw error;
 
-  const next = (count ?? 0) + 1;
-  return `C${String(next).padStart(3, "0")}`;
+  const codes = (data ?? []).map((row) => String((row as { code: string }).code ?? ""));
+  return nextCustomerCodeFromExisting(codes);
+}
+
+/** True only for unique violations on customers.code (not other 23505s). */
+function isCustomerCodeUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  const e = error as { code?: string; message?: string; details?: string };
+  if (e.code !== "23505") return false;
+
+  const haystack = `${e.message ?? ""} ${e.details ?? ""}`.toLowerCase();
+  return (
+    haystack.includes("customers_code_key") ||
+    haystack.includes("customers_code") ||
+    /\(code\)=/.test(haystack)
+  );
 }
 
 /* ==========================================================
@@ -107,17 +146,42 @@ export async function getCustomer(id: number): Promise<CustomerRecord> {
 ========================================================== */
 
 export async function createCustomer(values: Customer): Promise<CustomerRecord> {
-  const code = values.code.trim() || (await generateCustomerCode());
+  const providedCode = values.code.trim();
 
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert(objectToSnakeCase({ ...values, code }))
-    .select()
-    .single();
+  // Explicit codes (e.g. bulk upload): single attempt — do not invent a
+  // different code on conflict.
+  if (providedCode) {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .insert(objectToSnakeCase({ ...values, code: providedCode }))
+      .select()
+      .single();
 
-  if (error) throw error;
+    if (error) throw error;
+    return fromRow(data);
+  }
 
-  return fromRow(data);
+  // Auto-allocated codes: re-read max on each attempt so a concurrent
+  // insert that won the race is reflected before we retry.
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < CODE_ALLOCATION_ATTEMPTS; attempt++) {
+    const code = await generateCustomerCode();
+
+    const { data, error } = await supabase
+      .from(TABLE)
+      .insert(objectToSnakeCase({ ...values, code }))
+      .select()
+      .single();
+
+    if (!error) return fromRow(data);
+
+    if (!isCustomerCodeUniqueViolation(error)) throw error;
+
+    lastError = error;
+  }
+
+  throw lastError;
 }
 
 /* ==========================================================
