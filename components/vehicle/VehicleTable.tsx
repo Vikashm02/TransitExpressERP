@@ -3,6 +3,7 @@
 import { Pencil, Trash2, Truck } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { getComplianceStatus } from "./vehicle.schema";
 import type { VehicleRecord } from "@/components/services/vehicle.service";
@@ -50,6 +51,13 @@ export default function VehicleTable({
       render: (row) => <StatusBadge status={getComplianceStatus(row)} />,
     },
     { key: "status", header: "Status", type: "status", sortable: true },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
+    },
   ];
 
   return (

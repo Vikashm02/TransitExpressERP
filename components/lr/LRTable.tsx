@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { LRRecord } from "@/components/services/lr.service";
 import {
   draftRowClassName,
@@ -208,6 +209,11 @@ export default function LRTable({
         row.createdBy
           ? resolveAssignedName?.(row.createdBy) ?? "Unknown"
           : "—",
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
   ];
 

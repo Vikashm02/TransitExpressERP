@@ -4,6 +4,7 @@ import { ClipboardCheck, Eye, Pencil, Trash2 } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type { PodRecord } from "@/components/services/pod.service";
 
@@ -92,11 +93,11 @@ export default function PodTable({
       sortable: true,
     },
     {
-      key: "createdAt",
-      header: "Created Date",
+      key: "created_at",
+      header: "Created",
       sortable: true,
       sortAccessor: (row) => row.created_at ?? "",
-      render: (row) => formatPodListDate(row.created_at),
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
     {
       key: "createdByName",

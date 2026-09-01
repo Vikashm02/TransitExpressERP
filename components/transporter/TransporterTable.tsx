@@ -3,6 +3,7 @@
 import { Pencil, Trash2, Truck } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { TransporterRecord } from "@/components/services/transporter.service";
 
 interface TransporterTableProps {
@@ -32,6 +33,13 @@ export default function TransporterTable({
     { key: "gstin", header: "GSTIN" },
     { key: "paymentTerm", header: "Payment Term", sortable: true },
     { key: "status", header: "Status", type: "status", sortable: true },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
+    },
   ];
 
   return (

@@ -3,6 +3,7 @@
 import { Pencil, Trash2, Users } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type { CustomerRecord } from "@/components/services/customer.service";
 import {
@@ -53,6 +54,13 @@ export default function CustomerTable({
             label={entryStatusLabel(row.entryStatus)}
           />
         ) : null,
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
   ];
 

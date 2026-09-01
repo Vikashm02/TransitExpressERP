@@ -3,6 +3,7 @@
 import { Pencil, Trash2, Wallet } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type { LorryExpenseRecord } from "@/components/services/lorryExpense.service";
 import {
@@ -118,6 +119,13 @@ export default function LorryExpenseTable({
       align: "right",
       sortable: true,
       render: (row) => money(row.profitLoss),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
   ];
 

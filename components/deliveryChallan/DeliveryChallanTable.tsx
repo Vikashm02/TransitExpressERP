@@ -3,6 +3,7 @@
 import { Eye, FileStack, Pencil, Printer, Share2 } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { DeliveryChallanRecord } from "@/components/services/deliveryChallan.service";
 
 interface DeliveryChallanTableProps {
@@ -44,6 +45,13 @@ export default function DeliveryChallanTable({
     },
     { key: "poNumber", header: "PO No", sortable: true },
     { key: "hsn", header: "HSN", sortable: true },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
+    },
   ];
 
   return (

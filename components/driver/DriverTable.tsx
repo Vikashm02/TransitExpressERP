@@ -3,6 +3,7 @@
 import { Pencil, Trash2, User } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { getLicenseStatus } from "./driver.schema";
 import type { DriverRecord } from "@/components/services/driver.service";
@@ -38,6 +39,13 @@ export default function DriverTable({
       render: (row) => <StatusBadge status={getLicenseStatus(row)} />,
     },
     { key: "status", header: "Status", type: "status", sortable: true },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
+    },
   ];
 
   return (

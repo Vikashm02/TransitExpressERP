@@ -3,6 +3,7 @@
 import { Eye, FileMinus2, Pencil } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { CreditNoteRecord } from "@/components/services/creditNote.service";
 
 interface CreditNoteTableProps {
@@ -48,6 +49,13 @@ export default function CreditNoteTable({
       align: "right",
       sortable: true,
       render: (row) => `₹ ${row.netAmount.toFixed(2)}`,
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
   ];
 

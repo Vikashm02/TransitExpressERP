@@ -4,6 +4,7 @@ import { ClipboardList, Eye, Pencil, Printer, Trash2 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { AsnRecord } from "@/components/services/asn.service";
 
 interface AsnTableProps {
@@ -54,6 +55,13 @@ export default function AsnTable({
       header: "Expected Arrival",
       sortable: true,
       render: (row) => formatEta(row.expectedTimeOfArrival),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
   ];
 

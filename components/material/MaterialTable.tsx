@@ -3,6 +3,7 @@
 import { Package, Pencil, Trash2 } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { MaterialRecord } from "@/components/services/material.service";
 
 interface MaterialTableProps {
@@ -29,6 +30,13 @@ export default function MaterialTable({
     { key: "category", header: "Category", sortable: true },
     { key: "hsnCode", header: "HSN Code" },
     { key: "status", header: "Status", type: "status", sortable: true },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      sortAccessor: (row) => row.created_at ?? "",
+      render: (row) => <RelativeCreatedTime value={row.created_at} />,
+    },
   ];
 
   return (
