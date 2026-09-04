@@ -87,7 +87,8 @@ export type PermissionKey =
   | "ledger"
   | "reports"
   | "notifications"
-  | "consignee_intelligence";
+  | "consignee_intelligence"
+  | "supplier_intelligence";
 
 /** Which actions make sense per module (UI only — flags still stored). */
 export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]> = {
@@ -108,6 +109,7 @@ export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]>
   reports: ["view", "print", "share"],
   notifications: ["view"],
   consignee_intelligence: ["view", "create"],
+  supplier_intelligence: ["view", "create", "edit"],
 };
 
 export const PERMISSION_MODULES: {
@@ -141,6 +143,12 @@ export const PERMISSION_MODULES: {
     label: "Consignee Intelligence",
     routePrefix: "/consignee-intelligence",
     description: "Record and view consignee relationship conversations.",
+  },
+  {
+    key: "supplier_intelligence",
+    label: "Supplier Intelligence",
+    routePrefix: "/supplier",
+    description: "Supplier area (foundation). Business features will be added later.",
   },
 ];
 

@@ -8,6 +8,7 @@ import { organizationalRoleLabel } from "@/components/services/appUser.service";
 import { useLanguage } from "@/lib/i18n";
 import NotificationBell from "@/components/pwa/NotificationBell";
 import LanguageSelector from "@/components/layout/LanguageSelector";
+import AreaSwitcher from "@/components/layout/AreaSwitcher";
 import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
@@ -52,9 +53,16 @@ export default function Header({ onMenuClick }: HeaderProps) {
             {t("header.appName")}
           </h2>
         </div>
+
+        <div className="hidden min-[420px]:block">
+          <AreaSwitcher />
+        </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+        <div className="min-[420px]:hidden">
+          <AreaSwitcher />
+        </div>
         <NotificationBell />
         <LanguageSelector />
 

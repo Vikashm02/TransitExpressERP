@@ -7,7 +7,9 @@ import { Clock, Lock, ShieldX, Truck } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { permissionKeyForPath } from "@/lib/permissions";
+import { appAreaFromPathname } from "@/lib/app-area";
 import Sidebar from "./Sidebar";
+import SupplierSidebar from "./SupplierSidebar";
 import Header from "./Header";
 import AnnouncementBanner from "@/components/pwa/AnnouncementBanner";
 import PwaInstallBanner from "@/components/pwa/PwaInstallBanner";
@@ -190,12 +192,14 @@ export default function DashboardLayout({
   }
 
   const requiredPermissionKey = permissionKeyForPath(pathname ?? "");
+  const appArea = appAreaFromPathname(pathname);
+  const NavSidebar = appArea === "supplier" ? SupplierSidebar : Sidebar;
 
   // Admin settings (Creator + Tier 1 via isAdmin / role check).
   if ((pathname ?? "").startsWith("/settings") && profile.role !== "admin" && profile.role !== "creator") {
     return (
       <div className="flex h-screen overflow-hidden erp-shell">
-        <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
+        <NavSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header onMenuClick={() => setMobileNavOpen(true)} />
           <main className="flex flex-1 items-center justify-center overflow-y-auto p-4 sm:p-6 lg:p-8">
@@ -214,7 +218,7 @@ export default function DashboardLayout({
   if (requiredPermissionKey && !hasPermission(requiredPermissionKey, "view")) {
     return (
       <div className="flex h-screen overflow-hidden erp-shell">
-        <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
+        <NavSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header onMenuClick={() => setMobileNavOpen(true)} />
@@ -237,7 +241,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden erp-shell">
-      <Sidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
+      <NavSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setMobileNavOpen(true)} />
