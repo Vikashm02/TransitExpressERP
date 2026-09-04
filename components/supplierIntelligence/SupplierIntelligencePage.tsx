@@ -1,0 +1,786 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import {
+  Building2,
+  MessageSquareText,
+  Plus,
+  Search,
+  UserRound,
+  X,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { cn } from "@/lib/utils";
+import {
+  SUPPLIER_CONVERSATION_HISTORY_LIMIT,
+  createSupplierConversation,
+  formatSupplierError,
+  getSupplierOrganizationById,
+  listPeopleForOrganization,
+  listSupplierConversations,
+  searchSupplierOrganizations,
+  searchSupplierPeople,
+  type SupplierConversation,
+  type SupplierConversationInputType,
+  type SupplierOrganization,
+  type SupplierPerson,
+} from "@/components/services/supplierIntelligence.service";
+import AddOrganizationDialog from "./AddOrganizationDialog";
+import AddPersonDialog from "./AddPersonDialog";
+import ConversationComposer from "./ConversationComposer";
+import ConversationEntry from "./ConversationEntry";
+
+type SearchHit =
+  | { kind: "organization"; organization: SupplierOrganization }
+  | {
+      kind: "person";
+      person: SupplierPerson;
+      organization: { id: string; name: string };
+    };
+
+export default function SupplierIntelligencePage() {
+  const { hasPermission, hasAction, profile } = useAuth();
+  const canView = hasPermission("supplier_intelligence", "view");
+  const canCreate = hasAction("supplier_intelligence", "create");
+
+  const [search, setSearch] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const [organization, setOrganization] = useState<SupplierOrganization | null>(
+    null
+  );
+  const [people, setPeople] = useState<SupplierPerson[]>([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+
+  const [conversations, setConversations] = useState<SupplierConversation[]>(
+    []
+  );
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+
+  const [draft, setDraft] = useState("");
+  const [draftInputType, setDraftInputType] =
+    useState<SupplierConversationInputType>("text");
+  const [sending, setSending] = useState(false);
+
+  const [addOrgOpen, setAddOrgOpen] = useState(false);
+  const [addPersonOpen, setAddPersonOpen] = useState(false);
+
+  const timelineEndRef = useRef<HTMLDivElement>(null);
+  const searchRequestId = useRef(0);
+  /** Monotonic generation for org/person context loads and save-draft gating. */
+  const contextGenerationRef = useRef(0);
+  const loadedOrganizationIdRef = useRef<string | null>(null);
+  /** Bumps when composer text changes or is programmatically reset — used to protect in-flight drafts. */
+  const draftGenerationRef = useRef(0);
+
+  const selectedPerson = useMemo(
+    () => people.find((p) => p.id === selectedPersonId) ?? null,
+    [people, selectedPersonId]
+  );
+
+  const chronological = useMemo(() => {
+    return [...conversations].sort((a, b) => {
+      const ta = new Date(a.occurredAt).getTime();
+      const tb = new Date(b.occurredAt).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.createdAt.localeCompare(b.createdAt);
+    });
+  }, [conversations]);
+
+  const typeLabels = organization?.types.map((t) => t.name).join(", ") || null;
+
+  useEffect(() => {
+    if (!canView) return;
+    const q = search.trim();
+    if (!q) {
+      setSearchHits([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    const requestId = ++searchRequestId.current;
+    const handle = window.setTimeout(() => {
+      void runSearch(q, requestId);
+    }, 250);
+
+    return () => window.clearTimeout(handle);
+  }, [search, canView]);
+
+  /**
+   * Single authoritative context loader.
+   * One generation bump per selection change — org and person do not compete
+   * for separate tokens. Org changes reload people; person-only changes reload
+   * timeline. Stale async results are ignored via generation + effect cleanup.
+   */
+  useEffect(() => {
+    if (!organization || !canView) {
+      loadedOrganizationIdRef.current = null;
+      setPeople([]);
+      setPeopleLoading(false);
+      setConversations([]);
+      setTimelineLoading(false);
+      setTimelineError(null);
+      return;
+    }
+
+    const generation = ++contextGenerationRef.current;
+    const orgId = organization.id;
+    const requestedPersonId = selectedPersonId;
+    const organizationChanged = loadedOrganizationIdRef.current !== orgId;
+
+    // Drop stale history immediately so Org A cards cannot linger under Org B.
+    setConversations([]);
+    setTimelineError(null);
+    setTimelineLoading(true);
+
+    if (organizationChanged) {
+      setPeople([]);
+      setPeopleLoading(true);
+    }
+
+    let cancelled = false;
+
+    async function loadContext() {
+      let personIdForTimeline = requestedPersonId;
+
+      if (organizationChanged) {
+        try {
+          const rows = await listPeopleForOrganization(orgId);
+          if (cancelled || generation !== contextGenerationRef.current) return;
+
+          setPeople(rows);
+          loadedOrganizationIdRef.current = orgId;
+
+          // Keep an explicitly requested person when present in the new org;
+          // otherwise default to the first contact (same UX as before).
+          if (requestedPersonId && rows.some((p) => p.id === requestedPersonId)) {
+            personIdForTimeline = requestedPersonId;
+          } else if (
+            requestedPersonId &&
+            !rows.some((p) => p.id === requestedPersonId)
+          ) {
+            personIdForTimeline = rows[0]?.id ?? null;
+            setSelectedPersonId(personIdForTimeline);
+          } else if (!requestedPersonId) {
+            personIdForTimeline = rows[0]?.id ?? null;
+            if (personIdForTimeline) {
+              setSelectedPersonId(personIdForTimeline);
+            }
+          }
+        } catch (error) {
+          console.error(error);
+          if (cancelled || generation !== contextGenerationRef.current) return;
+          setPeople([]);
+          loadedOrganizationIdRef.current = orgId;
+          toast.error(formatSupplierError(error, "Unable to load contacts."));
+        } finally {
+          if (!cancelled && generation === contextGenerationRef.current) {
+            setPeopleLoading(false);
+          }
+        }
+      }
+
+      if (cancelled || generation !== contextGenerationRef.current) return;
+
+      try {
+        const rows = await listSupplierConversations({
+          organizationId: orgId,
+          personId: personIdForTimeline,
+          limit: SUPPLIER_CONVERSATION_HISTORY_LIMIT,
+        });
+        if (cancelled || generation !== contextGenerationRef.current) return;
+        setConversations(rows);
+      } catch (error) {
+        console.error(error);
+        if (cancelled || generation !== contextGenerationRef.current) return;
+        setConversations([]);
+        setTimelineError(
+          formatSupplierError(error, "Unable to load conversation history.")
+        );
+      } finally {
+        if (!cancelled && generation === contextGenerationRef.current) {
+          setTimelineLoading(false);
+        }
+      }
+    }
+
+    void loadContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organization?.id, selectedPersonId, canView]);
+
+  useEffect(() => {
+    if (!organization || timelineLoading) return;
+    timelineEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [organization?.id, selectedPersonId, chronological.length, timelineLoading]);
+
+  async function runSearch(query: string, requestId: number) {
+    try {
+      setSearchLoading(true);
+      const [orgs, peopleHits] = await Promise.all([
+        searchSupplierOrganizations(query),
+        searchSupplierPeople(query),
+      ]);
+
+      if (requestId !== searchRequestId.current) return;
+
+      const hits: SearchHit[] = [
+        ...orgs.map((organization) => ({
+          kind: "organization" as const,
+          organization,
+        })),
+        ...peopleHits.flatMap((hit) =>
+          hit.organizations.length > 0
+            ? hit.organizations.map((organization) => ({
+                kind: "person" as const,
+                person: hit.person,
+                organization,
+              }))
+            : []
+        ),
+      ];
+
+      setSearchHits(hits);
+    } catch (error) {
+      console.error(error);
+      if (requestId === searchRequestId.current) {
+        toast.error(
+          formatSupplierError(error, "Unable to search organizations and people.")
+        );
+      }
+    } finally {
+      if (requestId === searchRequestId.current) {
+        setSearchLoading(false);
+      }
+    }
+  }
+
+  function updateDraft(next: string) {
+    draftGenerationRef.current += 1;
+    setDraft(next);
+  }
+
+  function resetComposer() {
+    draftGenerationRef.current += 1;
+    setDraft("");
+    setDraftInputType("text");
+  }
+
+  function selectOrganization(
+    next: SupplierOrganization,
+    personId: string | null = null
+  ) {
+    // Invalidate any in-flight context work before React applies the new selection.
+    contextGenerationRef.current += 1;
+    loadedOrganizationIdRef.current = null;
+    setOrganization(next);
+    setSelectedPersonId(personId);
+    setPeople([]);
+    setConversations([]);
+    setTimelineError(null);
+    resetComposer();
+    setSearch("");
+    setSearchHits([]);
+    setSearchOpen(false);
+  }
+
+  function selectPerson(personId: string | null) {
+    if (personId === selectedPersonId) return;
+    // Invalidate prior timeline requests; org people stay put.
+    contextGenerationRef.current += 1;
+    setSelectedPersonId(personId);
+    setConversations([]);
+    setTimelineError(null);
+    // Composer belongs to the new person context.
+    resetComposer();
+  }
+
+  function clearContext() {
+    contextGenerationRef.current += 1;
+    loadedOrganizationIdRef.current = null;
+    setOrganization(null);
+    setPeople([]);
+    setSelectedPersonId(null);
+    setConversations([]);
+    resetComposer();
+    setTimelineError(null);
+  }
+
+  async function handleSend() {
+    if (!organization || sending || !canCreate) return;
+
+    const text = draft.trim();
+    if (!text) {
+      toast.error("Enter a conversation note before sending.");
+      return;
+    }
+
+    // Capture save context — DB write always uses these IDs.
+    const orgId = organization.id;
+    const personId = selectedPersonId;
+    const saveContextGeneration = contextGenerationRef.current;
+    const saveDraftGeneration = draftGenerationRef.current;
+    const saveInputType = draftInputType;
+
+    try {
+      setSending(true);
+      const created = await createSupplierConversation(
+        {
+          organizationId: orgId,
+          personId,
+          originalText: text,
+          inputType: saveInputType,
+        },
+        { loggedByName: profile?.displayName || profile?.email || "Unknown" }
+      );
+
+      const stillSameContext =
+        saveContextGeneration === contextGenerationRef.current &&
+        organization?.id === orgId &&
+        selectedPersonId === personId;
+
+      if (stillSameContext) {
+        setConversations((prev) => {
+          if (prev.some((row) => row.id === created.id)) return prev;
+          return [created, ...prev];
+        });
+      }
+
+      // Clear composer only if context AND draft version are unchanged.
+      // Editing the draft while save is pending bumps draftGenerationRef.
+      const stillSameDraft =
+        stillSameContext &&
+        saveDraftGeneration === draftGenerationRef.current;
+
+      if (stillSameDraft) {
+        resetComposer();
+      }
+
+      toast.success("Conversation saved.");
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        formatSupplierError(
+          error,
+          "Unable to save this conversation. Your draft was kept."
+        )
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (!canView) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+        You do not have permission to view Supplier Intelligence.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-col gap-4">
+      <header className="space-y-1">
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Supplier
+        </p>
+        <h1 className="font-heading text-2xl font-semibold text-foreground">
+          Supplier Intelligence
+        </h1>
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          Capture conversation memory with organizations and contacts. Meeting
+          context is recorded separately from any later interpretation.
+        </p>
+      </header>
+
+      <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-stretch">
+        {/* Context panel */}
+        <aside className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:p-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              placeholder="Search organizations / people"
+              className="pl-9"
+              aria-label="Search organizations and people"
+            />
+            {search ? (
+              <button
+                type="button"
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setSearch("");
+                  setSearchHits([]);
+                }}
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+
+            {searchOpen && search.trim() ? (
+              <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                {searchLoading ? (
+                  <p className="px-3 py-4 text-sm text-muted-foreground">
+                    Searching…
+                  </p>
+                ) : searchHits.length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-muted-foreground">
+                    No matches. Try another name, or add an organization.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {searchHits.map((hit) =>
+                      hit.kind === "organization" ? (
+                        <li key={`org-${hit.organization.id}`}>
+                          <button
+                            type="button"
+                            className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-muted/50"
+                            onClick={() => selectOrganization(hit.organization)}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                              <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              {hit.organization.name}
+                            </span>
+                            <span className="pl-5 text-xs text-muted-foreground">
+                              {[
+                                hit.organization.types
+                                  .map((t) => t.name)
+                                  .join(", ") || "Organization",
+                                hit.organization.code,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </button>
+                        </li>
+                      ) : (
+                        <li
+                          key={`person-${hit.person.id}-${hit.organization.id}`}
+                        >
+                          <button
+                            type="button"
+                            className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-muted/50"
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  const full = await getSupplierOrganizationById(
+                                    hit.organization.id
+                                  );
+                                  selectOrganization(
+                                    full ?? {
+                                      id: hit.organization.id,
+                                      name: hit.organization.name,
+                                      code: null,
+                                      notes: null,
+                                      active: true,
+                                      types: [],
+                                    },
+                                    hit.person.id
+                                  );
+                                } catch (error) {
+                                  console.error(error);
+                                  toast.error(
+                                    formatSupplierError(
+                                      error,
+                                      "Unable to open that organization."
+                                    )
+                                  );
+                                }
+                              })();
+                            }}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                              <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              {hit.person.name}
+                            </span>
+                            <span className="pl-5 text-xs text-muted-foreground">
+                              {[
+                                hit.person.designation,
+                                hit.organization.name,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    )}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {canCreate ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => setAddOrgOpen(true)}
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add Organization
+            </Button>
+          ) : null}
+
+          {organization ? (
+            <div className="space-y-3 border-t border-border pt-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Organization
+                  </p>
+                  <p className="truncate font-heading text-base font-semibold text-foreground">
+                    {organization.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {[typeLabels, organization.code].filter(Boolean).join(" · ") ||
+                      "Organization"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearContext}
+                  className="shrink-0"
+                >
+                  Clear
+                </Button>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    People
+                  </p>
+                  {canCreate ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAddPersonOpen(true)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      <Plus className="mr-1 h-3 w-3" />
+                      Add Person
+                    </Button>
+                  ) : null}
+                </div>
+
+                {peopleLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading contacts…</p>
+                ) : people.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No contacts linked yet.
+                    </p>
+                    {canCreate ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setAddPersonOpen(true)}
+                      >
+                        Add Person
+                      </Button>
+                    ) : null}
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      You can still log an organization-level note without a
+                      contact.
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="max-h-56 space-y-1 overflow-y-auto">
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => selectPerson(null)}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+                          selectedPersonId === null
+                            ? "bg-primary/10 font-medium text-foreground"
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        )}
+                      >
+                        <Building2 className="h-3.5 w-3.5 shrink-0" />
+                        Organization notes
+                      </button>
+                    </li>
+                    {people.map((person) => (
+                      <li key={person.id}>
+                        <button
+                          type="button"
+                          onClick={() => selectPerson(person.id)}
+                          className={cn(
+                            "flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                            selectedPersonId === person.id
+                              ? "bg-primary/10 text-foreground"
+                              : "hover:bg-muted/60"
+                          )}
+                        >
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            {person.name}
+                          </span>
+                          {(person.linkDesignation || person.designation) && (
+                            <span className="pl-5 text-xs text-muted-foreground">
+                              {person.linkDesignation || person.designation}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center">
+              <Building2 className="mx-auto h-7 w-7 text-muted-foreground/70" />
+              <p className="mt-2 text-sm font-medium text-foreground">
+                Select an organization
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Search above, or add a new organization to begin capturing
+                conversations.
+              </p>
+            </div>
+          )}
+        </aside>
+
+        {/* Timeline + composer */}
+        <section className="flex min-h-[min(70vh,720px)] flex-col overflow-hidden rounded-xl border border-border bg-card">
+          {!organization ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-center">
+              <MessageSquareText className="h-8 w-8 text-muted-foreground/70" />
+              <p className="text-sm font-medium text-foreground">
+                Conversation workspace
+              </p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                Choose an organization to see history and log what you learned.
+              </p>
+            </div>
+          ) : (
+            <>
+              <header className="border-b border-border px-3 py-3 sm:px-4">
+                <p className="truncate font-heading text-base font-semibold text-foreground sm:text-lg">
+                  {selectedPerson ? selectedPerson.name : organization.name}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedPerson
+                    ? [
+                        selectedPerson.linkDesignation ||
+                          selectedPerson.designation,
+                        organization.name,
+                        typeLabels,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : [
+                        "Organization-level notes",
+                        typeLabels,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Showing up to {SUPPLIER_CONVERSATION_HISTORY_LIMIT} recent
+                  conversations
+                  {selectedPerson ? " for this contact" : " for this organization"}
+                  .
+                </p>
+              </header>
+
+              <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4">
+                {timelineLoading ? (
+                  <p className="py-10 text-center text-sm text-muted-foreground">
+                    Loading conversations…
+                  </p>
+                ) : timelineError ? (
+                  <p className="py-10 text-center text-sm text-destructive">
+                    {timelineError}
+                  </p>
+                ) : chronological.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+                    <MessageSquareText className="h-8 w-8 text-muted-foreground/70" />
+                    <p className="text-sm font-medium text-foreground">
+                      No conversations yet
+                    </p>
+                    <p className="max-w-sm text-sm text-muted-foreground">
+                      Write what you learned below and press Send. Original text
+                      is preserved as historical source material.
+                    </p>
+                  </div>
+                ) : (
+                  chronological.map((conversation) => (
+                    <ConversationEntry
+                      key={conversation.id}
+                      conversation={conversation}
+                    />
+                  ))
+                )}
+                <div ref={timelineEndRef} />
+              </div>
+
+              {canCreate ? (
+                <ConversationComposer
+                  value={draft}
+                  onChange={updateDraft}
+                  onSend={handleSend}
+                  sending={sending}
+                  inputType={draftInputType}
+                  onInputTypeChange={setDraftInputType}
+                />
+              ) : (
+                <div className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
+                  You can view this timeline, but you do not have permission to
+                  add conversations.
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+
+      <AddOrganizationDialog
+        open={addOrgOpen}
+        onOpenChange={setAddOrgOpen}
+        onCreated={(created) => selectOrganization(created)}
+      />
+
+      {organization ? (
+        <AddPersonDialog
+          open={addPersonOpen}
+          organizationId={organization.id}
+          organizationName={organization.name}
+          onOpenChange={setAddPersonOpen}
+          onCreated={(person) => {
+            setPeople((prev) => {
+              if (prev.some((p) => p.id === person.id)) return prev;
+              return [person, ...prev];
+            });
+            selectPerson(person.id);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
