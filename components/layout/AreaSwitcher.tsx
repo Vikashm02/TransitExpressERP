@@ -52,6 +52,7 @@ export default function AreaSwitcher({
         layout === "bar"
           ? "flex w-full min-w-0 items-stretch"
           : "inline-flex items-center",
+        activeArea === "supplier" && "border-primary/20 bg-primary/5",
       )}
     >
       <AreaTab

@@ -432,15 +432,15 @@ export default function SupplierIntelligencePage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-4">
-      <header className="space-y-1">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          Supplier
+    <div className="flex min-h-0 flex-col gap-5">
+      <header className="space-y-1.5 border-b border-border/60 pb-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/80">
+          Relationship memory
         </p>
-        <h1 className="font-heading text-2xl font-semibold text-foreground">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
           Supplier Intelligence
         </h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Capture conversation memory with organizations and contacts. Meeting
           context is recorded separately from any later interpretation.
         </p>
@@ -448,7 +448,7 @@ export default function SupplierIntelligencePage() {
 
       <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-stretch">
         {/* Context panel */}
-        <aside className="flex min-h-0 flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:p-4">
+        <aside className="supplier-panel flex min-h-0 flex-col gap-3 p-3 sm:p-4">
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -758,7 +758,7 @@ export default function SupplierIntelligencePage() {
         </aside>
 
         {/* Timeline + composer */}
-        <section className="flex min-h-[min(70vh,720px)] flex-col overflow-hidden rounded-xl border border-border bg-card">
+        <section className="supplier-panel flex min-h-[min(70vh,720px)] flex-col overflow-hidden">
           {!organization ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-center">
               <MessageSquareText className="h-8 w-8 text-muted-foreground/70" />

@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { permissionKeyForPath } from "@/lib/permissions";
 import { appAreaFromPathname } from "@/lib/app-area";
+import { cn } from "@/lib/utils";
 import Sidebar from "./Sidebar";
 import SupplierSidebar from "./SupplierSidebar";
 import Header from "./Header";
@@ -194,11 +195,15 @@ export default function DashboardLayout({
   const requiredPermissionKey = permissionKeyForPath(pathname ?? "");
   const appArea = appAreaFromPathname(pathname);
   const NavSidebar = appArea === "supplier" ? SupplierSidebar : Sidebar;
+  const shellClassName = cn(
+    "flex h-screen overflow-hidden erp-shell",
+    appArea === "supplier" && "supplier-shell",
+  );
 
   // Admin settings (Creator + Tier 1 via isAdmin / role check).
   if ((pathname ?? "").startsWith("/settings") && profile.role !== "admin" && profile.role !== "creator") {
     return (
-      <div className="flex h-screen overflow-hidden erp-shell">
+      <div className={shellClassName} data-app-area={appArea}>
         <NavSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header onMenuClick={() => setMobileNavOpen(true)} />
@@ -217,7 +222,7 @@ export default function DashboardLayout({
 
   if (requiredPermissionKey && !hasPermission(requiredPermissionKey, "view")) {
     return (
-      <div className="flex h-screen overflow-hidden erp-shell">
+      <div className={shellClassName} data-app-area={appArea}>
         <NavSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -240,7 +245,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden erp-shell">
+    <div className={shellClassName} data-app-area={appArea}>
       <NavSidebar mobileOpen={mobileNavOpen} onMobileOpenChange={setMobileNavOpen} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

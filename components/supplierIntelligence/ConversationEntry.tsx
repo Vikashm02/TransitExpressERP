@@ -20,7 +20,7 @@ export default function ConversationEntry({
   const orgLabel = conversation.organizationNameSnapshot;
 
   return (
-    <article className="rounded-xl border border-border/70 bg-card px-3.5 py-3 shadow-xs sm:px-4">
+    <article className="rounded-xl border border-border/70 border-l-[3px] border-l-primary/45 bg-card px-3.5 py-3 shadow-xs sm:px-4">
       <header className="mb-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">{personLabel}</p>
@@ -39,7 +39,7 @@ export default function ConversationEntry({
               className="text-xs"
             />
           </p>
-          <span className="inline-flex items-center gap-1 rounded-md border border-border/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary/80">
             {conversation.inputType === "voice" ? (
               <>
                 <Mic className="h-3 w-3" />

@@ -192,6 +192,72 @@
   @apply rounded-xl border border-border/70 bg-surface-muted/60;
 }
 
+/* ==========================================================
+   Supplier workspace — scoped identity (does NOT change :root)
+   Charcoal / slate foundation + restrained violet + soft teal cue
+   Applied only under .supplier-shell (DashboardLayout when area=supplier)
+   ========================================================== */
+.supplier-shell {
+  --brand: oklch(0.42 0.11 295);
+  --brand-foreground: oklch(0.985 0.01 295);
+  --highlight: oklch(0.62 0.08 195);
+  --highlight-foreground: oklch(0.24 0.03 200);
+
+  --background: oklch(0.968 0.008 295);
+  --foreground: oklch(0.23 0.02 295);
+  --surface: oklch(0.994 0.004 295);
+  --surface-muted: oklch(0.945 0.01 295);
+  --card: oklch(0.994 0.003 295);
+  --card-foreground: oklch(0.23 0.02 295);
+  --popover: oklch(0.994 0.003 295);
+  --popover-foreground: oklch(0.23 0.02 295);
+
+  --primary: oklch(0.42 0.11 295);
+  --primary-foreground: oklch(0.985 0.01 295);
+  --secondary: oklch(0.942 0.01 295);
+  --secondary-foreground: oklch(0.3 0.03 295);
+  --muted: oklch(0.942 0.01 295);
+  --muted-foreground: oklch(0.48 0.025 295);
+  --accent: oklch(0.935 0.018 295);
+  --accent-foreground: oklch(0.3 0.03 295);
+  --border: oklch(0.885 0.014 295);
+  --input: oklch(0.885 0.014 295);
+  --ring: oklch(0.52 0.1 295);
+
+  --sidebar: oklch(0.22 0.025 295);
+  --sidebar-foreground: oklch(0.96 0.01 295);
+  --sidebar-primary: oklch(0.58 0.13 295);
+  --sidebar-primary-foreground: oklch(0.99 0.01 295);
+  --sidebar-accent: oklch(0.3 0.035 295);
+  --sidebar-accent-foreground: oklch(0.98 0.01 295);
+  --sidebar-border: oklch(1 0 0 / 11%);
+  --sidebar-ring: oklch(0.58 0.13 295);
+
+  background-color: var(--background);
+  background-image:
+    radial-gradient(
+      ellipse 90% 60% at 100% 0%,
+      oklch(0.55 0.09 295 / 0.07),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 70% 50% at 0% 100%,
+      oklch(0.55 0.05 200 / 0.05),
+      transparent 50%
+    );
+}
+
+.supplier-shell .supplier-panel {
+  @apply rounded-xl border border-border/75 bg-card shadow-sm;
+  box-shadow:
+    0 1px 2px oklch(0.28 0.03 295 / 0.04),
+    0 6px 18px oklch(0.28 0.03 295 / 0.05);
+}
+
+.supplier-shell .supplier-header-chrome {
+  border-bottom-color: color-mix(in oklch, var(--primary) 18%, var(--border));
+}
+
 @media print {
   html,
   body {

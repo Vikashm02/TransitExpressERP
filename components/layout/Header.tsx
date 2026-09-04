@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu } from "lucide-react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -10,6 +10,8 @@ import NotificationBell from "@/components/pwa/NotificationBell";
 import LanguageSelector from "@/components/layout/LanguageSelector";
 import AreaSwitcher from "@/components/layout/AreaSwitcher";
 import { Button } from "@/components/ui/button";
+import { appAreaFromPathname } from "@/lib/app-area";
+import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   /** Opens the mobile navigation drawer (see Sidebar.tsx). The trigger
@@ -20,8 +22,11 @@ interface HeaderProps {
 
 export default function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { profile, isAdmin, signOut } = useAuth();
   const { t } = useLanguage();
+  const appArea = appAreaFromPathname(pathname);
+  const isSupplier = appArea === "supplier";
 
   async function handleSignOut() {
     await signOut();
@@ -29,7 +34,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="shrink-0 border-b border-border/80 bg-card/90 backdrop-blur-md">
+    <header
+      className={cn(
+        "shrink-0 border-b border-border/80 bg-card/90 backdrop-blur-md",
+        isSupplier && "supplier-header-chrome",
+      )}
+    >
       {/* Main header row — menu + title | actions (no area switcher on mobile) */}
       <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:gap-4 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
@@ -48,8 +58,13 @@ export default function Header({ onMenuClick }: HeaderProps) {
           )}
 
           <div className="min-w-0">
-            <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              {t("header.operationsConsole")}
+            <p
+              className={cn(
+                "truncate text-[11px] font-medium uppercase tracking-[0.14em]",
+                isSupplier ? "text-primary/80" : "text-muted-foreground",
+              )}
+            >
+              {isSupplier ? "Supplier workspace" : t("header.operationsConsole")}
             </p>
             <h2 className="truncate font-heading text-base font-semibold text-foreground sm:text-lg">
               {t("header.appName")}
@@ -67,7 +82,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <LanguageSelector />
 
           <div className="hidden items-center gap-2.5 rounded-full border border-border/80 bg-surface-muted/70 py-1 pr-3 pl-1 sm:flex">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground ring-2 ring-highlight/40">
+            <div
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground",
+                isSupplier ? "ring-2 ring-primary/25" : "ring-2 ring-highlight/40",
+              )}
+            >
               {(profile?.displayName || "?").charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 leading-tight">
