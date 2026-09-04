@@ -52,6 +52,11 @@ export default function SupplierIntelligencePage() {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  /** Browse list of active organizations (empty-query load). Not auto-selected. */
+  const [browseOrgs, setBrowseOrgs] = useState<SupplierOrganization[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(canView);
+  const [browseError, setBrowseError] = useState<string | null>(null);
+
   const [organization, setOrganization] = useState<SupplierOrganization | null>(
     null
   );
@@ -75,6 +80,7 @@ export default function SupplierIntelligencePage() {
 
   const timelineEndRef = useRef<HTMLDivElement>(null);
   const searchRequestId = useRef(0);
+  const browseRequestId = useRef(0);
   /** Monotonic generation for org/person context loads and save-draft gating. */
   const contextGenerationRef = useRef(0);
   const loadedOrganizationIdRef = useRef<string | null>(null);
@@ -113,6 +119,45 @@ export default function SupplierIntelligencePage() {
 
     return () => window.clearTimeout(handle);
   }, [search, canView]);
+
+  /**
+   * Browse-on-load: empty query returns active organizations (limit 25).
+   * Does not auto-select an organization.
+   */
+  useEffect(() => {
+    if (!canView) {
+      setBrowseOrgs([]);
+      setBrowseLoading(false);
+      setBrowseError(null);
+      return;
+    }
+
+    const requestId = ++browseRequestId.current;
+    setBrowseLoading(true);
+    setBrowseError(null);
+
+    void (async () => {
+      try {
+        const rows = await searchSupplierOrganizations("");
+        if (requestId !== browseRequestId.current) return;
+        setBrowseOrgs(rows);
+      } catch (error) {
+        console.error(error);
+        if (requestId !== browseRequestId.current) return;
+        setBrowseOrgs([]);
+        const message = formatSupplierError(
+          error,
+          "Unable to load organizations."
+        );
+        setBrowseError(message);
+        toast.error(message);
+      } finally {
+        if (requestId === browseRequestId.current) {
+          setBrowseLoading(false);
+        }
+      }
+    })();
+  }, [canView]);
 
   /**
    * Single authoritative context loader.
@@ -159,21 +204,19 @@ export default function SupplierIntelligencePage() {
           setPeople(rows);
           loadedOrganizationIdRef.current = orgId;
 
-          // Keep an explicitly requested person when present in the new org;
-          // otherwise default to the first contact (same UX as before).
+          // Keep an explicitly requested person when present in the new org.
+          // Do not auto-select the first contact — leave organization-level
+          // context until the user chooses a person.
           if (requestedPersonId && rows.some((p) => p.id === requestedPersonId)) {
             personIdForTimeline = requestedPersonId;
           } else if (
             requestedPersonId &&
             !rows.some((p) => p.id === requestedPersonId)
           ) {
-            personIdForTimeline = rows[0]?.id ?? null;
-            setSelectedPersonId(personIdForTimeline);
-          } else if (!requestedPersonId) {
-            personIdForTimeline = rows[0]?.id ?? null;
-            if (personIdForTimeline) {
-              setSelectedPersonId(personIdForTimeline);
-            }
+            personIdForTimeline = null;
+            setSelectedPersonId(null);
+          } else {
+            personIdForTimeline = null;
           }
         } catch (error) {
           console.error(error);
@@ -441,7 +484,7 @@ export default function SupplierIntelligencePage() {
                   </p>
                 ) : searchHits.length === 0 ? (
                   <p className="px-3 py-4 text-sm text-muted-foreground">
-                    No matches. Try another name, or add an organization.
+                    No organizations found
                   </p>
                 ) : (
                   <ul className="divide-y divide-border">
@@ -653,15 +696,63 @@ export default function SupplierIntelligencePage() {
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center">
-              <Building2 className="mx-auto h-7 w-7 text-muted-foreground/70" />
-              <p className="mt-2 text-sm font-medium text-foreground">
-                Select an organization
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Search above, or add a new organization to begin capturing
-                conversations.
-              </p>
+            <div className="space-y-3 border-t border-border pt-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Organizations
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Select an organization to open its workspace.
+                </p>
+              </div>
+
+              {browseLoading ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Loading organizations…
+                </p>
+              ) : browseError ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-4 text-center">
+                  <p className="text-sm text-destructive">{browseError}</p>
+                </div>
+              ) : browseOrgs.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center">
+                  <Building2 className="mx-auto h-7 w-7 text-muted-foreground/70" />
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    No organizations yet
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {canCreate
+                      ? "Add an organization to begin capturing conversations."
+                      : "Ask an administrator to add organizations, or request create access."}
+                  </p>
+                </div>
+              ) : (
+                <ul className="max-h-[min(60vh,420px)] space-y-1 overflow-y-auto">
+                  {browseOrgs.map((org) => (
+                    <li key={org.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectOrganization(org)}
+                        className="flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-muted/60"
+                      >
+                        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          {org.name}
+                        </span>
+                        <span className="pl-5 text-xs text-muted-foreground">
+                          {[
+                            org.types.map((t) => t.name).join(", ") ||
+                              "Organization",
+                            org.code,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </aside>
@@ -763,7 +854,15 @@ export default function SupplierIntelligencePage() {
       <AddOrganizationDialog
         open={addOrgOpen}
         onOpenChange={setAddOrgOpen}
-        onCreated={(created) => selectOrganization(created)}
+        onCreated={(created) => {
+          setBrowseOrgs((prev) => {
+            if (prev.some((o) => o.id === created.id)) return prev;
+            return [...prev, created].sort((a, b) =>
+              a.name.localeCompare(b.name)
+            );
+          });
+          selectOrganization(created);
+        }}
       />
 
       {organization ? (
