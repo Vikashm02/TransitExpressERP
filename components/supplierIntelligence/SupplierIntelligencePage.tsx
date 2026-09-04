@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   Building2,
   MessageSquareText,
   Plus,
@@ -31,6 +33,7 @@ import {
 } from "@/components/services/supplierIntelligence.service";
 import AddOrganizationDialog from "./AddOrganizationDialog";
 import AddPersonDialog from "./AddPersonDialog";
+import AskIntelligencePanel from "./AskIntelligencePanel";
 import ConversationComposer from "./ConversationComposer";
 import ConversationEntry from "./ConversationEntry";
 
@@ -42,15 +45,50 @@ type SearchHit =
       organization: { id: string; name: string };
     };
 
+type WorkspaceMode = "landing" | "organization" | "person";
+
+function buildIntelligenceHref(
+  pathname: string,
+  orgId: string | null,
+  personId: string | null
+): string {
+  const params = new URLSearchParams();
+  if (orgId) params.set("org", orgId);
+  if (orgId && personId) params.set("person", personId);
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
+
 export default function SupplierIntelligencePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+          Loading Supplier Intelligence…
+        </div>
+      }
+    >
+      <SupplierIntelligencePageInner />
+    </Suspense>
+  );
+}
+
+function SupplierIntelligencePageInner() {
   const { hasPermission, hasAction, profile } = useAuth();
   const canView = hasPermission("supplier_intelligence", "view");
   const canCreate = hasAction("supplier_intelligence", "create");
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const orgIdFromUrl = searchParams.get("org");
+  const personIdFromUrl = searchParams.get("person");
 
   const [search, setSearch] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [contactFilter, setContactFilter] = useState("");
 
   /** Browse list of active organizations (empty-query load). Not auto-selected. */
   const [browseOrgs, setBrowseOrgs] = useState<SupplierOrganization[]>([]);
@@ -60,6 +98,7 @@ export default function SupplierIntelligencePage() {
   const [organization, setOrganization] = useState<SupplierOrganization | null>(
     null
   );
+  const [orgLoading, setOrgLoading] = useState(false);
   const [people, setPeople] = useState<SupplierPerson[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
@@ -87,6 +126,12 @@ export default function SupplierIntelligencePage() {
   /** Bumps when composer text changes or is programmatically reset — used to protect in-flight drafts. */
   const draftGenerationRef = useRef(0);
 
+  const workspaceMode: WorkspaceMode = !orgIdFromUrl
+    ? "landing"
+    : personIdFromUrl
+      ? "person"
+      : "organization";
+
   const selectedPerson = useMemo(
     () => people.find((p) => p.id === selectedPersonId) ?? null,
     [people, selectedPersonId]
@@ -102,6 +147,39 @@ export default function SupplierIntelligencePage() {
   }, [conversations]);
 
   const typeLabels = organization?.types.map((t) => t.name).join(", ") || null;
+
+  const filteredPeople = useMemo(() => {
+    const q = contactFilter.trim().toLowerCase();
+    if (!q) return people;
+    return people.filter((person) => {
+      const haystack = [
+        person.name,
+        person.designation,
+        person.linkDesignation,
+        person.phone,
+        person.email,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [people, contactFilter]);
+
+  function navigate(orgId: string | null, personId: string | null = null) {
+    router.push(buildIntelligenceHref(pathname, orgId, personId));
+  }
+
+  function updateDraft(next: string) {
+    draftGenerationRef.current += 1;
+    setDraft(next);
+  }
+
+  function resetComposer() {
+    draftGenerationRef.current += 1;
+    setDraft("");
+    setDraftInputType("text");
+  }
 
   useEffect(() => {
     if (!canView) return;
@@ -160,13 +238,84 @@ export default function SupplierIntelligencePage() {
   }, [canView]);
 
   /**
-   * Single authoritative context loader.
-   * One generation bump per selection change — org and person do not compete
-   * for separate tokens. Org changes reload people; person-only changes reload
-   * timeline. Stale async results are ignored via generation + effect cleanup.
+   * Sync selection from URL. Prefer router navigation so browser Back works.
    */
   useEffect(() => {
-    if (!organization || !canView) {
+    if (!canView) return;
+
+    let cancelled = false;
+
+    async function syncFromUrl() {
+      if (!orgIdFromUrl) {
+        contextGenerationRef.current += 1;
+        loadedOrganizationIdRef.current = null;
+        setOrganization(null);
+        setPeople([]);
+        setSelectedPersonId(null);
+        setConversations([]);
+        setTimelineError(null);
+        setContactFilter("");
+        resetComposer();
+        setOrgLoading(false);
+        return;
+      }
+
+      setOrgLoading(true);
+      try {
+        let nextOrg = organization;
+        if (!nextOrg || nextOrg.id !== orgIdFromUrl) {
+          const loaded = await getSupplierOrganizationById(orgIdFromUrl);
+          if (cancelled) return;
+          if (!loaded) {
+            toast.error("Organization not found.");
+            navigate(null);
+            return;
+          }
+          nextOrg = loaded;
+          contextGenerationRef.current += 1;
+          loadedOrganizationIdRef.current = null;
+          setOrganization(loaded);
+          setPeople([]);
+          setConversations([]);
+          setContactFilter("");
+          resetComposer();
+        }
+
+        const nextPersonId = personIdFromUrl;
+        if (nextPersonId !== selectedPersonId) {
+          contextGenerationRef.current += 1;
+          setSelectedPersonId(nextPersonId);
+          setConversations([]);
+          setTimelineError(null);
+          resetComposer();
+        }
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          toast.error(
+            formatSupplierError(error, "Unable to open that organization.")
+          );
+        }
+      } finally {
+        if (!cancelled) setOrgLoading(false);
+      }
+    }
+
+    void syncFromUrl();
+    return () => {
+      cancelled = true;
+    };
+    // organization/selectedPersonId intentionally omitted — URL is source of truth
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canView, orgIdFromUrl, personIdFromUrl]);
+
+  /**
+   * Single authoritative context loader.
+   * Organization mode loads people + organization-level notes (person_id IS NULL).
+   * Person mode loads only that person's conversations.
+   */
+  useEffect(() => {
+    if (!organization || !canView || !orgIdFromUrl) {
       loadedOrganizationIdRef.current = null;
       setPeople([]);
       setPeopleLoading(false);
@@ -181,7 +330,6 @@ export default function SupplierIntelligencePage() {
     const requestedPersonId = selectedPersonId;
     const organizationChanged = loadedOrganizationIdRef.current !== orgId;
 
-    // Drop stale history immediately so Org A cards cannot linger under Org B.
     setConversations([]);
     setTimelineError(null);
     setTimelineLoading(true);
@@ -204,19 +352,14 @@ export default function SupplierIntelligencePage() {
           setPeople(rows);
           loadedOrganizationIdRef.current = orgId;
 
-          // Keep an explicitly requested person when present in the new org.
-          // Do not auto-select the first contact — leave organization-level
-          // context until the user chooses a person.
-          if (requestedPersonId && rows.some((p) => p.id === requestedPersonId)) {
-            personIdForTimeline = requestedPersonId;
-          } else if (
+          if (
             requestedPersonId &&
             !rows.some((p) => p.id === requestedPersonId)
           ) {
             personIdForTimeline = null;
-            setSelectedPersonId(null);
-          } else {
-            personIdForTimeline = null;
+            // Person not linked to this org — drop to org contacts via URL.
+            navigate(orgId, null);
+            return;
           }
         } catch (error) {
           console.error(error);
@@ -229,11 +372,20 @@ export default function SupplierIntelligencePage() {
             setPeopleLoading(false);
           }
         }
+      } else if (
+        requestedPersonId &&
+        people.length > 0 &&
+        !people.some((p) => p.id === requestedPersonId)
+      ) {
+        navigate(orgId, null);
+        return;
       }
 
       if (cancelled || generation !== contextGenerationRef.current) return;
 
       try {
+        // personId null → organization-level notes only (service enforces IS NULL).
+        // personId set → that person's conversations only.
         const rows = await listSupplierConversations({
           organizationId: orgId,
           personId: personIdForTimeline,
@@ -260,12 +412,20 @@ export default function SupplierIntelligencePage() {
     return () => {
       cancelled = true;
     };
-  }, [organization?.id, selectedPersonId, canView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organization?.id, selectedPersonId, canView, orgIdFromUrl]);
 
   useEffect(() => {
     if (!organization || timelineLoading) return;
+    if (workspaceMode === "landing") return;
     timelineEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [organization?.id, selectedPersonId, chronological.length, timelineLoading]);
+  }, [
+    organization?.id,
+    selectedPersonId,
+    chronological.length,
+    timelineLoading,
+    workspaceMode,
+  ]);
 
   async function runSearch(query: string, requestId: number) {
     try {
@@ -278,16 +438,16 @@ export default function SupplierIntelligencePage() {
       if (requestId !== searchRequestId.current) return;
 
       const hits: SearchHit[] = [
-        ...orgs.map((organization) => ({
+        ...orgs.map((organizationHit) => ({
           kind: "organization" as const,
-          organization,
+          organization: organizationHit,
         })),
         ...peopleHits.flatMap((hit) =>
           hit.organizations.length > 0
-            ? hit.organizations.map((organization) => ({
+            ? hit.organizations.map((organizationHit) => ({
                 kind: "person" as const,
                 person: hit.person,
-                organization,
+                organization: organizationHit,
               }))
             : []
         ),
@@ -308,59 +468,12 @@ export default function SupplierIntelligencePage() {
     }
   }
 
-  function updateDraft(next: string) {
-    draftGenerationRef.current += 1;
-    setDraft(next);
-  }
-
-  function resetComposer() {
-    draftGenerationRef.current += 1;
-    setDraft("");
-    setDraftInputType("text");
-  }
-
-  function selectOrganization(
-    next: SupplierOrganization,
-    personId: string | null = null
-  ) {
-    // Invalidate any in-flight context work before React applies the new selection.
-    contextGenerationRef.current += 1;
-    loadedOrganizationIdRef.current = null;
-    setOrganization(next);
-    setSelectedPersonId(personId);
-    setPeople([]);
-    setConversations([]);
-    setTimelineError(null);
-    resetComposer();
-    setSearch("");
-    setSearchHits([]);
-    setSearchOpen(false);
-  }
-
-  function selectPerson(personId: string | null) {
-    if (personId === selectedPersonId) return;
-    // Invalidate prior timeline requests; org people stay put.
-    contextGenerationRef.current += 1;
-    setSelectedPersonId(personId);
-    setConversations([]);
-    setTimelineError(null);
-    // Composer belongs to the new person context.
-    resetComposer();
-  }
-
-  function clearContext() {
-    contextGenerationRef.current += 1;
-    loadedOrganizationIdRef.current = null;
-    setOrganization(null);
-    setPeople([]);
-    setSelectedPersonId(null);
-    setConversations([]);
-    resetComposer();
-    setTimelineError(null);
-  }
-
   async function handleSend() {
     if (!organization || sending || !canCreate) return;
+
+    // Person workspace: notes belong to the selected person.
+    // Organization workspace: notes are organization-level (person_id null).
+    if (workspaceMode === "landing") return;
 
     const text = draft.trim();
     if (!text) {
@@ -368,9 +481,13 @@ export default function SupplierIntelligencePage() {
       return;
     }
 
-    // Capture save context — DB write always uses these IDs.
     const orgId = organization.id;
-    const personId = selectedPersonId;
+    const saveMode = workspaceMode;
+    const personId = saveMode === "person" ? selectedPersonId : null;
+    if (saveMode === "person" && !personId) {
+      toast.error("Select a contact before saving a conversation.");
+      return;
+    }
     const saveContextGeneration = contextGenerationRef.current;
     const saveDraftGeneration = draftGenerationRef.current;
     const saveInputType = draftInputType;
@@ -390,7 +507,9 @@ export default function SupplierIntelligencePage() {
       const stillSameContext =
         saveContextGeneration === contextGenerationRef.current &&
         organization?.id === orgId &&
-        selectedPersonId === personId;
+        (saveMode === "person"
+          ? selectedPersonId === personId
+          : selectedPersonId === null);
 
       if (stillSameContext) {
         setConversations((prev) => {
@@ -399,8 +518,6 @@ export default function SupplierIntelligencePage() {
         });
       }
 
-      // Clear composer only if context AND draft version are unchanged.
-      // Editing the draft while save is pending bumps draftGenerationRef.
       const stillSameDraft =
         stillSameContext &&
         saveDraftGeneration === draftGenerationRef.current;
@@ -484,7 +601,7 @@ export default function SupplierIntelligencePage() {
                   </p>
                 ) : searchHits.length === 0 ? (
                   <p className="px-3 py-4 text-sm text-muted-foreground">
-                    No organizations found
+                    No matches found
                   </p>
                 ) : (
                   <ul className="divide-y divide-border">
@@ -494,7 +611,12 @@ export default function SupplierIntelligencePage() {
                           <button
                             type="button"
                             className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-muted/50"
-                            onClick={() => selectOrganization(hit.organization)}
+                            onClick={() => {
+                              setSearch("");
+                              setSearchHits([]);
+                              setSearchOpen(false);
+                              navigate(hit.organization.id, null);
+                            }}
                           >
                             <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                               <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -502,9 +624,10 @@ export default function SupplierIntelligencePage() {
                             </span>
                             <span className="pl-5 text-xs text-muted-foreground">
                               {[
+                                "Organization",
                                 hit.organization.types
                                   .map((t) => t.name)
-                                  .join(", ") || "Organization",
+                                  .join(", ") || null,
                                 hit.organization.code,
                               ]
                                 .filter(Boolean)
@@ -520,32 +643,10 @@ export default function SupplierIntelligencePage() {
                             type="button"
                             className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-muted/50"
                             onClick={() => {
-                              void (async () => {
-                                try {
-                                  const full = await getSupplierOrganizationById(
-                                    hit.organization.id
-                                  );
-                                  selectOrganization(
-                                    full ?? {
-                                      id: hit.organization.id,
-                                      name: hit.organization.name,
-                                      code: null,
-                                      notes: null,
-                                      active: true,
-                                      types: [],
-                                    },
-                                    hit.person.id
-                                  );
-                                } catch (error) {
-                                  console.error(error);
-                                  toast.error(
-                                    formatSupplierError(
-                                      error,
-                                      "Unable to open that organization."
-                                    )
-                                  );
-                                }
-                              })();
+                              setSearch("");
+                              setSearchHits([]);
+                              setSearchOpen(false);
+                              navigate(hit.organization.id, hit.person.id);
                             }}
                           >
                             <span className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -554,6 +655,7 @@ export default function SupplierIntelligencePage() {
                             </span>
                             <span className="pl-5 text-xs text-muted-foreground">
                               {[
+                                "Contact",
                                 hit.person.designation,
                                 hit.organization.name,
                               ]
@@ -583,126 +685,14 @@ export default function SupplierIntelligencePage() {
             </Button>
           ) : null}
 
-          {organization ? (
-            <div className="space-y-3 border-t border-border pt-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    Organization
-                  </p>
-                  <p className="truncate font-heading text-base font-semibold text-foreground">
-                    {organization.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {[typeLabels, organization.code].filter(Boolean).join(" · ") ||
-                      "Organization"}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearContext}
-                  className="shrink-0"
-                >
-                  Clear
-                </Button>
-              </div>
-
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    People
-                  </p>
-                  {canCreate ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setAddPersonOpen(true)}
-                      className="h-7 px-2 text-xs"
-                    >
-                      <Plus className="mr-1 h-3 w-3" />
-                      Add Person
-                    </Button>
-                  ) : null}
-                </div>
-
-                {peopleLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading contacts…</p>
-                ) : people.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      No contacts linked yet.
-                    </p>
-                    {canCreate ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => setAddPersonOpen(true)}
-                      >
-                        Add Person
-                      </Button>
-                    ) : null}
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      You can still log an organization-level note without a
-                      contact.
-                    </p>
-                  </div>
-                ) : (
-                  <ul className="max-h-56 space-y-1 overflow-y-auto">
-                    <li>
-                      <button
-                        type="button"
-                        onClick={() => selectPerson(null)}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
-                          selectedPersonId === null
-                            ? "bg-primary/10 font-medium text-foreground"
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                        )}
-                      >
-                        <Building2 className="h-3.5 w-3.5 shrink-0" />
-                        Organization notes
-                      </button>
-                    </li>
-                    {people.map((person) => (
-                      <li key={person.id}>
-                        <button
-                          type="button"
-                          onClick={() => selectPerson(person.id)}
-                          className={cn(
-                            "flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors",
-                            selectedPersonId === person.id
-                              ? "bg-primary/10 text-foreground"
-                              : "hover:bg-muted/60"
-                          )}
-                        >
-                          <span className="flex items-center gap-2 text-sm font-medium">
-                            <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            {person.name}
-                          </span>
-                          {(person.linkDesignation || person.designation) && (
-                            <span className="pl-5 text-xs text-muted-foreground">
-                              {person.linkDesignation || person.designation}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          ) : (
+          {workspaceMode === "landing" ? (
             <div className="space-y-3 border-t border-border pt-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Organizations
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Select an organization to open its workspace.
+                  Select an organization to view its contacts.
                 </p>
               </div>
 
@@ -732,7 +722,7 @@ export default function SupplierIntelligencePage() {
                     <li key={org.id}>
                       <button
                         type="button"
-                        onClick={() => selectOrganization(org)}
+                        onClick={() => navigate(org.id, null)}
                         className="flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-muted/60"
                       >
                         <span className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -754,54 +744,355 @@ export default function SupplierIntelligencePage() {
                 </ul>
               )}
             </div>
+          ) : organization ? (
+            <div className="space-y-3 border-t border-border pt-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Organization
+                  </p>
+                  <p className="truncate font-heading text-base font-semibold text-foreground">
+                    {organization.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {[typeLabels, organization.code].filter(Boolean).join(" · ") ||
+                      "Organization"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(null)}
+                  className="shrink-0"
+                >
+                  All orgs
+                </Button>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Contacts
+                  </p>
+                  {canCreate ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAddPersonOpen(true)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      <Plus className="mr-1 h-3 w-3" />
+                      Add Person
+                    </Button>
+                  ) : null}
+                </div>
+
+                {people.length > 0 ? (
+                  <div className="relative mb-2">
+                    <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={contactFilter}
+                      onChange={(e) => setContactFilter(e.target.value)}
+                      placeholder="Filter contacts"
+                      className="h-8 pl-8 text-xs"
+                      aria-label="Filter contacts in this organization"
+                    />
+                  </div>
+                ) : null}
+
+                {peopleLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading contacts…</p>
+                ) : people.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No contacts linked yet.
+                    </p>
+                    {canCreate ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setAddPersonOpen(true)}
+                      >
+                        Add Person
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : filteredPeople.length === 0 ? (
+                  <p className="px-1 py-2 text-sm text-muted-foreground">
+                    No contacts match this filter.
+                  </p>
+                ) : (
+                  <ul className="max-h-56 space-y-1 overflow-y-auto">
+                    {filteredPeople.map((person) => (
+                      <li key={person.id}>
+                        <button
+                          type="button"
+                          onClick={() => navigate(organization.id, person.id)}
+                          className={cn(
+                            "flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                            selectedPersonId === person.id
+                              ? "bg-primary/10 text-foreground"
+                              : "hover:bg-muted/60"
+                          )}
+                        >
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            {person.name}
+                          </span>
+                          {(person.linkDesignation || person.designation) && (
+                            <span className="pl-5 text-xs text-muted-foreground">
+                              {person.linkDesignation || person.designation}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="border-t border-border pt-3">
+              <p className="py-4 text-sm text-muted-foreground">
+                {orgLoading ? "Loading organization…" : "Organization unavailable."}
+              </p>
+            </div>
           )}
         </aside>
 
-        {/* Timeline + composer */}
+        {/* Main workspace */}
         <section className="supplier-panel flex min-h-[min(70vh,720px)] flex-col overflow-hidden">
-          {!organization ? (
+          {workspaceMode === "landing" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-center">
-              <MessageSquareText className="h-8 w-8 text-muted-foreground/70" />
+              <Building2 className="h-8 w-8 text-muted-foreground/70" />
               <p className="text-sm font-medium text-foreground">
-                Conversation workspace
+                Organizations
               </p>
               <p className="max-w-sm text-sm text-muted-foreground">
-                Choose an organization to see history and log what you learned.
+                Choose an organization to see its contacts. Conversations open
+                after you select a person.
               </p>
             </div>
-          ) : (
+          ) : workspaceMode === "organization" && organization ? (
             <>
-              <header className="border-b border-border px-3 py-3 sm:px-4">
-                <p className="truncate font-heading text-base font-semibold text-foreground sm:text-lg">
-                  {selectedPerson ? selectedPerson.name : organization.name}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedPerson
-                    ? [
-                        selectedPerson.linkDesignation ||
-                          selectedPerson.designation,
-                        organization.name,
-                        typeLabels,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                    : [
-                        "Organization-level notes",
-                        typeLabels,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Showing up to {SUPPLIER_CONVERSATION_HISTORY_LIMIT} recent
-                  conversations
-                  {selectedPerson ? " for this contact" : " for this organization"}
-                  .
+              <header className="space-y-2 border-b border-border px-3 py-3 sm:px-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 h-8 gap-1.5 px-2 text-muted-foreground"
+                  onClick={() => navigate(null)}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back
+                </Button>
+                <div>
+                  <p className="truncate font-heading text-base font-semibold text-foreground sm:text-lg">
+                    {organization.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {typeLabels || "Organization"}
+                  </p>
+                </div>
+              </header>
+
+              <AskIntelligencePanel
+                key={`ask-org-${organization.id}`}
+                organizationId={organization.id}
+                personId={null}
+                organizationName={organization.name}
+              />
+
+              <div className="flex-1 space-y-6 overflow-y-auto px-3 py-4 sm:px-4">
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        Contacts / People
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Select a contact to open their conversation history.
+                      </p>
+                    </div>
+                    {canCreate ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAddPersonOpen(true)}
+                      >
+                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                        Add Person
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {peopleLoading ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      Loading contacts…
+                    </p>
+                  ) : people.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                      <UserRound className="mx-auto h-7 w-7 text-muted-foreground/70" />
+                      <p className="mt-2 text-sm font-medium text-foreground">
+                        No contacts yet
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Add people linked to this organization before logging
+                        person-level conversations.
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-border rounded-lg border border-border">
+                      {filteredPeople.map((person) => (
+                        <li key={person.id}>
+                          <button
+                            type="button"
+                            onClick={() => navigate(organization.id, person.id)}
+                            className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50"
+                          >
+                            <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-foreground">
+                                {person.name}
+                              </span>
+                              {(person.linkDesignation ||
+                                person.designation) && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {person.linkDesignation || person.designation}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                <section className="space-y-3 border-t border-border pt-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Organization-level notes
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Notes with no contact selected. These are not shown as a
+                      person’s conversations.
+                    </p>
+                  </div>
+
+                  {timelineLoading ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      Loading organization notes…
+                    </p>
+                  ) : timelineError ? (
+                    <p className="py-6 text-center text-sm text-destructive">
+                      {timelineError}
+                    </p>
+                  ) : chronological.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                      <MessageSquareText className="mx-auto h-7 w-7 text-muted-foreground/70" />
+                      <p className="mt-2 text-sm font-medium text-foreground">
+                        No organization-level notes yet
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Use the composer below for notes that belong to the
+                        organization rather than a specific contact.
+                      </p>
+                    </div>
+                  ) : (
+                    chronological.map((conversation) => (
+                      <ConversationEntry
+                        key={conversation.id}
+                        conversation={conversation}
+                      />
+                    ))
+                  )}
+                  <div ref={timelineEndRef} />
+                </section>
+              </div>
+
+              {canCreate ? (
+                <div className="border-t border-border">
+                  <div className="px-3 pt-3 sm:px-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Log a conversation
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Record what you learned in a meeting. This saves a note —
+                      it does not ask AI.
+                    </p>
+                  </div>
+                  <ConversationComposer
+                    value={draft}
+                    onChange={updateDraft}
+                    onSend={handleSend}
+                    sending={sending}
+                    inputType={draftInputType}
+                    onInputTypeChange={setDraftInputType}
+                  />
+                </div>
+              ) : (
+                <div className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
+                  You can view this organization, but you do not have permission
+                  to add notes.
+                </div>
+              )}
+            </>
+          ) : workspaceMode === "person" && organization ? (
+            <>
+              <header className="space-y-2 border-b border-border px-3 py-3 sm:px-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 h-8 gap-1.5 px-2 text-muted-foreground"
+                  onClick={() => navigate(organization.id, null)}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back
+                </Button>
+                <div className="space-y-0.5">
+                  <p className="text-xs text-muted-foreground">
+                    {organization.name}
+                    {typeLabels ? ` · ${typeLabels}` : ""}
+                  </p>
+                  <p className="truncate font-heading text-base font-semibold text-foreground sm:text-lg">
+                    {selectedPerson?.name ?? "Contact"}
+                  </p>
+                  {(selectedPerson?.linkDesignation ||
+                    selectedPerson?.designation) && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedPerson.linkDesignation ||
+                        selectedPerson.designation}
+                    </p>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Conversations for this contact only · up to{" "}
+                  {SUPPLIER_CONVERSATION_HISTORY_LIMIT} recent
                 </p>
               </header>
 
+              <AskIntelligencePanel
+                key={`ask-person-${organization.id}-${selectedPersonId ?? "none"}`}
+                organizationId={organization.id}
+                personId={selectedPersonId}
+                organizationName={organization.name}
+                personName={selectedPerson?.name}
+              />
+
+              <div className="border-b border-border px-3 py-2 sm:px-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Conversation history
+                </p>
+              </div>
+
               <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4">
-                {timelineLoading ? (
+                {peopleLoading || timelineLoading ? (
                   <p className="py-10 text-center text-sm text-muted-foreground">
                     Loading conversations…
                   </p>
@@ -813,11 +1104,16 @@ export default function SupplierIntelligencePage() {
                   <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                     <MessageSquareText className="h-8 w-8 text-muted-foreground/70" />
                     <p className="text-sm font-medium text-foreground">
-                      No conversations yet
+                      {selectedPerson?.name ?? "Contact"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {organization.name}
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-foreground">
+                      No conversations yet.
                     </p>
                     <p className="max-w-sm text-sm text-muted-foreground">
-                      Write what you learned below and press Send. Original text
-                      is preserved as historical source material.
+                      Start a conversation below.
                     </p>
                   </div>
                 ) : (
@@ -832,14 +1128,25 @@ export default function SupplierIntelligencePage() {
               </div>
 
               {canCreate ? (
-                <ConversationComposer
-                  value={draft}
-                  onChange={updateDraft}
-                  onSend={handleSend}
-                  sending={sending}
-                  inputType={draftInputType}
-                  onInputTypeChange={setDraftInputType}
-                />
+                <div className="border-t border-border">
+                  <div className="px-3 pt-3 sm:px-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Log a conversation
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Record what you learned in a meeting. This saves a note —
+                      it does not ask AI.
+                    </p>
+                  </div>
+                  <ConversationComposer
+                    value={draft}
+                    onChange={updateDraft}
+                    onSend={handleSend}
+                    sending={sending}
+                    inputType={draftInputType}
+                    onInputTypeChange={setDraftInputType}
+                  />
+                </div>
               ) : (
                 <div className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
                   You can view this timeline, but you do not have permission to
@@ -847,6 +1154,12 @@ export default function SupplierIntelligencePage() {
                 </div>
               )}
             </>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-center">
+              <p className="text-sm text-muted-foreground">
+                {orgLoading ? "Loading organization…" : "Unable to open workspace."}
+              </p>
+            </div>
           )}
         </section>
       </div>
@@ -861,7 +1174,7 @@ export default function SupplierIntelligencePage() {
               a.name.localeCompare(b.name)
             );
           });
-          selectOrganization(created);
+          navigate(created.id, null);
         }}
       />
 
@@ -876,7 +1189,7 @@ export default function SupplierIntelligencePage() {
               if (prev.some((p) => p.id === person.id)) return prev;
               return [person, ...prev];
             });
-            selectPerson(person.id);
+            navigate(organization.id, person.id);
           }}
         />
       ) : null}

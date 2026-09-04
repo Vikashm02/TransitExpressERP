@@ -276,7 +276,7 @@ export default function ConversationComposer({
           placeholder={placeholder}
           disabled={disabled || sending}
           rows={3}
-          className="min-h-[88px] flex-1 resize-y"
+          className="min-h-[88px] flex-1 resize-y text-foreground caret-foreground placeholder:text-muted-foreground"
           aria-label="Supplier intelligence conversation"
         />
 

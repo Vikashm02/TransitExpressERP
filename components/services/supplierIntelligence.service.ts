@@ -1,9 +1,9 @@
 import { supabase } from "@/lib/supabase";
 
 /**
- * Supplier Intelligence — organizations, people, conversations.
+ * Supplier Intelligence — organizations, people, conversations, ask client.
  * Uses migration 067 tables + RLS via authenticated browser client.
- * No RPCs / AI / service_role.
+ * Ask goes through POST /api/supplier/intelligence/ask (JWT). No service_role.
  */
 
 export type SupplierConversationInputType = "text" | "voice";
@@ -480,6 +480,11 @@ export async function createSupplierPerson(
 
 export async function listSupplierConversations(params: {
   organizationId: string;
+  /**
+   * When set: conversations for that person only.
+   * When null/undefined: organization-level notes only (person_id IS NULL).
+   * Never returns other people's conversations for an organization-wide dump.
+   */
   personId?: string | null;
   limit?: number;
 }): Promise<SupplierConversation[]> {
@@ -518,6 +523,9 @@ export async function listSupplierConversations(params: {
 
   if (params.personId) {
     builder = builder.eq("person_id", params.personId);
+  } else {
+    // Organization-level notes only — do not mix in person-owned conversations.
+    builder = builder.is("person_id", null);
   }
 
   const { data, error } = await builder;
@@ -584,4 +592,138 @@ export async function createSupplierConversation(
     data as Record<string, unknown>,
     options?.loggedByName || "Unknown"
   );
+}
+
+/** Public ask API response shapes (browser-safe; no secrets / contentBlocks). */
+export type SupplierAskMode = "DB_ONLY" | "SYNTHESIS";
+
+export interface SupplierAskSource {
+  conversationId: string;
+  occurredAt: string;
+  organizationName: string | null;
+  personName: string | null;
+  personDesignation: string | null;
+  inputType: "text" | "voice";
+}
+
+export interface SupplierAskResult {
+  ok: true;
+  mode: SupplierAskMode;
+  answer: string | null;
+  message: string | null;
+  sources: SupplierAskSource[];
+  truncated: boolean;
+  /** Whether a model was invoked for this answer (user-facing only). */
+  providerCalled: boolean;
+}
+
+export interface SupplierAskErrorResult {
+  ok: false;
+  error: string;
+  message: string;
+}
+
+export type SupplierAskResponse = SupplierAskResult | SupplierAskErrorResult;
+
+/**
+ * Ask Supplier Intelligence via the authenticated Next.js route.
+ * Does NOT create supplier_conversations. Does NOT use service role.
+ */
+export async function askSupplierIntelligence(params: {
+  question: string;
+  organizationId?: string | null;
+  personId?: string | null;
+}): Promise<SupplierAskResponse> {
+  const question = params.question.trim();
+  if (!question) {
+    return {
+      ok: false,
+      error: "invalid_request",
+      message: "Enter a question before asking.",
+    };
+  }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+  if (!accessToken) {
+    return {
+      ok: false,
+      error: "unauthenticated",
+      message: "You must be signed in to ask Supplier Intelligence.",
+    };
+  }
+
+  const response = await fetch("/api/supplier/intelligence/ask", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      question,
+      organizationId: params.organizationId || null,
+      personId: params.personId || null,
+    }),
+  });
+
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    return {
+      ok: false,
+      error: "retrieval_failure",
+      message: "Unable to read the Supplier Intelligence response. Please try again.",
+    };
+  }
+
+  if (!json || typeof json !== "object") {
+    return {
+      ok: false,
+      error: "retrieval_failure",
+      message: "Unexpected response from Supplier Intelligence.",
+    };
+  }
+
+  const body = json as Record<string, unknown>;
+
+  if (body.ok === true) {
+    const usage =
+      body.usage && typeof body.usage === "object"
+        ? (body.usage as Record<string, unknown>)
+        : null;
+    const sourcesRaw = Array.isArray(body.sources) ? body.sources : [];
+    const sources: SupplierAskSource[] = sourcesRaw
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+      .map((row) => ({
+        conversationId: asString(row.conversationId),
+        occurredAt: asString(row.occurredAt),
+        organizationName: asNullableString(row.organizationName),
+        personName: asNullableString(row.personName),
+        personDesignation: asNullableString(row.personDesignation),
+        inputType: row.inputType === "voice" ? "voice" : "text",
+      }));
+
+    return {
+      ok: true,
+      mode: body.mode === "SYNTHESIS" ? "SYNTHESIS" : "DB_ONLY",
+      answer: asNullableString(body.answer),
+      message: asNullableString(body.message),
+      sources,
+      truncated: asBoolean(body.truncated, false),
+      providerCalled: asBoolean(usage?.providerCalled, false),
+    };
+  }
+
+  const message =
+    asNullableString(body.message) ||
+    "Unable to answer right now. Please try again.";
+
+  return {
+    ok: false,
+    error: asString(body.error, "retrieval_failure"),
+    message,
+  };
 }
