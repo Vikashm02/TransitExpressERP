@@ -563,9 +563,9 @@ function SupplierIntelligencePageInner() {
         </p>
       </header>
 
-      <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-stretch">
-        {/* Context panel */}
-        <aside className="supplier-panel flex min-h-0 flex-col gap-3 p-3 sm:p-4">
+      <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-start">
+        {/* Context panel — sticky on desktop so it stays put while the right column scrolls */}
+        <aside className="supplier-panel flex flex-col gap-3 p-3 sm:p-4 lg:sticky lg:top-4 lg:self-start">
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -576,7 +576,7 @@ function SupplierIntelligencePageInner() {
               }}
               onFocus={() => setSearchOpen(true)}
               placeholder="Search organizations / people"
-              className="pl-9"
+              className="pl-9 text-foreground caret-foreground placeholder:text-muted-foreground"
               aria-label="Search organizations and people"
             />
             {search ? (
@@ -796,7 +796,7 @@ function SupplierIntelligencePageInner() {
                       value={contactFilter}
                       onChange={(e) => setContactFilter(e.target.value)}
                       placeholder="Filter contacts"
-                      className="h-8 pl-8 text-xs"
+                      className="h-8 pl-8 text-xs text-foreground caret-foreground placeholder:text-muted-foreground"
                       aria-label="Filter contacts in this organization"
                     />
                   </div>
@@ -832,13 +832,13 @@ function SupplierIntelligencePageInner() {
                           type="button"
                           onClick={() => navigate(organization.id, person.id)}
                           className={cn(
-                            "flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors",
+                            "flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-foreground transition-colors",
                             selectedPersonId === person.id
-                              ? "bg-primary/10 text-foreground"
+                              ? "bg-primary/10"
                               : "hover:bg-muted/60"
                           )}
                         >
-                          <span className="flex items-center gap-2 text-sm font-medium">
+                          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                             <UserRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             {person.name}
                           </span>
@@ -863,7 +863,7 @@ function SupplierIntelligencePageInner() {
           )}
         </aside>
 
-        {/* Main workspace */}
+        {/* Main workspace — conversation history scrolls inside this column */}
         <section className="supplier-panel flex min-h-[min(70vh,720px)] flex-col overflow-hidden">
           {workspaceMode === "landing" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-center">
