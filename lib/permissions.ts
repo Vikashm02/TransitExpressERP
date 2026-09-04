@@ -86,7 +86,8 @@ export type PermissionKey =
   | "debit_notes"
   | "ledger"
   | "reports"
-  | "notifications";
+  | "notifications"
+  | "consignee_intelligence";
 
 /** Which actions make sense per module (UI only — flags still stored). */
 export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]> = {
@@ -106,6 +107,7 @@ export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]>
   ledger: ["view", "print", "share"],
   reports: ["view", "print", "share"],
   notifications: ["view"],
+  consignee_intelligence: ["view", "create"],
 };
 
 export const PERMISSION_MODULES: {
@@ -133,6 +135,12 @@ export const PERMISSION_MODULES: {
     key: "notifications",
     label: "Notifications",
     description: "Receive and view operational ERP notifications.",
+  },
+  {
+    key: "consignee_intelligence",
+    label: "Consignee Intelligence",
+    routePrefix: "/consignee-intelligence",
+    description: "Record and view consignee relationship conversations.",
   },
 ];
 
