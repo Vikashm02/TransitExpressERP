@@ -58,8 +58,30 @@ export default function BillingBulkUploadDialog({
 
     try {
       setParsing(true);
-      const [billingParties, lrs, pods] = await Promise.all([getBillingParties(), getLRs(), getPods()]);
-      const result = await parseAndValidateBillingUpload(file, billingParties, lrs, pods);
+      const [billingParties, lrs, pods, company] = await Promise.all([
+        getBillingParties(),
+        getLRs(),
+        getPods(),
+        getCompany(),
+      ]);
+
+      if (!company) {
+        toast.error("Company settings are not configured. Configure LR prefix settings before bulk upload.");
+        setHasParsed(true);
+        setGroups([]);
+        setErrors([
+          {
+            excelRow: 1,
+            messages: ["Company settings are not configured."],
+          },
+        ]);
+        return;
+      }
+
+      const result = await parseAndValidateBillingUpload(file, billingParties, lrs, pods, {
+        prefix: company.lrPrefix || "LR",
+        prefixLength: company.lrPrefixLength || 4,
+      });
       setGroups(result.groups);
       setErrors(result.errors);
       setHasParsed(true);
@@ -176,7 +198,7 @@ export default function BillingBulkUploadDialog({
       open={open}
       onOpenChange={handleOpenChange}
       title="Bulk Upload Bills"
-      description="Upload a completed template to import multiple bills at once."
+      description="Upload a completed template to import multiple bills. Enter numeric LR numbers only (e.g. 19305)."
       loading={importing}
       loadingText="Importing bills..."
       footer={

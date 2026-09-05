@@ -2,15 +2,27 @@ import {
   validateLR,
   BILLING_PARTY_OPTIONS,
   FREIGHT_TYPE_OPTIONS,
+  BOOKING_BRANCH_OPTIONS,
   type LR,
 } from "./lr.schema";
-import type { BillingPartyRecord } from "@/components/services/billingParty.service";
-import type { MaterialRecord } from "@/components/services/material.service";
+import type { LrBillingPartyLookupRow } from "@/components/services/billingParty.service";
+import type { LrCustomerLookupRow } from "@/components/services/customer.service";
+import type { LrMaterialLookupRow } from "@/components/services/material.service";
+import {
+  normalizeLrBulkNumberInput,
+  validateHistoricalLrCreateNumber,
+  type LrBulkNumberFormatConfig,
+} from "@/lib/historicalLrBulkNumber";
+import {
+  masterAmbiguousMessage,
+  masterNotFoundMessage,
+  resolveUniqueMasterByName,
+} from "@/lib/bulkMasterResolve";
 
 /**
  * Fields collected by the LR create flow (same sections as LRForm).
+ * "LR Number" is required for historical bulk import (numeric portion only).
  * Deliberately excludes:
- *  - "LR Number" — auto-generated at save time
  *  - "Status" — always starts as "Open"
  *  - "Unloading Weight" — POD module
  *  - Bill Amount / Lorry Hire Amount / Profit — computed at save
@@ -21,6 +33,7 @@ import type { MaterialRecord } from "@/components/services/material.service";
  * Combined DC/Invoice columns match DispatchDocumentsSection behavior.
  */
 export const LR_TEMPLATE_HEADERS = [
+  "LR Number",
   "LR Date",
   "Booking Branch",
   "Billing Party",
@@ -57,6 +70,7 @@ export const LR_TEMPLATE_HEADERS = [
 type TemplateHeader = (typeof LR_TEMPLATE_HEADERS)[number];
 
 const SAMPLE_ROW: Record<TemplateHeader, string> = {
+  "LR Number": "19305",
   "LR Date": "2026-08-01",
   "Booking Branch": "Visakhapatnam",
   "Billing Party": "Sample Logistics Pvt Ltd",
@@ -116,12 +130,22 @@ function cellToString(value: unknown): string {
     return `${year}-${month}-${day}`;
   }
 
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "";
+    // Excel often stores whole numbers as floats (19305 → 19305 or 19305.0).
+    if (Number.isInteger(value)) return String(value);
+    if (Number.isInteger(Math.round(value)) && Math.abs(value - Math.round(value)) < 1e-9) {
+      return String(Math.round(value));
+    }
+    return String(value);
+  }
+
   if (typeof value === "object") {
     const text = (value as { text?: unknown }).text;
     if (typeof text === "string") return text.trim();
 
     const result = (value as { result?: unknown }).result;
-    if (result != null) return String(result).trim();
+    if (result != null) return cellToString(result);
 
     return "";
   }
@@ -180,22 +204,30 @@ export async function downloadLRUploadTemplate(): Promise<void> {
  * `validateLR()` — the exact same schema the LR form already uses — plus
  * the two existing Master-only restrictions the LR form itself already
  * enforces via selection-only (read-only) inputs:
- *  - "Billing Party" must be an existing Billing Party Master name
- *    (see LRHeader.tsx — selection only, never free-typed).
- *  - "Material" must be an existing Material Master material name
- *    (see MaterialSection.tsx — selection only, never free-typed).
- * No new business rule or second validation path is invented here.
- * "LR Number" is intentionally never generated here — the caller
- * (LRBulkUploadDialog) generates/reserves it the same way LRListPage's
- * `handleSubmit` already does, immediately before each `createLR()` call.
+ * Master-data (deterministic name match, same as LR form masters):
+ *  - "Billing Party" → Billing Party Master (finalized; name equality)
+ *  - "Consignor" / "Consignee" → Customer Master (finalized; name equality)
+ *  - "Material" → Material Master (material name equality)
+ *  - "Booking Branch" → company DEFAULT_BRANCH_OPTIONS (form select list)
+ * Ambiguous duplicate names are rejected (never fuzzy-guessed).
+ * Inactive masters are allowed when the LR form lookup allows them
+ * (customer/billing-party RPCs do not filter status=Active).
+ *
+ * Historical bulk import also requires "LR Number" (numeric portion).
+ * Numbers are normalized with company prefix/padding and must be strictly
+ * older than company_settings.lr_running_number and not already present.
+ * This path does NOT call allocate_next_lr_number / advance the sequence.
  *
  * All-or-nothing: if any row fails, `rows` is returned empty so the
  * caller never imports a partial file.
  */
 export async function parseAndValidateLRUpload(
   file: File,
-  existingBillingParties: BillingPartyRecord[],
-  existingMaterials: MaterialRecord[]
+  existingBillingParties: LrBillingPartyLookupRow[],
+  existingMaterials: LrMaterialLookupRow[],
+  existingCustomers: LrCustomerLookupRow[],
+  lrNumberConfig: LrBulkNumberFormatConfig,
+  existingLrNumbers: string[],
 ): Promise<LRUploadParseResult> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -245,9 +277,19 @@ export async function parseAndValidateLRUpload(
     excelRow: number;
     values: LR;
     messages: string[];
+    formattedLrNumber: string | null;
   }
 
   const parsedRows: ParsedRow[] = [];
+  const existingLrNumbersLower = new Set(
+    existingLrNumbers.map((value) => value.trim().toLowerCase()).filter(Boolean),
+  );
+  const rowsByFormattedLr = new Map<string, number[]>();
+
+  // Same eligibility as LR form lookups: finalized only (RPC already filters).
+  const billingParties = existingBillingParties.filter((p) => p.entryStatus !== "draft");
+  const customers = existingCustomers.filter((c) => c.entryStatus !== "draft");
+  const materials = existingMaterials;
 
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) return; // header row
@@ -256,14 +298,15 @@ export async function parseAndValidateLRUpload(
     const isBlankRow = rawValues.every((value) => value === "");
     if (isBlankRow) return;
 
+    const rawLrNumber = cellValue(row, "LR Number");
     const lrDate = cellValue(row, "LR Date");
-    const bookingBranch = cellValue(row, "Booking Branch");
-    const customer = cellValue(row, "Billing Party");
+    const bookingBranchRaw = cellValue(row, "Booking Branch");
+    const customerRaw = cellValue(row, "Billing Party");
     const rawBillingParty = cellValue(row, "GST Payable By");
-    const consignor = cellValue(row, "Consignor");
+    const consignorRaw = cellValue(row, "Consignor");
     const consignorGST = cellValue(row, "Consignor GST").toUpperCase();
     const consignorAddress = cellValue(row, "Consignor Address");
-    const consignee = cellValue(row, "Consignee");
+    const consigneeRaw = cellValue(row, "Consignee");
     const consigneeGST = cellValue(row, "Consignee GST").toUpperCase();
     const consigneeAddress = cellValue(row, "Consignee Address");
     const vehicleNumber = cellValue(row, "Vehicle Number").toUpperCase();
@@ -273,7 +316,7 @@ export async function parseAndValidateLRUpload(
     const driverMobile = cellValue(row, "Driver Mobile");
     const from = cellValue(row, "From");
     const to = cellValue(row, "To");
-    const material = cellValue(row, "Material");
+    const materialRaw = cellValue(row, "Material");
     const packageType = cellValue(row, "Package Type");
     const rawPackages = cellValue(row, "Packages");
     const rawLoadingWeight = cellValue(row, "Loading Weight");
@@ -289,6 +332,26 @@ export async function parseAndValidateLRUpload(
     const internalRemarks = cellValue(row, "Internal Remarks");
 
     const messages: string[] = [];
+    let formattedLrNumber: string | null = null;
+
+    const normalized = normalizeLrBulkNumberInput(rawLrNumber, lrNumberConfig);
+    if (!normalized.ok) {
+      messages.push(normalized.message);
+    } else {
+      formattedLrNumber = normalized.formatted;
+      const historicalError = validateHistoricalLrCreateNumber({
+        numeric: normalized.numeric,
+        formatted: normalized.formatted,
+        runningNumber: lrNumberConfig.runningNumber,
+        existingLrNumbersLower,
+      });
+      if (historicalError) {
+        messages.push(historicalError);
+      }
+      const priorRows = rowsByFormattedLr.get(normalized.formatted) ?? [];
+      priorRows.push(rowNumber);
+      rowsByFormattedLr.set(normalized.formatted, priorRows);
+    }
 
     if (lrDate && !/^\d{4}-\d{2}-\d{2}$/.test(lrDate)) {
       messages.push("LR Date must be a valid date (YYYY-MM-DD).");
@@ -298,16 +361,86 @@ export async function parseAndValidateLRUpload(
       messages.push("DC Date / Invoice Date must be a valid date (YYYY-MM-DD).");
     }
 
-    // Billing Party — selection-only in the existing LR form (LRHeader.tsx);
-    // must match an existing Billing Party Master record by name.
-    if (customer && !existingBillingParties.some((party) => party.name.toLowerCase() === customer.toLowerCase())) {
-      messages.push(`Billing Party "${customer}" was not found in Billing Party Master.`);
+    // Booking Branch — same closed list as LR form FormSelect.
+    let bookingBranch = bookingBranchRaw;
+    if (bookingBranchRaw) {
+      const branchMatch = BOOKING_BRANCH_OPTIONS.find(
+        (option) => option.toLowerCase() === bookingBranchRaw.toLowerCase(),
+      );
+      if (!branchMatch) {
+        messages.push(
+          `Booking Branch "${bookingBranchRaw}" is not a valid branch. Allowed: ${BOOKING_BRANCH_OPTIONS.join(", ")}.`,
+        );
+      } else {
+        bookingBranch = branchMatch;
+      }
     }
 
-    // Material — selection-only in the existing LR form (MaterialSection.tsx);
-    // must match an existing Material Master record by name.
-    if (material && !existingMaterials.some((item) => item.materialName.toLowerCase() === material.toLowerCase())) {
-      messages.push(`Material "${material}" was not found in Material Master.`);
+    // Billing Party Master → stored on LR.customer (same as LRHeader).
+    let customer = customerRaw;
+    if (customerRaw) {
+      const resolved = resolveUniqueMasterByName(
+        customerRaw,
+        billingParties,
+        (party) => party.name,
+      );
+      if (!resolved.ok) {
+        messages.push(
+          resolved.reason === "ambiguous"
+            ? masterAmbiguousMessage("Billing Party", customerRaw, "Billing Party Master")
+            : masterNotFoundMessage("Billing Party", customerRaw, "Billing Party Master"),
+        );
+      } else {
+        customer = resolved.match.name;
+      }
+    }
+
+    // Consignor / Consignee → Customer Master (same as PartySection).
+    let consignor = consignorRaw;
+    if (consignorRaw) {
+      const resolved = resolveUniqueMasterByName(consignorRaw, customers, (c) => c.name);
+      if (!resolved.ok) {
+        messages.push(
+          resolved.reason === "ambiguous"
+            ? masterAmbiguousMessage("Consignor", consignorRaw, "Customer Master")
+            : masterNotFoundMessage("Consignor", consignorRaw, "Customer Master"),
+        );
+      } else {
+        consignor = resolved.match.name;
+      }
+    }
+
+    let consignee = consigneeRaw;
+    if (consigneeRaw) {
+      const resolved = resolveUniqueMasterByName(consigneeRaw, customers, (c) => c.name);
+      if (!resolved.ok) {
+        messages.push(
+          resolved.reason === "ambiguous"
+            ? masterAmbiguousMessage("Consignee", consigneeRaw, "Customer Master")
+            : masterNotFoundMessage("Consignee", consigneeRaw, "Customer Master"),
+        );
+      } else {
+        consignee = resolved.match.name;
+      }
+    }
+
+    // Material Master — selection-only in MaterialSection.
+    let material = materialRaw;
+    if (materialRaw) {
+      const resolved = resolveUniqueMasterByName(
+        materialRaw,
+        materials,
+        (item) => item.materialName,
+      );
+      if (!resolved.ok) {
+        messages.push(
+          resolved.reason === "ambiguous"
+            ? masterAmbiguousMessage("Material", materialRaw, "Material Master")
+            : masterNotFoundMessage("Material", materialRaw, "Material Master"),
+        );
+      } else {
+        material = resolved.match.materialName;
+      }
     }
 
     let billingParty: LR["billingParty"] = "Consignor";
@@ -352,7 +485,7 @@ export async function parseAndValidateLRUpload(
     const invoiceValue = parseNumber(rawInvoiceValue, "Invoice Value");
 
     const candidate: LR = {
-      lrNumber: "",
+      lrNumber: formattedLrNumber ?? "",
       lrDate,
       bookingBranch,
       customer,
@@ -420,8 +553,29 @@ export async function parseAndValidateLRUpload(
       if (message) messages.push(message);
     }
 
-    parsedRows.push({ excelRow: rowNumber, values: candidate, messages });
+    parsedRows.push({
+      excelRow: rowNumber,
+      values: candidate,
+      messages,
+      formattedLrNumber,
+    });
   });
+
+  // In-file duplicate LR numbers (after normalization).
+  for (const [formatted, rowNumbers] of rowsByFormattedLr) {
+    if (rowNumbers.length < 2) continue;
+    const rowsLabel =
+      rowNumbers.length === 2
+        ? `Rows ${rowNumbers[0]} and ${rowNumbers[1]}`
+        : `Rows ${rowNumbers.join(", ")}`;
+    const message = `${rowsLabel}: ${formatted} is duplicated in the uploaded file.`;
+    for (const excelRow of rowNumbers) {
+      const target = parsedRows.find((row) => row.excelRow === excelRow);
+      if (target && !target.messages.includes(message)) {
+        target.messages.push(message);
+      }
+    }
+  }
 
   const errors: LRUploadRowError[] = parsedRows
     .filter((row) => row.messages.length > 0)

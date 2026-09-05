@@ -17,6 +17,7 @@ import {
   type LorryExpenseRecord,
 } from "@/components/services/lorryExpense.service";
 import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
+import { getCompany } from "@/components/services/company.service";
 import type { LRRecord } from "@/components/services/lr.service";
 
 interface LorryExpenseBulkUploadDialogProps {
@@ -63,7 +64,29 @@ export default function LorryExpenseBulkUploadDialog({
 
     try {
       setParsing(true);
-      const result = await parseAndValidateLorryExpenseUpload(file, existingLRs, existingLorryExpenses);
+      const company = await getCompany();
+      if (!company) {
+        toast.error("Company settings are not configured. Configure LR prefix settings before bulk upload.");
+        setHasParsed(true);
+        setRows([]);
+        setErrors([
+          {
+            excelRow: 1,
+            messages: ["Company settings are not configured."],
+          },
+        ]);
+        return;
+      }
+
+      const result = await parseAndValidateLorryExpenseUpload(
+        file,
+        existingLRs,
+        existingLorryExpenses,
+        {
+          prefix: company.lrPrefix || "LR",
+          prefixLength: company.lrPrefixLength || 4,
+        },
+      );
       setRows(result.rows);
       setErrors(result.errors);
       setHasParsed(true);
@@ -114,7 +137,7 @@ export default function LorryExpenseBulkUploadDialog({
       open={open}
       onOpenChange={handleOpenChange}
       title="Bulk Upload Lorry Expenses"
-      description="Upload a completed template to import multiple Lorry Expenses records at once."
+      description="Upload a completed template to import multiple Lorry Expenses records. Enter numeric LR numbers only (e.g. 19305)."
       loading={importing}
       loadingText="Importing Lorry Expenses..."
       footer={

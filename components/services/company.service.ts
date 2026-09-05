@@ -90,8 +90,8 @@ export async function getCompany(): Promise<CompanyRecord | null> {
  * creators never receive the same number.
  *
  * Call via create_numbered_lr_draft on first meaningful draft, or directly
- * on final create / bulk upload / legacy DRAFT-* finalize. Never on dialog
- * open or empty cancel.
+ * on final create / legacy DRAFT-* finalize. Never on dialog open, empty
+ * cancel, or historical LR Entry bulk upload (file supplies the number).
  */
 export async function allocateNextLrNumber(): Promise<string> {
   const { data, error } = await supabase.rpc("allocate_next_lr_number");

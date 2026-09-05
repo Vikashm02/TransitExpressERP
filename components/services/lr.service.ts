@@ -350,6 +350,89 @@ export async function createLR(values: LR): Promise<LRRecord> {
   return record;
 }
 
+export type HistoricalLrBulkResult = {
+  count: number;
+  ids: number[];
+  /** Echo of company_settings.lr_running_number at RPC start (must be unchanged). */
+  lrRunningNumberUnchanged: number;
+};
+
+/**
+ * Atomically insert a historical LR bulk batch via
+ * `create_historical_lr_bulk` (migration 070). One RPC / one DB transaction.
+ * Does not call allocate_next_lr_number or advance lr_running_number.
+ */
+export async function createHistoricalLrBulk(
+  rows: Array<{ excelRow: number; values: LR }>,
+): Promise<HistoricalLrBulkResult> {
+  if (rows.length === 0) {
+    throw new Error("Historical LR bulk payload is empty.");
+  }
+
+  const payloads = rows.map((row) => {
+    const payload = toRow({ ...row.values, entryStatus: "final" }) as Record<
+      string,
+      unknown
+    >;
+    delete payload.id;
+    delete payload.created_at;
+    delete payload.updated_at;
+    delete payload.created_by;
+    delete payload.updated_by;
+    delete payload.draft_created_by;
+    delete payload.assigned_to;
+    delete payload.finalized_at;
+    return {
+      ...payload,
+      excel_row: row.excelRow,
+      entry_status: "final",
+    };
+  });
+
+  const { data, error } = await supabase.rpc("create_historical_lr_bulk", {
+    p_rows: payloads,
+  });
+
+  if (error) throw error;
+  if (!data || typeof data !== "object") {
+    throw new Error("create_historical_lr_bulk returned no result.");
+  }
+
+  const result = data as {
+    count?: unknown;
+    ids?: unknown;
+    lr_running_number_unchanged?: unknown;
+  };
+
+  const ids = Array.isArray(result.ids)
+    ? result.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+    : [];
+
+  const count = typeof result.count === "number" ? result.count : ids.length;
+
+  // Best-effort notifications after committed insert (parity with createLR).
+  for (let i = 0; i < rows.length; i++) {
+    const values = rows[i]!.values;
+    const id = ids[i];
+    void emitNotificationEvent({
+      ruleKey: "lr.created",
+      title: `LR ${values.lrNumber} created`,
+      body: `${values.consignor} → ${values.consignee}`,
+      href: "/lr",
+      payload: { lrId: id ?? null, lrNumber: values.lrNumber },
+    });
+  }
+
+  return {
+    count,
+    ids,
+    lrRunningNumberUnchanged:
+      typeof result.lr_running_number_unchanged === "number"
+        ? result.lr_running_number_unchanged
+        : 0,
+  };
+}
+
 /**
  * First meaningful draft persist: atomically allocates the next LR number
  * and inserts entry_status=draft in one DB transaction (migration 062).

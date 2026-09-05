@@ -8,16 +8,43 @@ import FormDialog from "@/components/ui/FormDialog";
 import { Button } from "@/components/ui/button";
 
 import { parseAndValidateLRUpload, type LRUploadRow, type LRUploadRowError } from "./lrBulkUpload";
-import { createLR } from "@/components/services/lr.service";
-import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
-import { allocateNextLrNumber } from "@/components/services/company.service";
-import { getBillingParties } from "@/components/services/billingParty.service";
-import { getMaterials } from "@/components/services/material.service";
+import { createHistoricalLrBulk, getLRs } from "@/components/services/lr.service";
+import { getCompany } from "@/components/services/company.service";
+import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
+import { getLrCustomerLookup } from "@/components/services/customer.service";
+import { getLrMaterialLookup } from "@/components/services/material.service";
 
 interface LRBulkUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImported: () => void | Promise<void>;
+}
+
+function historicalBulkErrorMessage(error: unknown): string {
+  const raw =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : error instanceof Error
+        ? error.message
+        : "";
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "Bulk upload failed. No LR records were imported.";
+  }
+
+  // Prefer actionable RPC messages (Row N: …); strip PostgREST noise prefixes.
+  const rowMatch = /Row \d+:[\s\S]*/i.exec(trimmed);
+  const detail = (rowMatch?.[0] ?? trimmed)
+    .replace(/^.*?(?=Row \d+:)/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (detail.length > 0 && detail.length < 400) {
+    return `Bulk upload failed. No LR records were imported. ${detail}`;
+  }
+
+  return "Bulk upload failed. No LR records were imported.";
 }
 
 export default function LRBulkUploadDialog({
@@ -53,8 +80,39 @@ export default function LRBulkUploadDialog({
 
     try {
       setParsing(true);
-      const [billingParties, materials] = await Promise.all([getBillingParties(), getMaterials()]);
-      const result = await parseAndValidateLRUpload(file, billingParties, materials);
+      const [billingParties, materials, customers, company, existingLrs] = await Promise.all([
+        getLrBillingPartyLookup(),
+        getLrMaterialLookup(),
+        getLrCustomerLookup(),
+        getCompany(),
+        getLRs(),
+      ]);
+
+      if (!company) {
+        toast.error("Company settings are not configured. Configure LR prefix settings before bulk upload.");
+        setHasParsed(true);
+        setRows([]);
+        setErrors([
+          {
+            excelRow: 1,
+            messages: ["Company settings are not configured."],
+          },
+        ]);
+        return;
+      }
+
+      const result = await parseAndValidateLRUpload(
+        file,
+        billingParties,
+        materials,
+        customers,
+        {
+          prefix: company.lrPrefix || "LR",
+          prefixLength: company.lrPrefixLength || 4,
+          runningNumber: company.lrRunningNumber ?? 0,
+        },
+        existingLrs.map((lr) => lr.lrNumber),
+      );
       setRows(result.rows);
       setErrors(result.errors);
       setHasParsed(true);
@@ -72,32 +130,21 @@ export default function LRBulkUploadDialog({
     try {
       setImporting(true);
 
-      // Atomic reservation per row (migration 036). Concurrent draft
-      // creates cannot receive the same number. If the batch rolls back,
-      // reserved numbers are not recycled (intentional gaps).
-      const createdIds: number[] = [];
+      // One atomic RPC for the entire batch (migration 070).
+      // No sequential createLR(); no rollbackUploadBatch compensation.
+      const result = await createHistoricalLrBulk(
+        rows.map((row) => ({ excelRow: row.excelRow, values: row.values })),
+      );
 
-      try {
-        for (const row of rows) {
-          const lrNumber = await allocateNextLrNumber();
-          const created = await createLR({ ...row.values, lrNumber });
-          createdIds.push(created.id);
-        }
-      } catch (error) {
-        // All-or-nothing: roll back every LR created so far in this batch.
-        await rollbackUploadBatch("lrs", createdIds).catch((rollbackError) =>
-          console.error(rollbackError)
-        );
-        throw error;
-      }
-
-      toast.success(`${rows.length} LR${rows.length === 1 ? "" : "s"} imported successfully.`);
+      toast.success(
+        `${result.count} LR${result.count === 1 ? "" : "s"} imported successfully.`,
+      );
       resetState();
       onOpenChange(false);
       await onImported();
     } catch (error) {
       console.error(error);
-      toast.error("Import failed partway through and was rolled back. No LRs were added. Please try again.");
+      toast.error(historicalBulkErrorMessage(error));
     } finally {
       setImporting(false);
     }
@@ -108,7 +155,7 @@ export default function LRBulkUploadDialog({
       open={open}
       onOpenChange={handleOpenChange}
       title="Bulk Upload LRs"
-      description="Upload a completed template to import multiple LRs at once."
+      description="Upload a completed template to import historical LRs. Enter numeric LR numbers only (e.g. 19305). Numbers must be older than the current running LR and must not already exist."
       loading={importing}
       loadingText="Importing LRs..."
       footer={

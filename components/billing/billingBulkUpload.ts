@@ -4,6 +4,10 @@ import type { BillingPartyRecord } from "@/components/services/billingParty.serv
 import type { LRRecord } from "@/components/services/lr.service";
 import type { PodRecord } from "@/components/services/pod.service";
 import { computeBillingLine } from "@/lib/calculations/billingCalculations";
+import {
+  normalizeLrBulkNumberInput,
+  type LrBulkNumberFormatConfig,
+} from "@/lib/historicalLrBulkNumber";
 
 /**
  * A Bill is created against a SET of LRs (see BillDialog.tsx — a single
@@ -16,10 +20,11 @@ import { computeBillingLine } from "@/lib/calculations/billingCalculations";
  * adding more rows with the same "Bill Group".
  *
  * "Billing Party Code" is the unique Billing Party Master identifier
- * (`billing_parties.code`). "LR Number" is this module's own existing
- * identifier for an LR. Weight/Rate/Freight are never entered — they are
- * always computed by `computeBillingLine()` from the LR's Bill Rate data
- * (+ linked POD where applicable).
+ * (`billing_parties.code`). "LR Number": enter numeric portion only
+ * (e.g. 19305); normalized to the company document format before LR lookup.
+ * Weight/Rate/Freight are never entered — they are always computed by
+ * `computeBillingLine()` from the LR's Bill Rate data (+ linked POD where
+ * applicable).
  *
  * Each LR must belong to the same Billing Party as the bill: the LR's
  * stored `customer` field holds the Billing Party name set at LR Entry
@@ -40,7 +45,7 @@ const SAMPLE_ROW: Record<TemplateHeader, string> = {
   "Bill Date": "2026-08-05",
   "Billing Party Code": "BP001",
   "PO Number": "PO-2026-001",
-  "LR Number": "TRJ0001",
+  "LR Number": "19305",
 };
 
 export interface BillingUploadGroup {
@@ -71,12 +76,21 @@ function cellToString(value: unknown): string {
     return `${year}-${month}-${day}`;
   }
 
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "";
+    if (Number.isInteger(value)) return String(value);
+    if (Number.isInteger(Math.round(value)) && Math.abs(value - Math.round(value)) < 1e-9) {
+      return String(Math.round(value));
+    }
+    return String(value);
+  }
+
   if (typeof value === "object") {
     const text = (value as { text?: unknown }).text;
     if (typeof text === "string") return text.trim();
 
     const result = (value as { result?: unknown }).result;
-    if (result != null) return String(result).trim();
+    if (result != null) return cellToString(result);
 
     return "";
   }
@@ -152,7 +166,8 @@ export async function parseAndValidateBillingUpload(
   file: File,
   existingBillingParties: BillingPartyRecord[],
   existingLRs: LRRecord[],
-  existingPods: PodRecord[]
+  existingPods: PodRecord[],
+  lrNumberConfig: Pick<LrBulkNumberFormatConfig, "prefix" | "prefixLength">,
 ): Promise<BillingUploadParseResult> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -210,6 +225,9 @@ export async function parseAndValidateBillingUpload(
 
   const parsedRows: ParsedRow[] = [];
   const rowsByLrNumber = new Map<string, number[]>();
+  const lrByNumberLower = new Map(
+    existingLRs.map((lr) => [lr.lrNumber.trim().toLowerCase(), lr] as const),
+  );
 
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) return; // header row
@@ -222,7 +240,7 @@ export async function parseAndValidateBillingUpload(
     const billDate = cellValue(row, "Bill Date");
     const billingPartyCode = cellValue(row, "Billing Party Code");
     const poNumber = cellValue(row, "PO Number");
-    const lrNumber = cellValue(row, "LR Number");
+    const rawLrNumber = cellValue(row, "LR Number");
 
     const messages: string[] = [];
 
@@ -233,19 +251,27 @@ export async function parseAndValidateBillingUpload(
     }
 
     const matchingBillingParty = billingPartyCode
-      ? existingBillingParties.find((party) => party.code === billingPartyCode) ?? null
+      ? existingBillingParties.find(
+          (party) =>
+            party.code === billingPartyCode && party.entryStatus !== "draft",
+        ) ?? null
       : null;
 
     if (!billingPartyCode) {
       messages.push("Billing Party Code is required.");
     } else if (!matchingBillingParty) {
-      messages.push(`Billing Party Code "${billingPartyCode}" was not found in Billing Party Master.`);
+      messages.push(
+        `Billing Party Code "${billingPartyCode}" was not found in Billing Party Master. Please add it to Billing Party Master before uploading.`,
+      );
     }
 
-    if (!lrNumber) {
-      messages.push("LR Number is required.");
+    let lrNumber = "";
+    const normalized = normalizeLrBulkNumberInput(rawLrNumber, lrNumberConfig);
+    if (!normalized.ok) {
+      messages.push(normalized.message);
     } else {
-      const matchingLR = existingLRs.find((lr) => lr.lrNumber === lrNumber) ?? null;
+      lrNumber = normalized.formatted;
+      const matchingLR = lrByNumberLower.get(lrNumber.toLowerCase()) ?? null;
 
       if (!matchingLR) {
         messages.push(`LR Number "${lrNumber}" was not found in LR Entry.`);
@@ -336,7 +362,9 @@ export async function parseAndValidateBillingUpload(
     const poNumber = groupRows.find((row) => row.poNumber)?.poNumber ?? billingParty?.poNumber ?? "";
 
     const lines: BillLineInput[] = groupRows.map((row) => {
-      const lr = existingLRs.find((record) => record.lrNumber === row.lrNumber)!;
+      const lr = existingLRs.find(
+        (record) => record.lrNumber.trim().toLowerCase() === row.lrNumber.trim().toLowerCase(),
+      )!;
       const pod = existingPods.find((record) => record.lrNumber === lr.lrNumber);
       const line = computeBillingLine(lr, pod);
 

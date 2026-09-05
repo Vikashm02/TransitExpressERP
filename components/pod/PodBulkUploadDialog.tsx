@@ -11,6 +11,7 @@ import { parseAndValidatePodUpload, type PodUploadRow, type PodUploadRowError } 
 import { createPod } from "@/components/services/pod.service";
 import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import { updateLR, type LRRecord } from "@/components/services/lr.service";
+import { getCompany } from "@/components/services/company.service";
 
 interface PodBulkUploadDialogProps {
   open: boolean;
@@ -54,7 +55,24 @@ export default function PodBulkUploadDialog({
 
     try {
       setParsing(true);
-      const result = await parseAndValidatePodUpload(file, existingLRs);
+      const company = await getCompany();
+      if (!company) {
+        toast.error("Company settings are not configured. Configure LR prefix settings before bulk upload.");
+        setHasParsed(true);
+        setRows([]);
+        setErrors([
+          {
+            excelRow: 1,
+            messages: ["Company settings are not configured."],
+          },
+        ]);
+        return;
+      }
+
+      const result = await parseAndValidatePodUpload(file, existingLRs, {
+        prefix: company.lrPrefix || "LR",
+        prefixLength: company.lrPrefixLength || 4,
+      });
       setRows(result.rows);
       setErrors(result.errors);
       setHasParsed(true);
@@ -127,7 +145,7 @@ export default function PodBulkUploadDialog({
       open={open}
       onOpenChange={handleOpenChange}
       title="Bulk Upload PODs"
-      description="Upload a completed template to import multiple PODs at once."
+      description="Upload a completed template to import multiple PODs. Enter numeric LR numbers only (e.g. 19305)."
       loading={importing}
       loadingText="Importing PODs..."
       footer={

@@ -1,11 +1,18 @@
 import { validatePod, type Pod } from "./pod.schema";
 import type { LRRecord } from "@/components/services/lr.service";
+import {
+  normalizeLrBulkNumberInput,
+  type LrBulkNumberFormatConfig,
+} from "@/lib/historicalLrBulkNumber";
 
 /**
  * Fields the POD create flow collects (see PodForm.tsx). Excludes proof
  * upload (Storage) and settlement fields (now Financials-only). Settlement
  * columns are still written as defaults (0 / "") so historical DB shape
  * is preserved without exposing those fields in the template.
+ *
+ * "LR Number": enter numeric portion only (e.g. 19305); normalized to the
+ * company document format before LR lookup.
  */
 export const POD_TEMPLATE_HEADERS = [
   "LR Number",
@@ -17,7 +24,7 @@ export const POD_TEMPLATE_HEADERS = [
 type TemplateHeader = (typeof POD_TEMPLATE_HEADERS)[number];
 
 const SAMPLE_ROW: Record<TemplateHeader, string> = {
-  "LR Number": "TRJ0001",
+  "LR Number": "19305",
   "POD Date": "2026-08-05",
   "Unloading Weight": "9.8",
   "Unloading Date": "2026-08-05",
@@ -49,12 +56,21 @@ function cellToString(value: unknown): string {
     return `${year}-${month}-${day}`;
   }
 
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "";
+    if (Number.isInteger(value)) return String(value);
+    if (Number.isInteger(Math.round(value)) && Math.abs(value - Math.round(value)) < 1e-9) {
+      return String(Math.round(value));
+    }
+    return String(value);
+  }
+
   if (typeof value === "object") {
     const text = (value as { text?: unknown }).text;
     if (typeof text === "string") return text.trim();
 
     const result = (value as { result?: unknown }).result;
-    if (result != null) return String(result).trim();
+    if (result != null) return cellToString(result);
 
     return "";
   }
@@ -110,20 +126,16 @@ export async function downloadPodUploadTemplate(): Promise<void> {
 /**
  * Reads only the "Upload Data" sheet (the "Sample" sheet is always
  * ignored) and validates every row against the EXISTING POD rules:
- * `validatePod()` — the exact same schema the Add/Edit POD form already
- * uses — plus the one existing Master-only restriction the POD form
- * itself already enforces via a selection-only (read-only) input: "LR
- * Number" must be an existing LR (see PodForm.tsx / LRLookup.tsx). There
- * is no existing rule anywhere in this app limiting an LR to a single
- * POD (`pods.lr_number` has no unique constraint and `LRLookup` doesn't
- * filter out already-PODed LRs), so none is invented here either.
+ * `validatePod()` plus LR Number must resolve to an existing LR after
+ * numeric→document-number normalization (same company prefix/padding).
  *
  * All-or-nothing: if any row fails, `rows` is returned empty so the
  * caller never imports a partial file.
  */
 export async function parseAndValidatePodUpload(
   file: File,
-  existingLRs: LRRecord[]
+  existingLRs: LRRecord[],
+  lrNumberConfig: Pick<LrBulkNumberFormatConfig, "prefix" | "prefixLength">,
 ): Promise<PodUploadParseResult> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -176,6 +188,9 @@ export async function parseAndValidatePodUpload(
   }
 
   const parsedRows: ParsedRow[] = [];
+  const lrByNumberLower = new Map(
+    existingLRs.map((lr) => [lr.lrNumber.trim().toLowerCase(), lr] as const),
+  );
 
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) return; // header row
@@ -184,15 +199,23 @@ export async function parseAndValidatePodUpload(
     const isBlankRow = rawValues.every((value) => value === "");
     if (isBlankRow) return;
 
-    const lrNumber = cellValue(row, "LR Number");
+    const rawLrNumber = cellValue(row, "LR Number");
     const podDate = cellValue(row, "POD Date");
     const rawUnloadingWeight = cellValue(row, "Unloading Weight");
     const unloadingDate = cellValue(row, "Unloading Date");
 
     const messages: string[] = [];
+    let lrNumber = "";
 
-    if (lrNumber && !existingLRs.some((lr) => lr.lrNumber === lrNumber)) {
-      messages.push(`LR Number "${lrNumber}" was not found in LR Entry.`);
+    const normalized = normalizeLrBulkNumberInput(rawLrNumber, lrNumberConfig);
+    if (!normalized.ok) {
+      messages.push(normalized.message);
+    } else {
+      lrNumber = normalized.formatted;
+      const matchingLR = lrByNumberLower.get(lrNumber.toLowerCase()) ?? null;
+      if (!matchingLR) {
+        messages.push(`LR Number "${lrNumber}" was not found in LR Entry.`);
+      }
     }
 
     if (podDate && !/^\d{4}-\d{2}-\d{2}$/.test(podDate)) {

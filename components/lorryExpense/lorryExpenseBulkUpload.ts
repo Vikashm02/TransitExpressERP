@@ -1,14 +1,15 @@
 import { validateLorryExpense, type LorryExpense } from "./lorryExpense.schema";
 import type { LRRecord } from "@/components/services/lr.service";
 import type { LorryExpenseRecord } from "@/components/services/lorryExpense.service";
+import {
+  normalizeLrBulkNumberInput,
+  type LrBulkNumberFormatConfig,
+} from "@/lib/historicalLrBulkNumber";
 
 /**
  * The exact fields the existing Lorry Expenses form actually collects
- * (see LorryExpenseDialog.tsx). "LR Number" is this module's own existing
- * identifier for the LR relationship — the form itself never lets a user
- * type an `lrId` directly; it's always resolved from an LR selected via
- * `LRLookup` (which displays/searches by `lrNumber`), so the same
- * identifier is used here.
+ * (see LorryExpenseDialog.tsx). "LR Number": enter numeric portion only
+ * (e.g. 19305); normalized to the company document format before LR lookup.
  */
 export const LORRY_EXPENSE_TEMPLATE_HEADERS = [
   "LR Number",
@@ -23,7 +24,7 @@ export const LORRY_EXPENSE_TEMPLATE_HEADERS = [
 type TemplateHeader = (typeof LORRY_EXPENSE_TEMPLATE_HEADERS)[number];
 
 const SAMPLE_ROW: Record<TemplateHeader, string> = {
-  "LR Number": "TRJ0001",
+  "LR Number": "19305",
   "Driver Advance": "2000",
   "Loading Charges": "500",
   "Unloading Charges": "500",
@@ -51,12 +52,21 @@ export interface LorryExpenseUploadParseResult {
 function cellToString(value: unknown): string {
   if (value == null) return "";
 
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "";
+    if (Number.isInteger(value)) return String(value);
+    if (Number.isInteger(Math.round(value)) && Math.abs(value - Math.round(value)) < 1e-9) {
+      return String(Math.round(value));
+    }
+    return String(value);
+  }
+
   if (typeof value === "object") {
     const text = (value as { text?: unknown }).text;
     if (typeof text === "string") return text.trim();
 
     const result = (value as { result?: unknown }).result;
-    if (result != null) return String(result).trim();
+    if (result != null) return cellToString(result);
 
     return "";
   }
@@ -125,7 +135,8 @@ export async function downloadLorryExpenseUploadTemplate(): Promise<void> {
 export async function parseAndValidateLorryExpenseUpload(
   file: File,
   existingLRs: LRRecord[],
-  existingLorryExpenses: LorryExpenseRecord[]
+  existingLorryExpenses: LorryExpenseRecord[],
+  lrNumberConfig: Pick<LrBulkNumberFormatConfig, "prefix" | "prefixLength">,
 ): Promise<LorryExpenseUploadParseResult> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -180,6 +191,9 @@ export async function parseAndValidateLorryExpenseUpload(
 
   const parsedRows: ParsedRow[] = [];
   const rowsByLrNumber = new Map<string, number[]>();
+  const lrByNumberLower = new Map(
+    existingLRs.map((lr) => [lr.lrNumber.trim().toLowerCase(), lr] as const),
+  );
 
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) return; // header row
@@ -188,7 +202,7 @@ export async function parseAndValidateLorryExpenseUpload(
     const isBlankRow = rawValues.every((value) => value === "");
     if (isBlankRow) return;
 
-    const lrNumber = cellValue(row, "LR Number");
+    const rawLrNumber = cellValue(row, "LR Number");
     const rawDriverAdvance = cellValue(row, "Driver Advance");
     const rawLoadingCharges = cellValue(row, "Loading Charges");
     const rawUnloadingCharges = cellValue(row, "Unloading Charges");
@@ -197,11 +211,19 @@ export async function parseAndValidateLorryExpenseUpload(
     const rawOtherExpense = cellValue(row, "Other Expense");
 
     const messages: string[] = [];
+    let lrNumber = "";
+    let matchingLR: LRRecord | null = null;
 
-    const matchingLR = lrNumber ? existingLRs.find((lr) => lr.lrNumber === lrNumber) ?? null : null;
-
-    if (lrNumber && !matchingLR) {
-      messages.push(`LR Number "${lrNumber}" was not found in LR Entry.`);
+    const normalized = normalizeLrBulkNumberInput(rawLrNumber, lrNumberConfig);
+    if (!normalized.ok) {
+      messages.push(normalized.message);
+    } else {
+      lrNumber = normalized.formatted;
+      matchingLR = lrByNumberLower.get(lrNumber.toLowerCase()) ?? null;
+      if (!matchingLR) {
+        messages.push(`LR Number "${lrNumber}" was not found in LR Entry.`);
+      }
+      rowsByLrNumber.set(lrNumber, [...(rowsByLrNumber.get(lrNumber) ?? []), rowNumber]);
     }
 
     if (
@@ -209,10 +231,6 @@ export async function parseAndValidateLorryExpenseUpload(
       existingLorryExpenses.some((expense) => String(expense.lrId) === String(matchingLR.id))
     ) {
       messages.push(`LR "${lrNumber}" already has a Financials record — exactly one is allowed per LR.`);
-    }
-
-    if (lrNumber) {
-      rowsByLrNumber.set(lrNumber, [...(rowsByLrNumber.get(lrNumber) ?? []), rowNumber]);
     }
 
     function parseNumber(raw: string, label: string): number {
