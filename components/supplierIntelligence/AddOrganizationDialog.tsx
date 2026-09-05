@@ -188,6 +188,7 @@ export default function AddOrganizationDialog({
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={saving}
+            className="text-foreground"
           >
             Cancel
           </Button>

@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  useEffect,
+  useMemo,
   useState,
   type FormEvent,
   type KeyboardEvent,
@@ -14,6 +16,8 @@ import {
   askSupplierIntelligence,
   type SupplierAskResponse,
   type SupplierAskResult,
+  type SupplierAskScope,
+  type SupplierOrganizationType,
 } from "@/components/services/supplierIntelligence.service";
 
 interface AskIntelligencePanelProps {
@@ -21,6 +25,8 @@ interface AskIntelligencePanelProps {
   personId?: string | null;
   organizationName?: string | null;
   personName?: string | null;
+  /** Active relationship types for the selected organization (from DB). */
+  organizationTypes?: SupplierOrganizationType[];
   className?: string;
 }
 
@@ -28,31 +34,109 @@ function modeLabel(mode: SupplierAskResult["mode"]): string {
   return mode === "DB_ONLY" ? "From records" : "Synthesized answer";
 }
 
+function formatSourceLine(source: {
+  conversationId: string;
+  occurredAt: string;
+  organizationName: string | null;
+  personName: string | null;
+  personDesignation: string | null;
+}): string {
+  const when = source.occurredAt
+    ? new Date(source.occurredAt).toLocaleDateString()
+    : null;
+  const ref =
+    source.conversationId.length > 8
+      ? source.conversationId.slice(0, 8)
+      : source.conversationId;
+  return [
+    source.organizationName || "Organization",
+    source.personName
+      ? source.personDesignation
+        ? `${source.personName} (${source.personDesignation})`
+        : source.personName
+      : null,
+    when,
+    ref ? `ref ${ref}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export default function AskIntelligencePanel({
   organizationId,
   personId = null,
   organizationName,
   personName,
+  organizationTypes = [],
   className,
 }: AskIntelligencePanelProps) {
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
   const [result, setResult] = useState<SupplierAskResponse | null>(null);
+  const [scope, setScope] = useState<SupplierAskScope>("organization");
+  const [selectedTypeSlug, setSelectedTypeSlug] = useState<string | null>(null);
 
-  const canAsk = !asking && question.trim().length > 0;
   const hasPersonContext = Boolean(personId);
+  const hasRelationshipTypes = organizationTypes.length > 0;
+  const canAsk = !asking && question.trim().length > 0;
 
-  const contextLabel = [personName, organizationName].filter(Boolean).join(" · ");
-  const description = hasPersonContext
-    ? "Ask a question about this contact's conversations and relationship history."
-    : "Ask a question about this organization's conversations and relationship history.";
-  const placeholder = hasPersonContext
-    ? "Ask something about this contact…"
-    : "Ask something about this organization…";
+  useEffect(() => {
+    if (!hasRelationshipTypes) {
+      setSelectedTypeSlug(null);
+      if (scope === "organization_type") {
+        setScope("organization");
+      }
+      return;
+    }
+    setSelectedTypeSlug((current) => {
+      if (current && organizationTypes.some((t) => t.slug === current)) {
+        return current;
+      }
+      return organizationTypes[0]?.slug ?? null;
+    });
+  }, [organizationTypes, hasRelationshipTypes, scope]);
+
+  const selectedTypeName = useMemo(() => {
+    return (
+      organizationTypes.find((t) => t.slug === selectedTypeSlug)?.name ?? null
+    );
+  }, [organizationTypes, selectedTypeSlug]);
+
+  const personClearedForScope =
+    hasPersonContext &&
+    (scope === "organization_type" || scope === "all");
+
+  const description =
+    scope === "all"
+      ? "Ask across all organizations you can access (capped recent conversations)."
+      : scope === "organization_type"
+        ? "Ask across organizations with this relationship type (capped recent conversations)."
+        : hasPersonContext
+          ? "Ask a question about this contact's conversations and relationship history."
+          : "Ask a question about this organization's conversations and relationship history.";
+
+  const placeholder =
+    scope === "all"
+      ? "Ask across all organizations…"
+      : scope === "organization_type"
+        ? `Ask about ${selectedTypeName ?? "this relationship type"}…`
+        : hasPersonContext
+          ? "Ask something about this contact…"
+          : "Ask something about this organization…";
+
+  const contextLabel =
+    scope === "all"
+      ? "All organizations"
+      : scope === "organization_type"
+        ? selectedTypeName
+          ? `Relationship type: ${selectedTypeName}`
+          : "Relationship type"
+        : [personName, organizationName].filter(Boolean).join(" · ");
 
   async function submitAsk() {
     if (!canAsk) return;
+    if (scope === "organization_type" && !selectedTypeSlug) return;
 
     const trimmed = question.trim();
     setAsking(true);
@@ -62,8 +146,13 @@ export default function AskIntelligencePanel({
     try {
       const response = await askSupplierIntelligence({
         question: trimmed,
-        organizationId,
-        personId: hasPersonContext ? personId : null,
+        scope,
+        organizationId:
+          scope === "organization" ? organizationId : null,
+        personId:
+          scope === "organization" && hasPersonContext ? personId : null,
+        organizationTypeSlug:
+          scope === "organization_type" ? selectedTypeSlug : null,
       });
       setResult(response);
     } catch {
@@ -90,6 +179,12 @@ export default function AskIntelligencePanel({
     }
   }
 
+  function selectScope(next: SupplierAskScope) {
+    if (next === "organization_type" && !hasRelationshipTypes) return;
+    setScope(next);
+    setResult(null);
+  }
+
   return (
     <section
       className={cn(
@@ -109,13 +204,104 @@ export default function AskIntelligencePanel({
           </p>
           {contextLabel ? (
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Context: {contextLabel}
+              Scope: {contextLabel}
+            </p>
+          ) : null}
+          {personClearedForScope ? (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Not limited to {personName || "this contact"} — asking across the
+              selected scope.
             </p>
           ) : null}
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-2">
+        <fieldset className="space-y-1.5">
+          <legend className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Ask about
+          </legend>
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="radiogroup"
+            aria-label="Ask scope"
+          >
+            {(
+              [
+                {
+                  id: "organization" as const,
+                  label: "This organization",
+                  disabled: false,
+                },
+                {
+                  id: "organization_type" as const,
+                  label: "This relationship type",
+                  disabled: !hasRelationshipTypes,
+                },
+                {
+                  id: "all" as const,
+                  label: "All organizations",
+                  disabled: false,
+                },
+              ] as const
+            ).map((option) => {
+              const selected = scope === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={option.disabled || asking}
+                  onClick={() => selectScope(option.id)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                    selected
+                      ? "border-primary/30 bg-primary/10 text-foreground"
+                      : "border-border bg-background text-foreground hover:bg-muted/50",
+                    option.disabled && "cursor-not-allowed opacity-50"
+                  )}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          {!hasRelationshipTypes ? (
+            <p className="text-[11px] text-muted-foreground">
+              Relationship-type scope is unavailable because this organization
+              has no active relationship type.
+            </p>
+          ) : null}
+          {scope === "organization_type" && hasRelationshipTypes ? (
+            organizationTypes.length === 1 ? (
+              <p className="text-[11px] text-muted-foreground">
+                Using relationship type: {organizationTypes[0]?.name}
+              </p>
+            ) : (
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                <span>Relationship type</span>
+                <select
+                  value={selectedTypeSlug ?? ""}
+                  disabled={asking}
+                  onChange={(event) => {
+                    setSelectedTypeSlug(event.target.value || null);
+                    setResult(null);
+                  }}
+                  className="h-8 max-w-xs rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                  aria-label="Select relationship type"
+                >
+                  {organizationTypes.map((type) => (
+                    <option key={type.slug} value={type.slug}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )
+          ) : null}
+        </fieldset>
+
         <Textarea
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
@@ -135,7 +321,10 @@ export default function AskIntelligencePanel({
           <Button
             type="submit"
             size="sm"
-            disabled={!canAsk}
+            disabled={
+              !canAsk ||
+              (scope === "organization_type" && !selectedTypeSlug)
+            }
             className="w-full shrink-0 sm:w-auto"
           >
             <Sparkles className="mr-1.5 h-3.5 w-3.5" />
@@ -202,20 +391,12 @@ export default function AskIntelligencePanel({
                     {result.truncated ? " (limited set)" : ""}
                   </p>
                   <ul className="mt-1 space-y-1">
-                    {result.sources.slice(0, 5).map((source) => (
+                    {result.sources.slice(0, 8).map((source) => (
                       <li
                         key={source.conversationId}
                         className="text-xs text-muted-foreground"
                       >
-                        {[
-                          source.personName || source.organizationName || "Note",
-                          source.personDesignation,
-                          source.occurredAt
-                            ? new Date(source.occurredAt).toLocaleDateString()
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
+                        {formatSourceLine(source)}
                       </li>
                     ))}
                   </ul>

@@ -15,6 +15,7 @@ export type {
   SupplierAiAskMode,
   SupplierAiAskRequest,
   SupplierAiAskResponse,
+  SupplierAiAskScope,
   SupplierAiAskSource,
   SupplierAiAskSuccess,
   SupplierAiAskUsageMeta,
@@ -55,6 +56,15 @@ export {
 } from "./openai-provider";
 export { decideSupplierAiPath, decisionKindToAskMode } from "./decision";
 export {
+  describeAskScopeForPrompt,
+  isSupplierAiAskScope,
+  normalizeOrganizationTypeSlugs,
+  resolveAskScopeFilters,
+  SUPPLIER_AI_ASK_SCOPES,
+  SUPPLIER_AI_MAX_ORGANIZATION_TYPE_SLUGS,
+  SUPPLIER_AI_MAX_ORGANIZATION_TYPE_SLUG_LENGTH,
+} from "./organization-type-filter";
+export {
   buildRetrievalContentBlocks,
   buildSupplierKeywordIlike,
   capRetrievedContext,
@@ -63,6 +73,7 @@ export {
   formatDatabaseOnlyAnswer,
   formatRetrievalForProvider,
   isSupplierUuid,
+  resolveOrganizationIdsForTypeSlugs,
   resolveRetrievalLimit,
   toAskSources,
 } from "./retrieval";

@@ -307,7 +307,7 @@ export default function ConversationComposer({
                 size="lg"
                 onClick={handleMicClick}
                 disabled={micDisabled}
-                className="shrink-0"
+                className="shrink-0 text-foreground"
                 aria-pressed={recognitionBusy}
                 aria-label={
                   recognitionBusy ? "Stop voice input" : "Start voice input"

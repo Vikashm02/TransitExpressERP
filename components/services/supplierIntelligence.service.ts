@@ -124,7 +124,8 @@ export function formatSupplierError(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function mapType(row: Record<string, unknown>): SupplierOrganizationType {
+function mapType(row: Record<string, unknown>): SupplierOrganizationType | null {
+  if (asBoolean(row.active, true) === false) return null;
   return {
     id: asString(row.id),
     slug: asString(row.slug),
@@ -144,9 +145,11 @@ function mapOrganization(row: Record<string, unknown>): SupplierOrganization {
     const typeRow = (link as { supplier_organization_types?: unknown })
       .supplier_organization_types;
     if (typeRow && typeof typeRow === "object" && !Array.isArray(typeRow)) {
-      types.push(mapType(typeRow as Record<string, unknown>));
+      const mapped = mapType(typeRow as Record<string, unknown>);
+      if (mapped) types.push(mapped);
     } else if (Array.isArray(typeRow) && typeRow[0]) {
-      types.push(mapType(typeRow[0] as Record<string, unknown>));
+      const mapped = mapType(typeRow[0] as Record<string, unknown>);
+      if (mapped) types.push(mapped);
     }
   }
 
@@ -224,7 +227,7 @@ const ORG_SELECT = `
   active,
   supplier_organization_type_links (
     organization_type_id,
-    supplier_organization_types ( id, slug, name, sort_order )
+    supplier_organization_types ( id, slug, name, sort_order, active )
   )
 `;
 
@@ -237,7 +240,9 @@ export async function listSupplierOrganizationTypes(): Promise<SupplierOrganizat
     .order("name", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []).map((row) => mapType(row as Record<string, unknown>));
+  return (data ?? [])
+    .map((row) => mapType(row as Record<string, unknown>))
+    .filter((row): row is SupplierOrganizationType => row != null);
 }
 
 export async function searchSupplierOrganizations(
@@ -625,14 +630,21 @@ export interface SupplierAskErrorResult {
 
 export type SupplierAskResponse = SupplierAskResult | SupplierAskErrorResult;
 
+export type SupplierAskScope =
+  | "organization"
+  | "organization_type"
+  | "all";
+
 /**
  * Ask Supplier Intelligence via the authenticated Next.js route.
  * Does NOT create supplier_conversations. Does NOT use service role.
  */
 export async function askSupplierIntelligence(params: {
   question: string;
+  scope?: SupplierAskScope | null;
   organizationId?: string | null;
   personId?: string | null;
+  organizationTypeSlug?: string | null;
 }): Promise<SupplierAskResponse> {
   const question = params.question.trim();
   if (!question) {
@@ -663,8 +675,10 @@ export async function askSupplierIntelligence(params: {
     },
     body: JSON.stringify({
       question,
+      scope: params.scope ?? "organization",
       organizationId: params.organizationId || null,
       personId: params.personId || null,
+      organizationTypeSlug: params.organizationTypeSlug || null,
     }),
   });
 

@@ -160,6 +160,7 @@ export default function AddPersonDialog({
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={saving}
+            className="text-foreground"
           >
             Cancel
           </Button>

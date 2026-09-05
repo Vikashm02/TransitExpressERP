@@ -677,7 +677,7 @@ function SupplierIntelligencePageInner() {
               type="button"
               variant="outline"
               size="sm"
-              className="w-full justify-start"
+              className="w-full justify-start text-foreground"
               onClick={() => setAddOrgOpen(true)}
             >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -764,7 +764,7 @@ function SupplierIntelligencePageInner() {
                   variant="ghost"
                   size="sm"
                   onClick={() => navigate(null)}
-                  className="shrink-0"
+                  className="shrink-0 text-foreground"
                 >
                   All orgs
                 </Button>
@@ -781,7 +781,7 @@ function SupplierIntelligencePageInner() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setAddPersonOpen(true)}
-                      className="h-7 px-2 text-xs"
+                      className="h-7 px-2 text-xs text-foreground"
                     >
                       <Plus className="mr-1 h-3 w-3" />
                       Add Person
@@ -904,6 +904,7 @@ function SupplierIntelligencePageInner() {
                 organizationId={organization.id}
                 personId={null}
                 organizationName={organization.name}
+                organizationTypes={organization.types}
               />
 
               <div className="flex-1 space-y-6 overflow-y-auto px-3 py-4 sm:px-4">
@@ -923,6 +924,7 @@ function SupplierIntelligencePageInner() {
                         variant="outline"
                         size="sm"
                         onClick={() => setAddPersonOpen(true)}
+                        className="text-foreground"
                       >
                         <Plus className="mr-1.5 h-3.5 w-3.5" />
                         Add Person
@@ -1083,6 +1085,7 @@ function SupplierIntelligencePageInner() {
                 personId={selectedPersonId}
                 organizationName={organization.name}
                 personName={selectedPerson?.name}
+                organizationTypes={organization.types}
               />
 
               <div className="border-b border-border px-3 py-2 sm:px-4">

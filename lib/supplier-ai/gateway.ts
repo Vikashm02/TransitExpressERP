@@ -27,6 +27,12 @@ import {
 } from "./config";
 import { decideSupplierAiPath, decisionKindToAskMode } from "./decision";
 import {
+  createSupplierAiDiagnosticId,
+  logSupplierAiResponseDiagnostics,
+  logSupplierAiRetrievalDiagnostics,
+  logSupplierAiSynthesisDiagnostics,
+} from "./diagnostics";
+import {
   gatewayError,
   SupplierAiGatewayError,
   SUPPLIER_AI_GATEWAY_SAFE_MESSAGES,
@@ -41,6 +47,11 @@ import {
   SUPPLIER_AI_SYSTEM_INSTRUCTIONS,
   buildSynthesisUserInput,
 } from "./prompt";
+import {
+  resolveAskScopeFilters,
+  SUPPLIER_AI_MAX_ORGANIZATION_TYPE_SLUGS,
+  type SupplierAiAskScope,
+} from "./organization-type-filter";
 import {
   buildRetrievalContentBlocks,
   deriveKeywordFromQuestion,
@@ -66,9 +77,19 @@ const EMPTY_USAGE: SupplierAiAskUsageMeta = {
 
 const askBodySchema = z.object({
   question: z.string().trim().min(1).max(2_000),
+  scope: z
+    .enum(["organization", "organization_type", "all"])
+    .nullable()
+    .optional(),
   organizationId: z.string().trim().nullable().optional(),
   personId: z.string().trim().nullable().optional(),
   keyword: z.string().trim().max(80).nullable().optional(),
+  organizationTypeSlug: z.string().trim().max(50).nullable().optional(),
+  organizationTypeSlugs: z
+    .array(z.string())
+    .max(SUPPLIER_AI_MAX_ORGANIZATION_TYPE_SLUGS)
+    .nullable()
+    .optional(),
 });
 
 export function parseSupplierAiAskRequest(body: unknown): SupplierAiAskRequest {
@@ -80,6 +101,8 @@ export function parseSupplierAiAskRequest(body: unknown): SupplierAiAskRequest {
   const organizationId = parsed.data.organizationId || null;
   const personId = parsed.data.personId || null;
   const keyword = parsed.data.keyword || null;
+  const organizationTypeSlug = parsed.data.organizationTypeSlug || null;
+  const scope = (parsed.data.scope ?? null) as SupplierAiAskScope | null;
 
   if (organizationId && !isSupplierUuid(organizationId)) {
     throw gatewayError("invalid_request", 400, "Invalid organizationId.");
@@ -88,11 +111,26 @@ export function parseSupplierAiAskRequest(body: unknown): SupplierAiAskRequest {
     throw gatewayError("invalid_request", 400, "Invalid personId.");
   }
 
-  return {
-    question: parsed.data.question,
+  const resolved = resolveAskScopeFilters({
+    scope,
     organizationId,
     personId,
+    organizationTypeSlug,
+    organizationTypeSlugs: parsed.data.organizationTypeSlugs,
+  });
+  if (!resolved.ok) {
+    throw gatewayError("invalid_request", 400, resolved.message);
+  }
+
+  return {
+    question: parsed.data.question,
+    scope: resolved.filters.scope,
+    organizationId: resolved.filters.organizationId,
+    personId: resolved.filters.personId,
     keyword,
+    organizationTypeSlug:
+      resolved.filters.organizationTypeSlugs?.[0] ?? null,
+    organizationTypeSlugs: resolved.filters.organizationTypeSlugs,
   };
 }
 
@@ -117,9 +155,23 @@ async function runSynthesisPath(input: {
   decisionReason: string;
   sources: ReturnType<typeof toAskSources>;
   contentBlocks: ReturnType<typeof buildRetrievalContentBlocks>;
+  diagnosticId: string;
 }): Promise<SupplierAiAskResponse> {
+  const conversationCount = input.retrieval.conversations.length;
+
   const aiEnabled = isSupplierAiFeatureEnabled();
   if (!aiEnabled) {
+    logSupplierAiResponseDiagnostics({
+      diagnosticId: input.diagnosticId,
+      success: false,
+      model: null,
+      latencyMs: null,
+      inputTokens: null,
+      outputTokens: null,
+      usageAvailable: null,
+      conversationCount,
+      errorKind: "ai_disabled",
+    });
     return {
       ok: false,
       error: "ai_disabled",
@@ -132,6 +184,17 @@ async function runSynthesisPath(input: {
 
   const runtime = getSupplierAiRuntimeStatus();
   if (!runtime.ready) {
+    logSupplierAiResponseDiagnostics({
+      diagnosticId: input.diagnosticId,
+      success: false,
+      model: null,
+      latencyMs: null,
+      inputTokens: null,
+      outputTokens: null,
+      usageAvailable: null,
+      conversationCount,
+      errorKind: runtime.reason,
+    });
     return {
       ok: false,
       error: "provider_not_ready",
@@ -151,6 +214,17 @@ async function runSynthesisPath(input: {
     contextCharacterCount: input.retrieval.contextCharacterCount,
   });
   if (!maxReserve.ok) {
+    logSupplierAiResponseDiagnostics({
+      diagnosticId: input.diagnosticId,
+      success: false,
+      model,
+      latencyMs: null,
+      inputTokens: null,
+      outputTokens: null,
+      usageAvailable: null,
+      conversationCount,
+      errorKind: "pricing_not_ready",
+    });
     return {
       ok: false,
       error: "provider_not_ready",
@@ -163,6 +237,17 @@ async function runSynthesisPath(input: {
 
   const privileged = await getPrivilegedSupplierAiClient();
   if (!privileged.ok) {
+    logSupplierAiResponseDiagnostics({
+      diagnosticId: input.diagnosticId,
+      success: false,
+      model,
+      latencyMs: null,
+      inputTokens: null,
+      outputTokens: null,
+      usageAvailable: null,
+      conversationCount,
+      errorKind: "privileged_client_unavailable",
+    });
     return {
       ok: false,
       error: "provider_not_ready",
@@ -185,6 +270,17 @@ async function runSynthesisPath(input: {
     const exhausted =
       reservation.error_code === "budget_exhausted" ||
       reservation.error_code === "invalid_amount";
+    logSupplierAiResponseDiagnostics({
+      diagnosticId: input.diagnosticId,
+      success: false,
+      model,
+      latencyMs: null,
+      inputTokens: null,
+      outputTokens: null,
+      usageAvailable: null,
+      conversationCount,
+      errorKind: exhausted ? "budget_exhausted" : "reserve_failed",
+    });
     return {
       ok: false,
       error: exhausted ? "budget_exhausted" : "provider_not_ready",
@@ -200,6 +296,15 @@ async function runSynthesisPath(input: {
   const reservationId = reservation.reservation_id;
   const billingMonth = reservation.billing_month;
 
+  logSupplierAiSynthesisDiagnostics({
+    diagnosticId: input.diagnosticId,
+    scope: input.request.scope ?? null,
+    questionLength: input.request.question.trim().length,
+    conversationCount,
+    contextCharacterCount: input.retrieval.contextCharacterCount,
+    synthesisExecuting: true,
+  });
+
   let completion;
   try {
     const provider = getSupplierAiProvider("openai");
@@ -209,6 +314,10 @@ async function runSynthesisPath(input: {
       userInput: buildSynthesisUserInput(
         input.request.question,
         input.retrieval,
+        {
+          scope: input.request.scope ?? null,
+          organizationTypeSlugs: input.request.organizationTypeSlugs ?? null,
+        },
       ),
       // Server ceiling only — provider also clamps.
       maxOutputTokens: undefined,
@@ -221,6 +330,17 @@ async function runSynthesisPath(input: {
     });
 
     if (err instanceof SupplierAiDisabledError) {
+      logSupplierAiResponseDiagnostics({
+        diagnosticId: input.diagnosticId,
+        success: false,
+        model,
+        latencyMs: null,
+        inputTokens: null,
+        outputTokens: null,
+        usageAvailable: null,
+        conversationCount,
+        errorKind: "provider_disabled",
+      });
       return {
         ok: false,
         error: "provider_not_ready",
@@ -238,6 +358,17 @@ async function runSynthesisPath(input: {
     }
 
     void (err instanceof SupplierAiProviderError);
+    logSupplierAiResponseDiagnostics({
+      diagnosticId: input.diagnosticId,
+      success: false,
+      model,
+      latencyMs: null,
+      inputTokens: null,
+      outputTokens: null,
+      usageAvailable: null,
+      conversationCount,
+      errorKind: "provider_error",
+    });
     return {
       ok: false,
       error: "provider_error",
@@ -253,6 +384,18 @@ async function runSynthesisPath(input: {
       },
     };
   }
+
+  logSupplierAiResponseDiagnostics({
+    diagnosticId: input.diagnosticId,
+    success: true,
+    model: completion.model || model,
+    latencyMs: completion.latencyMs,
+    inputTokens: completion.usageAvailable ? completion.inputTokens : null,
+    outputTokens: completion.usageAvailable ? completion.outputTokens : null,
+    usageAvailable: completion.usageAvailable,
+    conversationCount,
+    errorKind: null,
+  });
 
   const usageAvailable = completion.usageAvailable;
   const inputTokens = usageAvailable ? (completion.inputTokens ?? 0) : 0;
@@ -398,9 +541,13 @@ export async function handleSupplierIntelligenceAsk(input: {
   user: User;
   request: SupplierAiAskRequest;
 }): Promise<SupplierAiAskResponse> {
+  const diagnosticId = createSupplierAiDiagnosticId();
+
   await requireSupplierIntelligenceView(input.client, input.user);
 
-  const decision = decideSupplierAiPath(input.request.question);
+  const decision = decideSupplierAiPath(input.request.question, {
+    scope: input.request.scope ?? null,
+  });
   const mode = decisionKindToAskMode(decision.kind);
   const aiEnabled = isSupplierAiFeatureEnabled();
 
@@ -415,6 +562,7 @@ export async function handleSupplierIntelligenceAsk(input: {
     retrieval = await fetchSupplierConversationsForUser(input.client, {
       organizationId: input.request.organizationId,
       personId: input.request.personId,
+      organizationTypeSlugs: input.request.organizationTypeSlugs,
       keyword,
       includeInsights: false,
     });
@@ -422,6 +570,15 @@ export async function handleSupplierIntelligenceAsk(input: {
     if (err instanceof SupplierAiGatewayError) throw err;
     throw gatewayError("retrieval_failure", 500);
   }
+
+  logSupplierAiRetrievalDiagnostics({
+    diagnosticId,
+    request: input.request,
+    keyword,
+    mode,
+    decisionReason: decision.reason,
+    retrieval,
+  });
 
   const sources = toAskSources(retrieval.conversations);
   const contentBlocks = buildRetrievalContentBlocks(
@@ -452,6 +609,7 @@ export async function handleSupplierIntelligenceAsk(input: {
     decisionReason: decision.reason,
     sources,
     contentBlocks,
+    diagnosticId,
   });
 }
 

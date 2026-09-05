@@ -10,6 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupplierAiSafetyLimits } from "./config";
 import { gatewayError } from "./errors";
+import { normalizeOrganizationTypeSlugs } from "./organization-type-filter";
 import type {
   SupplierAiAskSource,
   SupplierAiContentBlock,
@@ -163,9 +164,65 @@ export function capRetrievedContext(input: {
   };
 }
 
+type OrganizationTypeRow = { id: string; slug: string };
+type OrganizationTypeLinkRow = { organization_id: string };
+
+/**
+ * Resolve relationship-type slugs → organization IDs via existing type tables.
+ * Uses the caller's authenticated client (RLS). Never trusts client type UUIDs.
+ * Unknown / inactive slugs fail closed (invalid_request) — never broaden.
+ */
+export async function resolveOrganizationIdsForTypeSlugs(
+  client: SupabaseClient,
+  slugs: string[],
+): Promise<string[]> {
+  const { data: typeRows, error: typesError } = await client
+    .from("supplier_organization_types")
+    .select("id, slug")
+    .in("slug", slugs)
+    .eq("active", true);
+
+  if (typesError) {
+    throw gatewayError("retrieval_failure", 500);
+  }
+
+  const types = (typeRows ?? []) as OrganizationTypeRow[];
+  const foundSlugs = new Set(types.map((row) => row.slug));
+  for (const slug of slugs) {
+    if (!foundSlugs.has(slug)) {
+      throw gatewayError(
+        "invalid_request",
+        400,
+        `Unknown organization relationship type: ${slug}.`,
+      );
+    }
+  }
+
+  const typeIds = types.map((row) => row.id);
+  if (typeIds.length === 0) {
+    return [];
+  }
+
+  const { data: linkRows, error: linksError } = await client
+    .from("supplier_organization_type_links")
+    .select("organization_id")
+    .in("organization_type_id", typeIds);
+
+  if (linksError) {
+    throw gatewayError("retrieval_failure", 500);
+  }
+
+  const orgIds = new Set<string>();
+  for (const row of (linkRows ?? []) as OrganizationTypeLinkRow[]) {
+    if (row.organization_id) orgIds.add(row.organization_id);
+  }
+  return [...orgIds];
+}
+
 /**
  * RLS-safe conversation retrieval under the caller's authenticated Supabase client.
- * organizationId / personId / keyword are filters only — not proof of access.
+ * organizationId / personId / organizationTypeSlugs / keyword are filters only —
+ * not proof of access.
  */
 export async function fetchSupplierConversationsForUser(
   client: SupabaseClient,
@@ -184,6 +241,37 @@ export async function fetchSupplierConversationsForUser(
     }
   }
 
+  const typeSlugResult = normalizeOrganizationTypeSlugs(
+    query.organizationTypeSlugs,
+  );
+  if (!typeSlugResult.ok) {
+    throw gatewayError("invalid_request", 400, typeSlugResult.message);
+  }
+
+  let organizationIdsForTypeFilter: string[] | null = null;
+  if (typeSlugResult.slugs) {
+    organizationIdsForTypeFilter = await resolveOrganizationIdsForTypeSlugs(
+      client,
+      typeSlugResult.slugs,
+    );
+  }
+
+  // Type filter with zero matching orgs → empty result (do not broaden).
+  if (
+    organizationIdsForTypeFilter != null &&
+    organizationIdsForTypeFilter.length === 0
+  ) {
+    return capRetrievedContext({ conversations: [], insights: [] });
+  }
+
+  // organizationId ∩ type filter: org must also belong to a requested type.
+  if (query.organizationId && organizationIdsForTypeFilter != null) {
+    const orgId = query.organizationId.trim();
+    if (!organizationIdsForTypeFilter.includes(orgId)) {
+      return capRetrievedContext({ conversations: [], insights: [] });
+    }
+  }
+
   let builder = client
     .from("supplier_conversations")
     .select(CONVERSATION_SELECT)
@@ -193,7 +281,10 @@ export async function fetchSupplierConversationsForUser(
 
   if (query.organizationId) {
     builder = builder.eq("organization_id", query.organizationId.trim());
+  } else if (organizationIdsForTypeFilter != null) {
+    builder = builder.in("organization_id", organizationIdsForTypeFilter);
   }
+
   if (query.personId) {
     builder = builder.eq("person_id", query.personId.trim());
   }

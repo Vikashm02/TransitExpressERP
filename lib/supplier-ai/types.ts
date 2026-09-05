@@ -80,13 +80,34 @@ export interface SupplierAiContentBlock {
   sourceId?: string;
 }
 
+export type SupplierAiAskScope =
+  | "organization"
+  | "organization_type"
+  | "all";
+
 /** Client → gateway ask body. Never trust organizationId/personId for auth. */
 export interface SupplierAiAskRequest {
   question: string;
+  /**
+   * Ask scope (Phase 1B). When set, server is authoritative over org/person/type filters.
+   * When omitted, Phase 1A field-based filters still work.
+   */
+  scope?: SupplierAiAskScope | null;
   organizationId?: string | null;
   personId?: string | null;
   /** Optional explicit keyword filter; otherwise derived conservatively. */
   keyword?: string | null;
+  /**
+   * Single relationship-type slug for scope = "organization_type".
+   * Resolved server-side against supplier_organization_types — never trust client type IDs.
+   */
+  organizationTypeSlug?: string | null;
+  /**
+   * Optional organization relationship-type filter (slugs from
+   * supplier_organization_types). Resolved server-side — never trust client type IDs.
+   * Prefer organizationTypeSlug + scope for Phase 1B UI.
+   */
+  organizationTypeSlugs?: string[] | null;
 }
 
 /** Source citation exposed to clients (no internal DB noise). */
@@ -191,6 +212,11 @@ export interface SupplierAiRetrievalQuery {
   organizationId?: string | null;
   personId?: string | null;
   keyword?: string | null;
+  /**
+   * Optional relationship-type slugs (e.g. supplier, municipality).
+   * Validated + resolved against supplier_organization_types before filtering.
+   */
+  organizationTypeSlugs?: string[] | null;
   /** Soft cap applied after config max. */
   limit?: number;
   includeInsights?: boolean;
