@@ -7,3 +7,8 @@
 
 [functions.process-notifications]
 verify_jwt = false
+
+# Notification center (admin test + Transport monthly report email).
+# Cron for monthly report uses Secret API Key on apikey; admin actions use user JWT.
+[functions.notification-center]
+verify_jwt = false

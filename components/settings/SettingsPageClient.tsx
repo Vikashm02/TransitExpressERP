@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Megaphone, BellRing } from "lucide-react";
+import { Megaphone, BellRing, RadioTower } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
 import FormField from "@/components/ui/FormField";
@@ -29,8 +29,9 @@ import {
   type AnnouncementInput,
   type AnnouncementLocation,
 } from "@/components/services/announcement.service";
+import NotificationCenterPanel from "@/components/settings/NotificationCenterPanel";
 
-type Tab = "notifications" | "announcements";
+type Tab = "notifications" | "announcements" | "center";
 
 const emptyAnnouncement: AnnouncementInput = {
   title: "",
@@ -212,10 +213,20 @@ export default function SettingsPageClient() {
           <Megaphone className="mr-2 h-4 w-4" />
           Announcements
         </Button>
+        <Button
+          variant={tab === "center" ? "default" : "outline"}
+          onClick={() => setTab("center")}
+          className="min-h-10"
+        >
+          <RadioTower className="mr-2 h-4 w-4" />
+          Notification Center
+        </Button>
       </div>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
+      ) : tab === "center" ? (
+        <NotificationCenterPanel />
       ) : tab === "notifications" ? (
         <div className="space-y-6">
           <p className="text-sm text-muted-foreground">
