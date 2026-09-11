@@ -136,6 +136,8 @@ export default function LRListPage() {
   const [podSaving, setPodSaving] = useState(false);
   /** Prevents overlapping autosaves from overlapping create/update work. */
   const autosaveInFlightRef = useRef(false);
+  /** Latest draft values typed while a previous autosave is in flight. */
+  const queuedAutosaveRef = useRef<LR | null>(null);
   /**
    * In-flight first create for this session. Concurrent autosaves await this
    * instead of calling create_numbered_lr_draft a second time.
@@ -612,7 +614,12 @@ export default function LRListPage() {
     if (createSessionDiscardedRef.current) return;
     if (tokenAtStart !== createSessionTokenRef.current) return;
 
-    if (autosaveInFlightRef.current) return;
+    if (autosaveInFlightRef.current) {
+      // Never discard a user edit just because an earlier draft request is
+      // still running. The latest values are saved immediately afterwards.
+      queuedAutosaveRef.current = values;
+      return;
+    }
     autosaveInFlightRef.current = true;
 
     try {
@@ -679,6 +686,9 @@ export default function LRListPage() {
       await loadLRs();
     } finally {
       autosaveInFlightRef.current = false;
+      const queued = queuedAutosaveRef.current;
+      queuedAutosaveRef.current = null;
+      if (queued) void handleAutosave(queued);
     }
   }
 
