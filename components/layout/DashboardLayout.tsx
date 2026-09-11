@@ -13,6 +13,7 @@ import Sidebar from "./Sidebar";
 import SupplierSidebar from "./SupplierSidebar";
 import Header from "./Header";
 import AnnouncementBanner from "@/components/pwa/AnnouncementBanner";
+import NativeDeviceAlertsPermission from "@/components/pwa/NativeDeviceAlertsPermission";
 import PwaInstallBanner from "@/components/pwa/PwaInstallBanner";
 
 interface DashboardLayoutProps {
@@ -255,6 +256,7 @@ export default function DashboardLayout({
           <AnnouncementBanner />
           {children}
         </main>
+        <NativeDeviceAlertsPermission />
         <PwaInstallBanner />
       </div>
     </div>

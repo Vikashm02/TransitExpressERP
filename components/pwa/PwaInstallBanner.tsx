@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { refreshPushSubscription } from "@/components/services/notification.service";
+import { isNativeAndroid } from "@/components/services/nativePush.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
 const DISMISS_KEY = "transjit_pwa_install_dismissed";
@@ -26,8 +27,10 @@ export default function PwaInstallBanner() {
   const [standalone, setStandalone] = useState(false);
   const [showIosHelp, setShowIosHelp] = useState(false);
   const canUseNotifications = hasPermission("notifications", "view");
+  const nativeAndroid = isNativeAndroid();
 
   useEffect(() => {
+    if (nativeAndroid) return;
     if (typeof window === "undefined") return;
 
     const isStandalone =
@@ -63,7 +66,7 @@ export default function PwaInstallBanner() {
       window.removeEventListener("beforeinstallprompt", onBip);
       window.clearTimeout(timer);
     };
-  }, [deferred]);
+  }, [deferred, nativeAndroid]);
 
   async function enablePush() {
     try {
@@ -99,7 +102,7 @@ export default function PwaInstallBanner() {
     setVisible(false);
   }
 
-  if (standalone || !visible) return null;
+  if (nativeAndroid || standalone || !visible) return null;
 
   return (
     <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-lg overflow-hidden rounded-xl border border-border/80 bg-card p-4 shadow-xl shadow-primary/15 sm:left-auto">

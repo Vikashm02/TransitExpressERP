@@ -12,6 +12,12 @@ import {
   refreshPushSubscription,
   type InboxItem,
 } from "@/components/services/notification.service";
+import {
+  getNativeDeviceAlertsPermission,
+  isNativeAndroid,
+  openNativeDeviceAlertsSettings,
+  type NativeDeviceAlertsPermission,
+} from "@/components/services/nativePush.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +27,13 @@ export default function NotificationBell() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<InboxItem[]>([]);
+  const [nativeAndroid, setNativeAndroid] = useState(false);
+  const [nativePermission, setNativePermission] = useState<NativeDeviceAlertsPermission | null>(null);
   const canUseNotifications = hasPermission("notifications", "view");
+
+  useEffect(() => {
+    setNativeAndroid(isNativeAndroid());
+  }, []);
 
   useEffect(() => {
     if (!session || !canUseNotifications) return;
@@ -29,6 +41,13 @@ export default function NotificationBell() {
       .then(setItems)
       .catch((error) => console.error(error));
   }, [session, pathname, canUseNotifications]);
+
+  useEffect(() => {
+    if (!session || !nativeAndroid) return;
+    getNativeDeviceAlertsPermission()
+      .then(setNativePermission)
+      .catch((error) => console.error(error));
+  }, [session, nativeAndroid]);
 
   const unread = useMemo(() => items.filter((item) => !item.readAt).length, [items]);
 
@@ -53,6 +72,11 @@ export default function NotificationBell() {
 
   async function refreshDeviceAlerts() {
     try {
+      if (isNativeAndroid()) {
+        await openNativeDeviceAlertsSettings();
+        return;
+      }
+
       await refreshPushSubscription();
       toast.success("Device alerts are enabled.");
     } catch (error) {
@@ -107,11 +131,13 @@ export default function NotificationBell() {
               Close
             </Button>
           </div>
-          <div className="border-b border-border/80 px-3.5 py-2">
-            <Button type="button" variant="outline" size="sm" onClick={refreshDeviceAlerts}>
-              Enable or refresh device alerts
-            </Button>
-          </div>
+          {(!nativeAndroid || nativePermission === "denied") && (
+            <div className="border-b border-border/80 px-3.5 py-2">
+              <Button type="button" variant="outline" size="sm" onClick={refreshDeviceAlerts}>
+                {nativeAndroid ? "Notification settings" : "Enable or refresh device alerts"}
+              </Button>
+            </div>
+          )}
           <div className="max-h-80 overflow-y-auto overflow-x-hidden">
             {items.length === 0 ? (
               <p className="p-5 text-sm text-muted-foreground">No notifications yet.</p>
