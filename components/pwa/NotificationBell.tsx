@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
   getNotificationInbox,
   markInboxRead,
+  refreshPushSubscription,
   type InboxItem,
 } from "@/components/services/notification.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -47,6 +49,16 @@ export default function NotificationBell() {
     }
     setOpen(false);
     if (item.href) router.push(item.href);
+  }
+
+  async function refreshDeviceAlerts() {
+    try {
+      await refreshPushSubscription();
+      toast.success("Device alerts are enabled.");
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Unable to enable device alerts.");
+    }
   }
 
   return (
@@ -93,6 +105,11 @@ export default function NotificationBell() {
               onClick={() => setOpen(false)}
             >
               Close
+            </Button>
+          </div>
+          <div className="border-b border-border/80 px-3.5 py-2">
+            <Button type="button" variant="outline" size="sm" onClick={refreshDeviceAlerts}>
+              Enable or refresh device alerts
             </Button>
           </div>
           <div className="max-h-80 overflow-y-auto overflow-x-hidden">

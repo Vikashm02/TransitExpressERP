@@ -176,7 +176,15 @@ Deno.serve(async (req) => {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           errors.push(message);
-          if (message.includes("410") || message.includes("404")) {
+          // web-push exposes expired/unsubscribed endpoints via `statusCode`.
+          // Its message is often only “Received unexpected response code”, so
+          // checking the message alone leaves permanently invalid subscriptions
+          // in the queue and makes every future notification fail.
+          const statusCode =
+            typeof err === "object" && err !== null && "statusCode" in err
+              ? Number((err as { statusCode?: unknown }).statusCode)
+              : 0;
+          if (statusCode === 410 || statusCode === 404 || message.includes("410") || message.includes("404")) {
             await admin.from("push_subscriptions").delete().eq("id", sub.id);
           }
           console.error("push failed", message);
@@ -290,6 +298,7 @@ function summarizeTitle(ruleKey: string, count: number): string {
   if (ruleKey.startsWith("dc.")) return `${count} Delivery Challan updates`;
   if (ruleKey.startsWith("pod.")) return `${count} POD updates`;
   if (ruleKey.startsWith("financials.")) return `${count} Financials updates`;
+  if (ruleKey.startsWith("po.")) return `${count} PO usage alerts`;
   return `${count} notifications`;
 }
 

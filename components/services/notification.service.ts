@@ -360,6 +360,42 @@ export async function savePushSubscription(sub: PushSubscription): Promise<void>
   if (error) throw error;
 }
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+/**
+ * Creates a fresh subscription for this device. Replacing an old endpoint is
+ * intentional: browser push services invalidate subscriptions over time.
+ */
+export async function refreshPushSubscription(): Promise<void> {
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+    throw new Error("Push notifications are not supported in this browser");
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("Notification permission was not granted");
+
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!publicKey) throw new Error("Push is not configured for this environment");
+
+  const registration = await navigator.serviceWorker.ready;
+  const previous = await registration.pushManager.getSubscription();
+  if (previous) {
+    await removePushSubscription(previous.endpoint);
+    await previous.unsubscribe();
+  }
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey),
+  });
+  await savePushSubscription(subscription);
+}
+
 export async function removePushSubscription(endpoint: string): Promise<void> {
   const { error } = await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
   if (error) throw error;
