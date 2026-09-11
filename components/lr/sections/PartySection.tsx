@@ -105,6 +105,7 @@ export default function PartySection({
       [config.nameField]: customer.name,
       [config.gstField]: customer.gst,
       [config.addressField]: customer.address,
+      ...(role === "consignor" ? { from: customer.city } : { to: customer.city }),
     });
   }
 
@@ -114,6 +115,7 @@ export default function PartySection({
       [config.nameField]: "",
       [config.gstField]: "",
       [config.addressField]: "",
+      ...(role === "consignor" ? { from: "" } : { to: "" }),
     });
   }
 

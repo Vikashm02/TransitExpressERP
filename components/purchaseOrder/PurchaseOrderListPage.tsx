@@ -14,18 +14,20 @@ import MasterAutocomplete from "@/components/lookup/MasterAutocomplete";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { getLrCustomerLookup, type LrCustomerLookupRow } from "@/components/services/customer.service";
 import { purchaseOrderUsage, purchaseOrderWarningClass } from "@/lib/purchaseOrderUsage";
 import { purchaseOrderSchema, type PurchaseOrder } from "./purchaseOrder.schema";
 import { getPurchaseOrders, getPurchaseOrderParties, savePurchaseOrder,
   type PurchaseOrderRecord, type PurchaseOrderParty } from "@/components/services/purchaseOrder.service";
 
-const empty: PurchaseOrder = { billingPartyId: 0, poNumber: "", issueDate: "", allottedWeight: 0, status: "Active" };
+const empty: PurchaseOrder = { billingPartyId: 0, consignor: "", poNumber: "", issueDate: "", allottedWeight: 0, status: "Active" };
 const weight = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
 export default function PurchaseOrderListPage() {
   const { hasAction } = useAuth();
   const [rows, setRows] = useState<PurchaseOrderRecord[]>([]);
   const [parties, setParties] = useState<PurchaseOrderParty[]>([]);
+  const [consignors, setConsignors] = useState<LrCustomerLookupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
@@ -58,11 +60,13 @@ export default function PurchaseOrderListPage() {
 
   async function showForm(record: PurchaseOrderRecord | null) {
     try {
-      setParties(await getPurchaseOrderParties());
+      const [partyRows, consignorRows] = await Promise.all([getPurchaseOrderParties(), getLrCustomerLookup()]);
+      setParties(partyRows);
+      setConsignors(consignorRows.filter((row) => row.entryStatus !== "draft"));
       setEditing(record);
       setValues(record ? {
         billingPartyId: record.billingPartyId, poNumber: record.poNumber,
-        issueDate: record.issueDate, allottedWeight: record.allottedWeight, status: record.status,
+        consignor: record.consignor, issueDate: record.issueDate, allottedWeight: record.allottedWeight, status: record.status,
       } : { ...empty });
       setErrors({});
       setOpen(true);
@@ -89,10 +93,11 @@ export default function PurchaseOrderListPage() {
   }
 
   const filtered = rows.filter((r) => (!status || r.status === status)
-    && `${r.poNumber} ${r.billingPartyName}`.toLowerCase().includes(search.trim().toLowerCase()));
+    && `${r.poNumber} ${r.billingPartyName} ${r.consignor}`.toLowerCase().includes(search.trim().toLowerCase()));
   const columns: DataTableColumn<PurchaseOrderRecord>[] = [
     { key: "poNumber", header: "PO Number", sortable: true },
     { key: "billingPartyName", header: "Billing Party", sortable: true },
+    { key: "consignor", header: "Consignor", sortable: true },
     { key: "issueDate", header: "Issue Date", sortable: true },
     { key: "allottedWeight", header: "Allotted (MT)", render: (r) => weight(r.allottedWeight), sortable: true },
     { key: "usedWeight", header: "Used (MT)", render: (r) => weight(r.usedWeight), sortable: true },
@@ -130,13 +135,19 @@ export default function PurchaseOrderListPage() {
             onSelect={(p) => setValues({ ...values, billingPartyId: Number(p.id) })}
             onClear={() => setValues({ ...values, billingPartyId: 0 })} placeholder="Select billing party..." />
         </FormField>
+        <FormField label="Consignor" htmlFor="po-consignor" required error={errors.consignor}>
+          <MasterAutocomplete id="po-consignor" value={values.consignor}
+            options={consignors.map((row) => ({ id: row.id, label: row.name, description: [row.code, row.city].filter(Boolean).join(" · ") }))}
+            onSelect={(row) => setValues({ ...values, consignor: row.label })}
+            onClear={() => setValues({ ...values, consignor: "" })} placeholder="Select consignor..." />
+        </FormField>
         <FormField label="PO Number" htmlFor="po-number" required error={errors.poNumber}>
           <Input id="po-number" value={values.poNumber} maxLength={100}
             onChange={(e) => setValues({ ...values, poNumber: e.target.value.toUpperCase() })} />
         </FormField>
         <FormDatePicker label="Issue Date" id="po-date" required error={errors.issueDate}
           value={values.issueDate} onChange={(issueDate) => setValues({ ...values, issueDate })} />
-        <FormField label="Allotted Weight (MT)" htmlFor="po-weight" required error={errors.allottedWeight}>
+        <FormField label="Allotted Weight (MT)" htmlFor="po-weight" error={errors.allottedWeight} hint="Leave blank until the allotted weight is known.">
           <Input id="po-weight" type="number" min="0" step="any" value={values.allottedWeight || ""}
             onChange={(e) => setValues({ ...values, allottedWeight: Number(e.target.value) })} />
         </FormField>

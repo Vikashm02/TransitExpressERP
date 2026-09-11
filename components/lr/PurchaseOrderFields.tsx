@@ -11,9 +11,10 @@ import type { LR } from "./lr.schema";
 export default function PurchaseOrderFields({ lr, onChange, readOnly, autoSelect }: {
   lr: LR; onChange: (next: LR) => void; readOnly: boolean; autoSelect: boolean;
 }) {
-  const [lookup, setLookup] = useState<{ customer: string; options: PurchaseOrderLookup[]; failed: boolean } | null>(null);
-  const enabled = !readOnly && Boolean(lr.customer.trim());
-  const currentLookup = lookup?.customer === lr.customer ? lookup : null;
+  const [lookup, setLookup] = useState<{ key: string; options: PurchaseOrderLookup[]; failed: boolean } | null>(null);
+  const lookupKey = `${lr.customer}\u0000${lr.consignor}`;
+  const enabled = !readOnly && Boolean(lr.customer.trim() && lr.consignor.trim());
+  const currentLookup = lookup?.key === lookupKey ? lookup : null;
   const options = enabled ? currentLookup?.options ?? [] : [];
   const loading = enabled && !currentLookup;
   const failed = enabled && Boolean(currentLookup?.failed);
@@ -21,24 +22,24 @@ export default function PurchaseOrderFields({ lr, onChange, readOnly, autoSelect
   useEffect(() => { latest.current = { lr, onChange }; }, [lr, onChange]);
 
   useEffect(() => {
-    if (readOnly || !lr.customer.trim()) return;
+    if (readOnly || !lr.customer.trim() || !lr.consignor.trim()) return;
     let cancelled = false;
-    getActiveLrPurchaseOrders(lr.customer).then((rows) => {
+    getActiveLrPurchaseOrders(lr.customer, lr.consignor).then((rows) => {
       if (cancelled) return;
-      setLookup({ customer: lr.customer, options: rows, failed: false });
+      setLookup({ key: lookupKey, options: rows, failed: false });
       const current = latest.current;
       // Never replace a stored PO just because a historical LR was opened.
       if (autoSelect && rows.length === 1 && !current.lr.poNumber && !current.lr.purchaseOrderId) {
         const po = rows[0];
         current.onChange({ ...current.lr, purchaseOrderId: po.id, poNumber: po.poNumber, poDate: po.issueDate });
       }
-    }).catch(() => { if (!cancelled) setLookup({ customer: lr.customer, options: [], failed: true }); });
+    }).catch(() => { if (!cancelled) setLookup({ key: lookupKey, options: [], failed: true }); });
     return () => { cancelled = true; };
-  }, [lr.customer, readOnly, autoSelect]);
+  }, [lr.customer, lr.consignor, lookupKey, readOnly, autoSelect]);
 
   const hint = readOnly ? undefined : loading ? "Loading active POs..." : failed ? "PO lookup unavailable. Existing PO details are preserved."
     : options.length > 1 ? "Multiple active POs found. Choose the correct PO."
-    : !options.length && lr.customer ? "No active PO found for this billing party." : undefined;
+    : !options.length && lr.customer && lr.consignor ? "No active PO found for this Billing Party and Consignor." : undefined;
   const selectedIsActive = options.some((p) => p.id === lr.purchaseOrderId);
 
   return <>

@@ -17,6 +17,7 @@ export async function getPurchaseOrders(): Promise<PurchaseOrderRecord[]> {
     id: Number(row.id),
     billingPartyId: Number(row.billing_party_id),
     billingPartyName: String(row.billing_party_name),
+    consignor: String(row.consignor ?? ""),
     poNumber: String(row.po_number),
     issueDate: String(row.issue_date),
     allottedWeight: Number(row.allotted_weight),
@@ -33,8 +34,8 @@ export async function getPurchaseOrderParties(): Promise<PurchaseOrderParty[]> {
   }));
 }
 
-export async function getActiveLrPurchaseOrders(billingParty: string): Promise<PurchaseOrderLookup[]> {
-  const { data, error } = await supabase.rpc("get_lr_purchase_orders", { p_billing_party: billingParty });
+export async function getActiveLrPurchaseOrders(billingParty: string, consignor: string): Promise<PurchaseOrderLookup[]> {
+  const { data, error } = await supabase.rpc("get_lr_purchase_orders", { p_billing_party: billingParty, p_consignor: consignor });
   if (error) throw error;
   return (data ?? []).map((row: Record<string, unknown>) => ({
     id: Number(row.id), poNumber: String(row.po_number), issueDate: String(row.issue_date),
@@ -45,9 +46,10 @@ export async function savePurchaseOrder(id: number | null, values: PurchaseOrder
   const parsed = purchaseOrderSchema.parse(values);
   const row = {
     billing_party_id: parsed.billingPartyId,
+    consignor: parsed.consignor,
     po_number: parsed.poNumber,
     issue_date: parsed.issueDate,
-    allotted_weight: parsed.allottedWeight,
+    allotted_weight: parsed.allottedWeight || null,
     status: parsed.status,
   };
   const query = id === null

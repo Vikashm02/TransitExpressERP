@@ -43,7 +43,7 @@ export default function LRForm({
         lr={lr}
         errors={errors}
         onChange={(next) => {
-          if (next.customer !== lr.customer) {
+          if (next.customer !== lr.customer || next.consignor !== lr.consignor) {
             setPoSelectionRequested(true);
             onChange({ ...next, poNumber: "", poDate: "", purchaseOrderId: null });
           } else onChange(next);

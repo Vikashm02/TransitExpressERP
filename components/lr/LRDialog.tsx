@@ -291,7 +291,7 @@ export default function LRDialog({
     setCheckingPo(true);
     try {
       if (mustCheckPo) {
-        const active = await getActiveLrPurchaseOrders(values.customer);
+        const active = await getActiveLrPurchaseOrders(values.customer, values.consignor);
         if ((active.length > 0 || values.purchaseOrderId)
           && !active.some((po) => po.id === values.purchaseOrderId)) {
           toast.error("Choose an active PO for this billing party before saving.");
