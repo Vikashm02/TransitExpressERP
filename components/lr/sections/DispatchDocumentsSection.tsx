@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import FormField from "@/components/ui/FormField";
 import FormDatePicker from "@/components/ui/FormDatePicker";
 import FormSection from "@/components/ui/FormSection";
+import PurchaseOrderFields from "../PurchaseOrderFields";
 
 import LRNumericInput from "../LRNumericInput";
 import type { LR } from "../lr.schema";
@@ -21,6 +22,8 @@ interface DispatchDocumentsSectionProps {
   onChange: (lr: LR) => void;
   /** When editing, exclude this LR so it does not match itself. */
   excludeLrId?: LRRecord["id"] | null;
+  readOnly?: boolean;
+  autoSelectPo?: boolean;
 }
 
 function formatDuplicateWarning(lrNumbers: string[]): string {
@@ -41,6 +44,8 @@ export default function DispatchDocumentsSection({
   errors = {},
   onChange,
   excludeLrId = null,
+  readOnly = false,
+  autoSelectPo = false,
 }: DispatchDocumentsSectionProps) {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -89,17 +94,7 @@ export default function DispatchDocumentsSection({
       subtitle="Customer reference documents"
     >
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-        <FormField
-          label="PO Number"
-          htmlFor="lr-po-number"
-        >
-          <Input
-            id="lr-po-number"
-            placeholder="PO Number"
-            value={lr.poNumber}
-            onChange={(e) => update("poNumber", e.target.value)}
-          />
-        </FormField>
+        <PurchaseOrderFields key={lr.customer} lr={lr} onChange={onChange} readOnly={readOnly} autoSelect={autoSelectPo} />
 
         <FormField
           label="Vendor Code"

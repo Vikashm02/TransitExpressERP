@@ -154,6 +154,11 @@ function toRow(values: LR) {
     row[toSnakeCase(field)] = emptyToNull(values[field]);
   }
 
+  // Explicit null clears a previous link when the billing party changes.
+  // Legacy callers without these optional fields leave their snapshots untouched.
+  if (values.poDate !== undefined) row.po_date = emptyToNull(values.poDate);
+  if (values.purchaseOrderId !== undefined) row.purchase_order_id = values.purchaseOrderId;
+
   // Never persist blank lr_number as "" (UNIQUE). Callers must supply a real
   // number for inserts; empty → omit/null only for defensive updates of drafts
   // that somehow lack a number (should not happen after migration 062 RPC).
@@ -453,7 +458,8 @@ export async function createNumberedLrDraft(values: LR): Promise<LRRecord> {
   delete payload.updated_by;
   delete payload.draft_created_by;
 
-  const { data, error } = await supabase.rpc("create_numbered_lr_draft", {
+  const { data, error } = await supabase.rpc(values.purchaseOrderId || values.poDate
+    ? "create_numbered_lr_draft_with_po" : "create_numbered_lr_draft", {
     p_payload: payload,
   });
 

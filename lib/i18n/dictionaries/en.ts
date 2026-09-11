@@ -36,6 +36,7 @@ const en: TranslationDict = {
   "nav.company": "Company Master",
   "nav.customers": "Customer Master",
   "nav.billingParties": "Billing Party Master",
+  "nav.purchaseOrders": "PO Master",
   "nav.vehicle": "Vehicle Master",
   "nav.material": "Material Master",
   "nav.lr": "LR Entry",

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import type { LR } from "./lr.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { LRRecord } from "@/components/services/lr.service";
@@ -34,12 +36,18 @@ export default function LRForm({
   readOnly = false,
   excludeLrId = null,
 }: LRFormProps) {
+  const [poSelectionRequested, setPoSelectionRequested] = useState(false);
   return (
     <div className="space-y-6" {...(readOnly ? { inert: true as const } : {})}>
       <LRHeader
         lr={lr}
         errors={errors}
-        onChange={onChange}
+        onChange={(next) => {
+          if (next.customer !== lr.customer) {
+            setPoSelectionRequested(true);
+            onChange({ ...next, poNumber: "", poDate: "", purchaseOrderId: null });
+          } else onChange(next);
+        }}
         nextLrNumberPreview={nextLrNumberPreview}
       />
 
@@ -77,6 +85,8 @@ export default function LRForm({
         errors={errors}
         onChange={onChange}
         excludeLrId={excludeLrId}
+        readOnly={readOnly}
+        autoSelectPo={poSelectionRequested || !excludeLrId || lr.entryStatus === "draft"}
       />
 
       <CommercialSection

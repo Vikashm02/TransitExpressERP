@@ -14,6 +14,8 @@ import { isDraftEntry, isDraftLrNumber } from "@/lib/entryStatus";
 import { prepareLrForDraftForm } from "@/lib/draftPersistence";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { normalizeLrTextFields } from "./lrTextNormalize";
+import { getActiveLrPurchaseOrders } from "@/components/services/purchaseOrder.service";
+import { toast } from "sonner";
 
 interface LRDialogProps {
   open: boolean;
@@ -71,6 +73,8 @@ const emptyLR: LR = {
 
   // Dispatch Documents
   poNumber: "",
+  poDate: "",
+  purchaseOrderId: null,
   vendorCode: "",
   dcNumber: "",
   dcDate: "",
@@ -140,6 +144,7 @@ export default function LRDialog({
   const [values, setValues] = useState<LR>(emptyLR);
   const [errors, setErrors] = useState<FieldErrors<LR>>({});
   const [draftHint, setDraftHint] = useState<string | null>(null);
+  const [checkingPo, setCheckingPo] = useState(false);
   /** Track which persisted row the form was seeded from (avoid wipe on autosave). */
   const seededLrIdRef = useRef<number | null>(null);
   /** True when this dialog open started as Create (no lr) — number attach must not reset form. */
@@ -271,8 +276,8 @@ export default function LRDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lr, readOnly]);
 
-  function handleSave() {
-    if (readOnly) return;
+  async function handleSave() {
+    if (readOnly || checkingPo || loading) return;
     const fieldErrors = validateLR(values, { requireMaterialDescription });
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -280,8 +285,24 @@ export default function LRDialog({
       return;
     }
 
-    setErrors({});
-    onSubmit({ ...values, entryStatus: "final" });
+    // Recheck active selection at save; preserve unchanged historical snapshots.
+    const mustCheckPo = requireMaterialDescription || values.customer !== lr?.customer
+      || (values.purchaseOrderId ?? null) !== (lr?.purchaseOrderId ?? null);
+    setCheckingPo(true);
+    try {
+      if (mustCheckPo) {
+        const active = await getActiveLrPurchaseOrders(values.customer);
+        if ((active.length > 0 || values.purchaseOrderId)
+          && !active.some((po) => po.id === values.purchaseOrderId)) {
+          toast.error("Choose an active PO for this billing party before saving.");
+          return;
+        }
+      }
+      setErrors({});
+      await onSubmit({ ...values, entryStatus: "final" });
+    } catch {
+      toast.error("Unable to verify or save the PO selection. Please retry.");
+    } finally { setCheckingPo(false); }
   }
 
   function handleCancel() {
@@ -305,7 +326,7 @@ export default function LRDialog({
       title={title}
       description={description}
       size="fullscreen"
-      loading={loading}
+      loading={loading || checkingPo}
       loadingText="Saving Lorry Receipt..."
       footer={
         readOnly ? (
@@ -331,7 +352,7 @@ export default function LRDialog({
               Cancel
             </Button>
 
-            <Button onClick={handleSave} disabled={loading}>
+            <Button onClick={handleSave} disabled={loading || checkingPo}>
               {loading ? "Saving..." : "Save LR"}
             </Button>
           </>

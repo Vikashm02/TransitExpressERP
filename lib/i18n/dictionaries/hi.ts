@@ -36,6 +36,7 @@ const hi: TranslationDict = {
   "nav.company": "कंपनी मास्टर",
   "nav.customers": "ग्राहक मास्टर",
   "nav.billingParties": "बिलिंग पार्टी मास्टर",
+  "nav.purchaseOrders": "पीओ मास्टर",
   "nav.vehicle": "वाहन मास्टर",
   "nav.material": "सामग्री मास्टर",
   "nav.lr": "एलआर एंट्री",

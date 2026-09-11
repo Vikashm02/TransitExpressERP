@@ -128,6 +128,8 @@ export const lrSchema = z
     // Dispatch Documents
     // ===========================
     poNumber: z.string().trim(),
+    poDate: z.string().trim().optional(),
+    purchaseOrderId: z.number().int().positive().nullable().optional(),
     vendorCode: z.string().trim(),
     dcNumber: z.string().trim(),
     dcDate: z.string().trim(),

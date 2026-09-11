@@ -67,6 +67,7 @@ const menuSections: MenuSection[] = [
         permissionKey: "billing_parties",
       },
       { labelKey: "nav.vehicle", href: "/vehicle", icon: Truck, permissionKey: "vehicle" },
+      { labelKey: "nav.purchaseOrders", href: "/purchase-orders", icon: ClipboardList, permissionKey: "purchase_orders" },
       { labelKey: "nav.material", href: "/material", icon: Package, permissionKey: "material" },
     ],
   },

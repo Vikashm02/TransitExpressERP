@@ -74,6 +74,7 @@ export type PermissionKey =
   | "company"
   | "customers"
   | "billing_parties"
+  | "purchase_orders"
   | "vehicle"
   | "material"
   | "lr"
@@ -95,6 +96,7 @@ export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]>
   company: ["view", "edit"],
   customers: ["view", "create", "edit"],
   billing_parties: ["view", "create", "edit"],
+  purchase_orders: ["view", "create", "edit"],
   vehicle: ["view", "create", "edit"],
   material: ["view", "create", "edit"],
   lr: ["view", "create", "edit", "print", "share"],
@@ -121,6 +123,7 @@ export const PERMISSION_MODULES: {
   { key: "company", label: "Company Master", routePrefix: "/company" },
   { key: "customers", label: "Customer Master", routePrefix: "/customers" },
   { key: "billing_parties", label: "Billing Party Master", routePrefix: "/billing-parties" },
+  { key: "purchase_orders", label: "PO Master", routePrefix: "/purchase-orders" },
   { key: "vehicle", label: "Vehicle Master", routePrefix: "/vehicle" },
   { key: "material", label: "Material Master", routePrefix: "/material" },
   { key: "lr", label: "LR Entry", routePrefix: "/lr" },
