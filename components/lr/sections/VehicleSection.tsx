@@ -257,9 +257,9 @@ export default function VehicleSection({
           >
             <Input
               id="lr-from"
-              placeholder="Filled from Consignor Master city"
+              placeholder="Auto-filled from Consignor Master city"
               value={lr.from}
-              readOnly
+              onChange={(e) => update("from", e.target.value)}
             />
           </FormField>
 
@@ -271,9 +271,9 @@ export default function VehicleSection({
           >
             <Input
               id="lr-to"
-              placeholder="Filled from Consignee Master city"
+              placeholder="Auto-filled from Consignee Master city"
               value={lr.to}
-              readOnly
+              onChange={(e) => update("to", e.target.value)}
             />
           </FormField>
         </div>
