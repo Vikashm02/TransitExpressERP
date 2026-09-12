@@ -60,9 +60,19 @@ export default function NativeDeviceAlertsPermission() {
         const nextHandles = await Promise.all([
           PushNotifications.addListener("registration", (token) => {
             // Do not log the token: it is a device credential.
-            void registerNativeDeviceToken(token.value).catch(() => {
-              console.error("Unable to save native device registration");
-            });
+            console.info("[Native Push] device-token RPC attempted");
+            void registerNativeDeviceToken(token.value)
+              .then(() => {
+                console.info("[Native Push] device-token RPC succeeded");
+              })
+              .catch((error: unknown) => {
+                const rpcError = error as { code?: unknown; message?: unknown } | null;
+                console.error("[Native Push] device-token RPC failed", {
+                  code: typeof rpcError?.code === "string" ? rpcError.code : null,
+                  message:
+                    typeof rpcError?.message === "string" ? rpcError.message : "Unknown error",
+                });
+              });
           }),
           PushNotifications.addListener("registrationError", () => {
             console.error("Native push registration failed");
