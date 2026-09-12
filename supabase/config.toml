@@ -18,3 +18,8 @@ verify_jwt = false
 # dedicated NATIVE_FCM_TEST_SECRET header. The function enforces both itself.
 [functions.process-native-fcm]
 verify_jwt = false
+
+# Permanent trusted LR dispatcher. It accepts only one trusted event ID and
+# requires a project Secret API key; it is not a browser endpoint.
+[functions.process-trusted-lr-notifications]
+verify_jwt = false

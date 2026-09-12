@@ -76,6 +76,7 @@ Deno.serve(async (req) => {
         .from("notification_events")
         .select("*")
         .eq("id", eventId)
+        .neq("rule_key", "lr.updated")
         .eq("status", "pending")
         .maybeSingle();
 
@@ -103,6 +104,7 @@ Deno.serve(async (req) => {
       const { data } = await admin
         .from("notification_events")
         .select("*")
+        .neq("rule_key", "lr.updated")
         .eq("status", "pending")
         .lte("deliver_after", now)
         .order("created_at", { ascending: true })

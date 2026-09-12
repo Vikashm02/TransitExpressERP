@@ -497,14 +497,6 @@ export async function updateLR(id: number, values: LR): Promise<LRRecord> {
   // poNumber. po_date / by_name / hsn and other DC fields stay untouched.
   await syncDeliveryChallanFromLr(record.lrNumber, record.loadingWeight, record.poNumber);
 
-  void emitNotificationEvent({
-    ruleKey: "lr.updated",
-    title: `LR ${record.lrNumber} updated`,
-    body: `${record.consignor} → ${record.consignee}`,
-    href: "/lr",
-    payload: { lrId: record.id, lrNumber: record.lrNumber },
-  });
-
   return record;
 }
 
