@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { supabase } from "@/lib/supabase";
 
 export const TRANSJIT_ALERTS_CHANNEL_ID = "transjit_erp_alerts_v1";
 const TRANSJIT_ALERTS_SOUND = "transjit_koyal_notification";
@@ -19,6 +20,33 @@ export type NativeDeviceAlertsPermission = "granted" | "prompt" | "denied" | "no
 
 export function isNativeAndroid(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+}
+
+/**
+ * Keeps native FCM registration isolated from browser VAPID subscriptions.
+ * The database RPC derives the user from the authenticated Supabase session;
+ * no caller can submit a user id.
+ */
+export async function registerNativeDeviceToken(fcmToken: string): Promise<void> {
+  const { error } = await supabase.rpc("register_native_device_token", {
+    p_fcm_token: fcmToken,
+    p_platform: "android",
+    p_app_id: "in.transjitexpresserp.app",
+  });
+
+  if (error) throw error;
+}
+
+/** Only accept internal ERP paths from future native notification payloads. */
+export function getSafeNativeNotificationHref(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const href = (data as Record<string, unknown>).href;
+  if (typeof href !== "string") return null;
+  const value = href.trim();
+  if (!value.startsWith("/") || value.startsWith("//") || /[\\\r\n]/.test(value)) {
+    return null;
+  }
+  return value;
 }
 
 function normalizePermission(permission: string): NativeDeviceAlertsPermission {
