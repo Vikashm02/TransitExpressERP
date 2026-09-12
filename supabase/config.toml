@@ -12,3 +12,9 @@ verify_jwt = false
 # Cron for monthly report uses Secret API Key on apikey; admin actions use user JWT.
 [functions.notification-center]
 verify_jwt = false
+
+# Controlled one-device Android FCM test. Platform JWT verification is off only
+# so a server-side caller can supply both a project Secret API key and the
+# dedicated NATIVE_FCM_TEST_SECRET header. The function enforces both itself.
+[functions.process-native-fcm]
+verify_jwt = false
