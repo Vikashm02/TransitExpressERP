@@ -46,8 +46,8 @@ Deno.serve(async (req) => {
     if (!hasValidSecretApiKey(req)) return json({ ok: false, code: "forbidden", message: "Forbidden." }, 403);
 
     const body = await req.json().catch(() => null);
-    if (!isEventRequest(body)) {
-      return json({ ok: false, code: "invalid_request", message: "A positive safe-integer eventId is required." }, 400);
+    if (!isDispatchRequest(body)) {
+      return json({ ok: false, code: "invalid_request", message: "A positive safe-integer eventId or scheduled mode is required." }, 400);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SUPABASE_PROJECT_URL") ?? "";
@@ -62,7 +62,10 @@ Deno.serve(async (req) => {
     }
 
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
-    const claim = await claimTrustedEvent(admin, body.eventId);
+    const eventId = "eventId" in body ? body.eventId : await findNextScheduledTrustedEventId(admin);
+    if (eventId === null) return json({ ok: true, dispatched: false, reason: "no_due_event" });
+
+    const claim = await claimTrustedEvent(admin, eventId);
     if (!claim.event) return json({ ok: true, dispatched: false, reason: claim.reason });
     const event = claim.event;
 
@@ -127,16 +130,75 @@ Deno.serve(async (req) => {
   }
 });
 
-function isEventRequest(value: unknown): value is { eventId: number } {
+type DispatchRequest = { eventId: number } | { mode: "scheduled" };
+
+function isDispatchRequest(value: unknown): value is DispatchRequest {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entries = Object.entries(value);
-  return entries.length === 1 && entries[0][0] === "eventId" && typeof entries[0][1] === "number" && Number.isSafeInteger(entries[0][1]) && entries[0][1] > 0;
+  if (entries.length !== 1) return false;
+  const [key, entry] = entries[0];
+  if (key === "eventId") return typeof entry === "number" && Number.isSafeInteger(entry) && entry > 0;
+  return key === "mode" && entry === "scheduled";
 }
 
 type EventClaim = {
   event: TrustedEvent | null;
   reason: "claimed" | "event_not_claimable" | "terminal_failed_no_action";
 };
+
+async function findNextScheduledTrustedEventId(admin: SupabaseClient): Promise<number | null> {
+  const now = new Date().toISOString();
+  const baseQuery = () => admin
+    .from("notification_events")
+    .select("id")
+    .eq("rule_key", "lr.updated")
+    .eq("source", EVENT_SOURCE)
+    .eq("href", "/lr")
+    .lte("deliver_after", now);
+
+  const { data: pending, error: pendingError } = await baseQuery()
+    .eq("status", "pending")
+    .order("deliver_after", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (pendingError) throw pendingError;
+  const pendingId = toSafeEventId(pending?.id);
+  if (pendingId !== null) return pendingId;
+
+  // A failed event is due only when the existing delivery state machine says
+  // there is safe work to retry or reconcile. Terminal failed events remain
+  // untouched, so scheduled invocations cannot create a processing loop.
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data: failed, error: failedError } = await baseQuery()
+      .eq("status", "failed")
+      .order("deliver_after", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (failedError) throw failedError;
+    for (const row of failed ?? []) {
+      const eventId = toSafeEventId(row.id);
+      if (eventId !== null && await hasActionableFailedWork(admin, eventId)) return eventId;
+    }
+    if ((failed ?? []).length < pageSize) break;
+  }
+
+  const staleCutoff = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
+  const { data: stale, error: staleError } = await baseQuery()
+    .eq("status", "processing")
+    .lt("dispatch_claimed_at", staleCutoff)
+    .order("dispatch_claimed_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (staleError) throw staleError;
+  return toSafeEventId(stale?.id);
+}
+
+function toSafeEventId(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
 
 async function claimTrustedEvent(admin: SupabaseClient, eventId: number): Promise<EventClaim> {
   const fields = "id, rule_key, source, title, body, href, payload, status, deliver_after, dispatch_claimed_at";
