@@ -186,20 +186,36 @@ export default function LRListPage() {
   }, []);
 
   useEffect(() => {
-    if (loading || notificationTargetHandledRef.current || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const id = params.get("view");
     const focus = params.get("focus");
+    if (id || focus) {
+      console.info("[NativePushDiag] LRListPage view params", {
+        id,
+        focus,
+        loading,
+        loadedLrs: lrs.length,
+      });
+    }
+    if (loading || notificationTargetHandledRef.current) return;
     if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return;
     if (!focus || !["lr", "party", "vehicle", "material", "dispatch", "remarks"].includes(focus)) return;
     const target = lrs.find((row) => String(row.id) === id);
+    console.info("[NativePushDiag] LRListPage view target", {
+      id,
+      found: Boolean(target),
+      loadedLrs: lrs.length,
+    });
     notificationTargetHandledRef.current = true;
     window.history.replaceState(null, "", "/lr");
     if (!target) {
+      console.info("[NativePushDiag] LRListPage view target missing, redirecting home");
       router.replace("/");
       return;
     }
     const openTimer = window.setTimeout(() => {
+      console.info("[NativePushDiag] LRListPage opening View dialog", { id, focus });
       beginExistingLrSession();
       setDialogMode("view");
       setNotificationFocus(focus);

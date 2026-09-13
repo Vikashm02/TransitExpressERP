@@ -28,6 +28,10 @@ export default function NativeDeviceAlertsPermission() {
 
   useEffect(() => {
     const userId = session?.user.id;
+    console.info("[NativePushDiag] effect start", {
+      hasUserId: Boolean(userId),
+      isNativeAndroid: isNativeAndroid(),
+    });
     if (!userId || !isNativeAndroid() || configuredUserId.current === userId) return;
 
     configuredUserId.current = userId;
@@ -37,6 +41,7 @@ export default function NativeDeviceAlertsPermission() {
     async function configureNativeRegistration() {
       try {
         const permission = await ensureNativeDeviceAlertsPermission();
+        console.info("[NativePushDiag] permission result", { permission });
         if (cancelled) return;
 
         if (permission !== "granted") {
@@ -57,6 +62,7 @@ export default function NativeDeviceAlertsPermission() {
           return;
         }
 
+        console.info("[NativePushDiag] registering native listeners");
         const nextHandles = await Promise.all([
           PushNotifications.addListener("registration", (token) => {
             // Do not log the token: it is a device credential.
@@ -81,8 +87,15 @@ export default function NativeDeviceAlertsPermission() {
             // Phase 1 deliberately adds no foreground-notification UI.
           }),
           PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+            console.info("[NativePushDiag] tap received", {
+              data: action.notification.data ?? null,
+            });
             const href = getSafeNativeNotificationHref(action.notification.data);
-            if (href) router.push(href);
+            console.info("[NativePushDiag] tap resolved href", { href });
+            if (href) {
+              console.info("[NativePushDiag] router.push href");
+              router.push(href);
+            }
           }),
         ]);
 
