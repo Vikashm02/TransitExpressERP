@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Download, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { getLR, type LRRecord } from "@/components/services/lr.service";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   generateLrPdfFile,
   lrPdfFileName,
@@ -14,6 +15,8 @@ import {
 export default function LRPrintPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { session, loading: authLoading, profileLoading, hasPermission } = useAuth();
+  const loadedLrIdRef = useRef<string | null>(null);
 
   const [lr, setLR] = useState<LRRecord | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -22,40 +25,48 @@ export default function LRPrintPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = params.id;
+    if (authLoading || profileLoading) return;
 
-    if (!id) {
-      setError("Invalid LR id.");
-      setLoading(false);
+    // This route is intentionally outside DashboardLayout, so it performs the
+    // same existing LR view-qualified check before fetching any LR/PDF data.
+    if (!session || !hasPermission("lr", "view")) {
+      router.replace("/");
       return;
     }
 
+    const id = params.id;
+    if (!id || loadedLrIdRef.current === id) return;
+    loadedLrIdRef.current = id;
+
     let objectUrl: string | null = null;
+    let cancelled = false;
 
     (async () => {
       try {
-        // `LRRecord.id` is typed as `number` in lr.service.ts, but the live
-        // `lrs` table's primary key is actually a UUID string.
         const lrRecord = await getLR(id as unknown as number);
+        if (cancelled) return;
         setLR(lrRecord);
 
         const file = await generateLrPdfFile(lrRecord);
+        if (cancelled) return;
         objectUrl = URL.createObjectURL(file);
         setPdfUrl(objectUrl);
         setFileName(lrPdfFileName(lrRecord.lrNumber, lrRecord.vehicleNumber));
         document.title = file.name.replace(/\.pdf$/i, "");
-      } catch (err) {
-        console.error(err);
-        setError("Unable to load this LR for printing.");
+      } catch {
+        // RLS may revoke a previously eligible user between notification tap
+        // and the LR lookup. Do not reveal an error page or partial content.
+        if (!cancelled) router.replace("/");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
 
     return () => {
+      cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [params.id]);
+  }, [authLoading, hasPermission, params.id, profileLoading, router, session]);
 
   function handleDownload() {
     if (!pdfUrl) return;

@@ -33,6 +33,7 @@ interface LRDialogProps {
   onSubmit: (values: LR) => void | Promise<void>;
   /** Optional draft autosave — does not finalize numbering. Ignored when readOnly. */
   onAutosave?: (values: LR) => void | Promise<void>;
+  notificationFocus?: string | null;
 }
 
 const emptyLR: LR = {
@@ -140,6 +141,7 @@ export default function LRDialog({
   onRequestContinueDraft,
   onSubmit,
   onAutosave,
+  notificationFocus = null,
 }: LRDialogProps) {
   const [values, setValues] = useState<LR>(emptyLR);
   const [errors, setErrors] = useState<FieldErrors<LR>>({});
@@ -366,6 +368,7 @@ export default function LRDialog({
         requireMaterialDescription={requireMaterialDescription}
         readOnly={readOnly}
         excludeLrId={lr?.id ?? null}
+        notificationFocus={notificationFocus}
       />
     </FormDialog>
   );

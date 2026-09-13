@@ -1,9 +1,9 @@
 import { supabase } from "@/lib/supabase";
+import { emitNotificationEvent } from "@/components/services/notification.service";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import type { LR } from "@/components/lr/lr.schema";
 import { syncDeliveryChallanFromLr } from "@/components/services/deliveryChallan.service";
-import { emitNotificationEvent } from "@/components/services/notification.service";
 
 /** A persisted LR row. `billAmount`/`lorryHireAmount`/`profitAmount` are
  * intentionally NOT part of the editable `LR` schema — they are always
@@ -343,15 +343,6 @@ export async function createLR(values: LR): Promise<LRRecord> {
   if (error) throw error;
 
   const record = fromRow(data);
-  if (record.entryStatus !== "draft") {
-    void emitNotificationEvent({
-      ruleKey: "lr.created",
-      title: `LR ${record.lrNumber} created`,
-      body: `${record.consignor} → ${record.consignee}`,
-      href: "/lr",
-      payload: { lrId: record.id, lrNumber: record.lrNumber },
-    });
-  }
   return record;
 }
 
@@ -415,18 +406,7 @@ export async function createHistoricalLrBulk(
 
   const count = typeof result.count === "number" ? result.count : ids.length;
 
-  // Best-effort notifications after committed insert (parity with createLR).
-  for (let i = 0; i < rows.length; i++) {
-    const values = rows[i]!.values;
-    const id = ids[i];
-    void emitNotificationEvent({
-      ruleKey: "lr.created",
-      title: `LR ${values.lrNumber} created`,
-      body: `${values.consignor} → ${values.consignee}`,
-      href: "/lr",
-      payload: { lrId: id ?? null, lrNumber: values.lrNumber },
-    });
-  }
+
 
   return {
     count,

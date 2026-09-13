@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
         .select("*")
         .eq("id", eventId)
         .neq("rule_key", "lr.updated")
+        .neq("source", "trusted_lr_trigger")
         .eq("status", "pending")
         .maybeSingle();
 
@@ -105,6 +106,7 @@ Deno.serve(async (req) => {
         .from("notification_events")
         .select("*")
         .neq("rule_key", "lr.updated")
+        .neq("source", "trusted_lr_trigger")
         .eq("status", "pending")
         .lte("deliver_after", now)
         .order("created_at", { ascending: true })

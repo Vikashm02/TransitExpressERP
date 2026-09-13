@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { LR } from "./lr.schema";
 import type { FieldErrors } from "@/lib/validation";
@@ -25,6 +25,7 @@ interface LRFormProps {
   readOnly?: boolean;
   /** Exclude this LR from DC duplicate warnings while editing. */
   excludeLrId?: LRRecord["id"] | null;
+  notificationFocus?: string | null;
 }
 
 export default function LRForm({
@@ -35,11 +36,19 @@ export default function LRForm({
   requireMaterialDescription = false,
   readOnly = false,
   excludeLrId = null,
+  notificationFocus = null,
 }: LRFormProps) {
   const [poSelectionRequested, setPoSelectionRequested] = useState(false);
+  useEffect(() => {
+    if (!notificationFocus) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector(`[data-lr-notification-focus="${notificationFocus}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [notificationFocus, lr.lrNumber]);
   return (
     <div className="space-y-6" {...(readOnly ? { inert: true as const } : {})}>
-      <LRHeader
+      <div data-lr-notification-focus="lr" className={notificationFocus === "lr" ? "rounded-xl ring-2 ring-primary/60" : undefined}><LRHeader
         lr={lr}
         errors={errors}
         onChange={(next) => {
@@ -49,45 +58,45 @@ export default function LRForm({
           } else onChange(next);
         }}
         nextLrNumberPreview={nextLrNumberPreview}
-      />
+      /></div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <PartySection
+        <div data-lr-notification-focus="party" className={notificationFocus === "party" ? "rounded-xl ring-2 ring-primary/60" : undefined}><PartySection
           role="consignor"
           lr={lr}
           errors={errors}
           onChange={onChange}
-        />
+        /></div>
 
-        <PartySection
+        <div data-lr-notification-focus="party" className={notificationFocus === "party" ? "rounded-xl ring-2 ring-primary/60" : undefined}><PartySection
           role="consignee"
           lr={lr}
           errors={errors}
           onChange={onChange}
-        />
+        /></div>
       </div>
 
-      <VehicleSection
+      <div data-lr-notification-focus="vehicle" className={notificationFocus === "vehicle" ? "rounded-xl ring-2 ring-primary/60" : undefined}><VehicleSection
         lr={lr}
         errors={errors}
         onChange={onChange}
-      />
+      /></div>
 
-      <MaterialSection
+      <div data-lr-notification-focus="material" className={notificationFocus === "material" ? "rounded-xl ring-2 ring-primary/60" : undefined}><MaterialSection
         lr={lr}
         errors={errors}
         onChange={onChange}
         requireMaterialDescription={requireMaterialDescription}
-      />
+      /></div>
 
-      <DispatchDocumentsSection
+      <div data-lr-notification-focus="dispatch" className={notificationFocus === "dispatch" ? "rounded-xl ring-2 ring-primary/60" : undefined}><DispatchDocumentsSection
         lr={lr}
         errors={errors}
         onChange={onChange}
         excludeLrId={excludeLrId}
         readOnly={readOnly}
         autoSelectPo={poSelectionRequested || !excludeLrId || lr.entryStatus === "draft"}
-      />
+      /></div>
 
       <CommercialSection
         lr={lr}
@@ -95,11 +104,11 @@ export default function LRForm({
         onChange={onChange}
       />
 
-      <RemarksSection
+      <div data-lr-notification-focus="remarks" className={notificationFocus === "remarks" ? "rounded-xl ring-2 ring-primary/60" : undefined}><RemarksSection
         lr={lr}
         errors={errors}
         onChange={onChange}
-      />
+      /></div>
     </div>
   );
 }

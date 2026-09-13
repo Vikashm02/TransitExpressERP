@@ -68,6 +68,10 @@ Deno.serve(async (req) => {
     const claim = await claimTrustedEvent(admin, eventId);
     if (!claim.event) return json({ ok: true, dispatched: false, reason: claim.reason });
     const event = claim.event;
+    if (!isSafeTrustedLrHref(event)) {
+      await updateEventSummary(admin, event.id, "cancelled", "Trusted LR notification has an invalid route.");
+      return json({ ok: true, dispatched: false, reason: "invalid_event_route" });
+    }
 
     const recipientIds = await resolveEligibleNotificationRecipients(admin, "lr");
     if (recipientIds.length === 0) {
@@ -151,9 +155,8 @@ async function findNextScheduledTrustedEventId(admin: SupabaseClient): Promise<n
   const baseQuery = () => admin
     .from("notification_events")
     .select("id")
-    .eq("rule_key", "lr.updated")
+    .in("rule_key", ["lr.updated", "lr.created"])
     .eq("source", EVENT_SOURCE)
-    .eq("href", "/lr")
     .lte("deliver_after", now);
 
   const { data: pending, error: pendingError } = await baseQuery()
@@ -207,9 +210,8 @@ async function claimTrustedEvent(admin: SupabaseClient, eventId: number): Promis
       .from("notification_events")
       .update({ status: "processing", dispatch_claimed_at: new Date().toISOString(), processed_at: null })
       .eq("id", eventId)
-      .eq("rule_key", "lr.updated")
+      .in("rule_key", ["lr.updated", "lr.created"])
       .eq("source", EVENT_SOURCE)
-      .eq("href", "/lr")
       .eq("status", status)
       .select(fields)
       .maybeSingle();
@@ -249,9 +251,8 @@ async function loadTrustedEventStatus(
     .from("notification_events")
     .select("id")
     .eq("id", eventId)
-    .eq("rule_key", "lr.updated")
+    .in("rule_key", ["lr.updated", "lr.created"])
     .eq("source", EVENT_SOURCE)
-    .eq("href", "/lr")
     .eq("status", status)
     .maybeSingle();
   if (error) throw error;
@@ -357,7 +358,7 @@ async function deliverInbox(admin: SupabaseClient, event: TrustedEvent, userId: 
     event_id: event.id,
     title: event.title,
     body: event.body ?? "",
-    href: "/lr",
+    href: event.href,
   });
   if (insertError && insertError.code !== "23505") {
     await markDelivery(admin, delivery.id, "failed", "inbox_insert_failed");
@@ -375,7 +376,7 @@ async function deliverBrowser(admin: SupabaseClient, event: TrustedEvent, subscr
   try {
     await webpush.sendNotification(
       { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
-      JSON.stringify({ title: event.title, body: event.body ?? "", href: "/lr" })
+      JSON.stringify({ title: event.title, body: event.body ?? "", href: event.href })
     );
     await markDelivery(admin, claimed.id, "sent", null);
     return { delivered: 1, failed: 0 };
@@ -568,12 +569,19 @@ async function updateEventSummary(admin: SupabaseClient, eventId: number, status
 }
 
 function buildSafeEventData(event: TrustedEvent): Record<string, string> {
-  const data: Record<string, string> = { href: "/lr", eventId: String(event.id) };
+  const data: Record<string, string> = { href: event.href, eventId: String(event.id) };
   if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) return data;
   const payload = event.payload as Record<string, unknown>;
   if (typeof payload.lrId === "number" && Number.isSafeInteger(payload.lrId) && payload.lrId > 0) data.lrId = String(payload.lrId);
   if (typeof payload.lrNumber === "string" && /^[A-Za-z0-9./_-]{1,100}$/.test(payload.lrNumber)) data.lrNumber = payload.lrNumber;
   return data;
+}
+
+function isSafeTrustedLrHref(event: TrustedEvent): boolean {
+  if (event.rule_key === "lr.updated") {
+    return event.href === "/lr" || /^\/lr\?view=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}&focus=(lr|party|vehicle|material|dispatch|remarks)$/i.test(event.href);
+  }
+  return event.rule_key === "lr.created" && /^\/lr\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/print$/i.test(event.href);
 }
 
 function getServiceAccount(): ServiceAccount | null {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ClipboardList,
@@ -75,6 +76,7 @@ const DRAFT_STATUS_FILTER = "__draft__";
 type LrDialogMode = "create" | "view" | "edit";
 
 export default function LRListPage() {
+  const router = useRouter();
   const { isAdmin, isCreator, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lr", "create_view");
   const canEdit = hasPermission("lr", "edit") || hasAction("lr", "edit");
@@ -88,6 +90,7 @@ export default function LRListPage() {
   const [lrs, setLRs] = useState<LRRecord[]>([]);
   const [staff, setStaff] = useState<AppUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const notificationTargetHandledRef = useRef(false);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -96,6 +99,7 @@ export default function LRListPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<LrDialogMode>("create");
+  const [notificationFocus, setNotificationFocus] = useState<string | null>(null);
   const [editingLR, setEditingLR] = useState<LRRecord | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -180,6 +184,30 @@ export default function LRListPage() {
   useEffect(() => {
     loadLRs();
   }, []);
+
+  useEffect(() => {
+    if (loading || notificationTargetHandledRef.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("view");
+    const focus = params.get("focus");
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return;
+    if (!focus || !["lr", "party", "vehicle", "material", "dispatch", "remarks"].includes(focus)) return;
+    const target = lrs.find((row) => String(row.id) === id);
+    notificationTargetHandledRef.current = true;
+    window.history.replaceState(null, "", "/lr");
+    if (!target) {
+      router.replace("/");
+      return;
+    }
+    const openTimer = window.setTimeout(() => {
+      beginExistingLrSession();
+      setDialogMode("view");
+      setNotificationFocus(focus);
+      setEditingLR(target);
+      setDialogOpen(true);
+    }, 0);
+    return () => window.clearTimeout(openTimer);
+  }, [loading, lrs, router]);
 
   useEffect(() => {
     getStaffUsers()
@@ -978,6 +1006,7 @@ export default function LRListPage() {
         lr={editingLR}
         loading={saving}
         readOnly={dialogMode === "view"}
+        notificationFocus={notificationFocus}
         onRequestEdit={
           dialogMode === "view" &&
           editingLR &&
