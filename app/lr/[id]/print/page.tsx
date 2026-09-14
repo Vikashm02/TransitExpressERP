@@ -127,7 +127,7 @@ export default function LRPrintPage() {
     (async () => {
       try {
         const pdfjs = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
         if (cancelled) return;
         const bytes = await pdfFile.arrayBuffer();
         if (cancelled) return;
