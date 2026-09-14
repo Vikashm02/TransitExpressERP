@@ -30,10 +30,6 @@ export const BID_LOSS_REASON_OPTIONS = [
   "Other",
 ] as const;
 
-function positiveNumber(message: string) {
-  return z.number({ message }).gt(0, message);
-}
-
 function nonNegativeNumber(message: string) {
   return z.number({ message }).min(0, message);
 }
@@ -49,23 +45,28 @@ function requiredText(max: number, message: string) {
 export const bidSchema = z.object({
   // External reference is optional; blank normalizes to NULL server-side.
   bidReference: z.string().trim().max(60, "Bid reference must be 60 characters or less."),
+  // Only billing party, source, status, pickup and drop-off are generally
+  // mandatory. Everything else is optional unless a status-specific rule
+  // below requires it. Blank numerics arrive as 0 and mean "not provided".
   billingPartyId: z.number().int().positive("Choose a billing party from Billing Party Master."),
-  consignorId: z.number().int().positive("Choose a consignor from Customer Master."),
-  consigneeId: z.number().int().positive("Choose a consignee from Customer Master."),
+  consignorId: z.number().int().min(0),
+  consigneeId: z.number().int().min(0),
   source: z.enum(BID_SOURCE_OPTIONS, { message: "Choose a valid source." }),
   status: z.enum(BID_STATUS_OPTIONS, { message: "Choose a valid status." }),
   pickupLocation: requiredText(120, "Pickup location is required."),
   dropoffLocation: requiredText(120, "Drop-off location is required."),
-  distanceKm: z.number({ message: "Distance is required." }).min(0, "Distance cannot be negative."),
+  distanceKm: z.number({ message: "Distance must be a number." }).min(0, "Distance cannot be negative."),
   transitTime: z.string().trim().max(60, "Transit time must be 60 characters or less."),
-  // Material must be selected from Material Master; the snapshot name is
-  // frozen server-side from the master row at write time.
-  materialId: z.number().int().positive("Choose a material from Material Master."),
-  vehicleType: requiredText(60, "Vehicle type is required."),
-  totalQuantityMT: positiveNumber("Total quantity must be greater than 0."),
-  expectedLoadMT: positiveNumber("Expected load per vehicle must be greater than 0."),
+  // Tender-verbatim free text; never validated against Material Master.
+  materialDescription: z.string().trim().max(500, "Material description must be 500 characters or less."),
+  // Material must be selected from Material Master when provided; the
+  // snapshot name is frozen server-side from the master row at write time.
+  materialId: z.number().int().min(0),
+  vehicleType: z.string().trim().max(60, "Vehicle type must be 60 characters or less."),
+  totalQuantityMT: z.number({ message: "Total quantity must be a number." }).min(0, "Total quantity cannot be negative."),
+  expectedLoadMT: z.number({ message: "Expected load must be a number." }).min(0, "Expected load cannot be negative."),
   marketVehicleQuote: nonNegativeNumber("Market vehicle quote cannot be negative."),
-  bidRateBasis: z.enum(["Per MT", "Per Vehicle"] as const, { message: "Choose a rate basis." }),
+  bidRateBasis: z.enum(["Per MT", "Per Vehicle"] as const, { message: "Choose a rate basis." }).nullable(),
   bidRate: nonNegativeNumber("Bid rate cannot be negative."),
   // Winning rate is meaningful only with an explicit basis.
   winningRate: z.number().min(0, "Winning rate cannot be negative.").nullable().optional(),
@@ -82,11 +83,14 @@ export type Bid = z.infer<typeof bidSchema>;
 export function validateBid(values: Bid) {
   const errors = getFieldErrors(bidSchema, values) as Record<string, string>;
 
-  if (!values.closesAt && values.status === "Live") {
-    errors.closesAt = "Live bids require a closing date and time.";
-  }
+  // NOTE: Live bids deliberately do NOT require closes_at (a Live tender
+  // may have an unknown closing time). Reminder shortcuts stay unavailable
+  // while it is empty; exact custom reminder times are unaffected.
   if (values.winningRate !== null && values.winningRate !== undefined && !values.winningRateBasis) {
     errors.winningRateBasis = "Winning rate requires a rate basis.";
+  }
+  if (values.bidRate > 0 && !values.bidRateBasis) {
+    errors.bidRateBasis = "Choose a rate basis for the entered bid rate.";
   }
   if (
     values.postedAt &&

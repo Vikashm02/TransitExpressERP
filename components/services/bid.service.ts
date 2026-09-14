@@ -29,6 +29,9 @@ const NUMERIC_KEYS = [
   "bidRate",
 ] as const;
 
+/** Master-ID columns: DB NULL (unspecified) becomes form-state 0 (blank select). */
+const ID_KEYS = ["billingPartyId", "consignorId", "consigneeId", "materialId"] as const;
+
 /** Supabase returns raw snake_case columns; `id`/timestamps pass through unchanged. */
 function fromRow(row: Record<string, unknown>): BidRecord {
   const { id, created_at, updated_at, ...rest } = row;
@@ -38,10 +41,13 @@ function fromRow(row: Record<string, unknown>): BidRecord {
   for (const key of NUMERIC_KEYS) {
     record[key] = toNumber(record[key]);
   }
+  for (const key of ID_KEYS) {
+    record[key] = toNumber(record[key]);
+  }
   if (record.winningRate !== null && record.winningRate !== undefined) {
     record.winningRate = toNumber(record.winningRate);
   }
-  for (const key of ["bidReference", "transitTime", "resultRemarks", "notes"] as const) {
+  for (const key of ["bidReference", "transitTime", "resultRemarks", "notes", "materialDescription", "vehicleType"] as const) {
     if (record[key] === null || record[key] === undefined) record[key] = "";
   }
   if (record.lossReason === null) record.lossReason = null;
@@ -90,12 +96,31 @@ export async function getBid(id: string): Promise<BidRecord> {
    CREATE BID
 ========================================================== */
 
+/** Blank form values become NULL for nullable columns so "not provided"
+ * is never stored as a real zero (or empty vehicle type). Blank postedAt
+ * is omitted so the database now() default fills it. */
+function toWritePayload(values: Bid): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...values };
+  if (payload.consignorId === 0) payload.consignorId = null;
+  if (payload.consigneeId === 0) payload.consigneeId = null;
+  if (payload.materialId === 0) payload.materialId = null;
+  if (payload.distanceKm === 0) payload.distanceKm = null;
+  if (payload.vehicleType === "") payload.vehicleType = null;
+  if (payload.totalQuantityMT === 0) payload.totalQuantityMT = null;
+  if (payload.expectedLoadMT === 0) payload.expectedLoadMT = null;
+  if (payload.marketVehicleQuote === 0) payload.marketVehicleQuote = null;
+  if (payload.bidRate === 0) payload.bidRate = null;
+  if (payload.bidRateBasis === "") payload.bidRateBasis = null;
+  if (payload.postedAt === "") delete payload.postedAt;
+  return payload;
+}
+
 export async function createBid(values: Bid): Promise<BidRecord> {
   // Snapshot names travel with the payload for immediate UI use; the
   // database trigger re-freezes them from the master rows at write time.
   const { data, error } = await supabase
     .from(TABLE)
-    .insert(objectToSnakeCase({ ...values }))
+    .insert(objectToSnakeCase(toWritePayload(values)))
     .select()
     .single();
 
@@ -111,7 +136,7 @@ export async function createBid(values: Bid): Promise<BidRecord> {
 export async function updateBid(id: string, values: Bid): Promise<BidRecord> {
   // `id`/timestamps/snapshots are server-owned — none may ever reach the
   // update payload. Snapshot names are re-frozen by the trigger.
-  const { ...updatable } = omitServerFields(values as unknown as Record<string, unknown>);
+  const { ...updatable } = omitServerFields(toWritePayload(values));
   for (const key of ["billingPartyName", "consignorName", "consigneeName", "materialName"] as const) {
     delete (updatable as Record<string, unknown>)[key];
   }

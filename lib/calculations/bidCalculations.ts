@@ -9,28 +9,34 @@
 
 export type BidRateBasis = "Per MT" | "Per Vehicle";
 
+/**
+ * A blank (missing) commercial input is never a real zero: a ₹0 quote or
+ * rate is not a commercial position. All functions below therefore treat
+ * non-positive quote/rate/load as missing and return null, which callers
+ * render as "—". Formulas for complete positive inputs are unchanged.
+ */
 export interface BidEconomicsInput {
   marketVehicleQuote: number;
   expectedLoadMT: number;
   bidRate: number;
-  bidRateBasis: BidRateBasis;
+  bidRateBasis: BidRateBasis | null;
   totalQuantityMT: number;
 }
 
-/** Market cost per MT = quote / expected load. Null when load is not positive. */
+/** Market cost per MT = quote / expected load. Null when either is missing. */
 export function marketCostPerMT(marketVehicleQuote: number, expectedLoadMT: number): number | null {
   if (!Number.isFinite(marketVehicleQuote) || !Number.isFinite(expectedLoadMT)) return null;
-  if (expectedLoadMT <= 0 || marketVehicleQuote < 0) return null;
+  if (expectedLoadMT <= 0 || marketVehicleQuote <= 0) return null;
   return marketVehicleQuote / expectedLoadMT;
 }
 
-/** Revenue per vehicle. For Per MT: rate × expected load. */
+/** Revenue per vehicle. For Per MT: rate × expected load. Null when missing. */
 export function revenuePerVehicle(
   bidRate: number,
-  bidRateBasis: BidRateBasis,
+  bidRateBasis: BidRateBasis | null,
   expectedLoadMT: number
 ): number | null {
-  if (!Number.isFinite(bidRate) || bidRate < 0) return null;
+  if (!Number.isFinite(bidRate) || bidRate <= 0 || bidRateBasis === null) return null;
   if (bidRateBasis === "Per Vehicle") return bidRate;
   if (!Number.isFinite(expectedLoadMT) || expectedLoadMT <= 0) return null;
   return bidRate * expectedLoadMT;
@@ -42,10 +48,10 @@ export function revenuePerVehicle(
  */
 export function equivalentRatePerMT(
   bidRate: number,
-  bidRateBasis: BidRateBasis,
+  bidRateBasis: BidRateBasis | null,
   expectedLoadMT: number
 ): number | null {
-  if (!Number.isFinite(bidRate) || bidRate < 0) return null;
+  if (!Number.isFinite(bidRate) || bidRate <= 0 || bidRateBasis === null) return null;
   if (bidRateBasis === "Per MT") return bidRate;
   if (!Number.isFinite(expectedLoadMT) || expectedLoadMT <= 0) return null;
   return bidRate / expectedLoadMT;

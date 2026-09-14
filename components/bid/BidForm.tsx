@@ -9,6 +9,7 @@ import BlankableNumberInput from "@/components/common/BlankableNumberInput";
 import type { BillingPartyRecord } from "@/components/services/billingParty.service";
 import type { CustomerRecord } from "@/components/services/customer.service";
 import type { MaterialRecord } from "@/components/services/material.service";
+import MasterAutocomplete, { type MasterAutocompleteOption } from "@/components/lookup/MasterAutocomplete";
 import { VEHICLE_TYPE_OPTIONS } from "@/components/vehicle/vehicle.schema";
 import {
   calculateBidProfitability,
@@ -80,9 +81,17 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
     onChange({ ...bid, [key]: value });
   }
 
-  function customerLabel(customer: CustomerRecord): string {
-    const city = customer.city.trim();
-    return city ? `${customer.name} (${customer.code}) — ${city}` : `${customer.name} (${customer.code})`;
+  function partyName(parties: BillingPartyRecord[], id: number): string {
+    return parties.find((row) => row.id === id)?.name ?? "";
+  }
+
+  function customerName(id: number): string {
+    return customers.find((row) => row.id === id)?.name ?? "";
+  }
+
+  function handlePartySelect(option: MasterAutocompleteOption) {
+    const party = billingParties.find((row) => row.id === option.id);
+    if (party) update("billingPartyId", party.id);
   }
 
   /** Mirror the LR consignor/consignee convention: selecting a party
@@ -110,7 +119,7 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
     marketVehicleQuote: bid.marketVehicleQuote,
     expectedLoadMT: bid.expectedLoadMT,
     bidRate: bid.bidRate,
-    bidRateBasis: bid.bidRateBasis as BidRateBasis,
+    bidRateBasis: bid.bidRateBasis,
     totalQuantityMT: bid.totalQuantityMT,
   });
   const isLoss = calc.grossProfitPerVehicle !== null && calc.grossProfitPerVehicle < 0;
@@ -134,16 +143,26 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
               onChange={(e) => update("bidReference", e.target.value)}
             />
           </FormField>
-          <FormField label="Bid Hosted By / Billing Party" htmlFor="bid-billing-party" required error={errors.billingPartyId}>
-            <FormSelect
+          <FormField
+            label="Bid Hosted By / Billing Party"
+            htmlFor="bid-billing-party"
+            required
+            error={errors.billingPartyId}
+            hint="Type to search Billing Party Master, then select a row. Free text is not allowed."
+          >
+            <MasterAutocomplete
               id="bid-billing-party"
-              value={bid.billingPartyId > 0 ? String(bid.billingPartyId) : ""}
-              onValueChange={(value) => update("billingPartyId", Number(value) || 0)}
+              value={partyName(billingParties, bid.billingPartyId)}
               options={billingParties.map((party) => ({
-                label: `${party.name} (${party.code})`,
-                value: String(party.id),
+                id: party.id,
+                label: party.name,
+                description: party.code,
+                keywords: `${party.code} ${party.city} ${party.gst}`,
               }))}
-              placeholder="Select Billing Party"
+              onSelect={handlePartySelect}
+              onClear={() => update("billingPartyId", 0)}
+              placeholder="Type to find billing party..."
+              emptyMessage="No matching billing party in master data."
             />
           </FormField>
           <FormField label="Source" htmlFor="bid-source" required error={errors.source}>
@@ -175,9 +194,8 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
           <FormField
             label="Bid Closing Date & Time"
             htmlFor="bid-closes-at"
-            required={bid.status === "Live"}
             error={errors.closesAt}
-            hint={bid.status === "Live" ? "Required for Live bids." : "Optional while preparing a draft."}
+            hint="Optional — a Live bid may have an unknown closing time."
           >
             <Input
               id="bid-closes-at"
@@ -201,16 +219,28 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
 
       <FormSection title="Route — Consignor → Consignee">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <FormField label="Consignor (Pickup Party)" htmlFor="bid-consignor" required error={errors.consignorId}>
-            <FormSelect
+          <FormField
+            label="Consignor (Pickup Party)"
+            htmlFor="bid-consignor"
+            error={errors.consignorId}
+            hint="Type to search Customer Master, then select a row. Free text is not allowed."
+          >
+            <MasterAutocomplete
               id="bid-consignor"
-              value={bid.consignorId > 0 ? String(bid.consignorId) : ""}
-              onValueChange={(value) => handleConsignorChange(Number(value) || 0)}
+              value={customerName(bid.consignorId)}
               options={customers.map((customer) => ({
-                label: customerLabel(customer),
-                value: String(customer.id),
+                id: customer.id,
+                label: customer.name,
+                description: customer.code,
+                keywords: `${customer.code} ${customer.gst} ${customer.city} ${customer.address}`,
               }))}
-              placeholder="Select Consignor from Customer Master"
+              onSelect={(option) => {
+                const customer = customers.find((row) => row.id === option.id);
+                if (customer) handleConsignorChange(customer.id);
+              }}
+              onClear={() => handleConsignorChange(0)}
+              placeholder="Type to find consignor..."
+              emptyMessage="No matching customer in master data."
             />
           </FormField>
           <FormField label="Pickup Location" htmlFor="bid-pickup" required error={errors.pickupLocation}>
@@ -221,16 +251,28 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
               onChange={(e) => update("pickupLocation", e.target.value)}
             />
           </FormField>
-          <FormField label="Consignee (Delivery Party)" htmlFor="bid-consignee" required error={errors.consigneeId}>
-            <FormSelect
+          <FormField
+            label="Consignee (Delivery Party)"
+            htmlFor="bid-consignee"
+            error={errors.consigneeId}
+            hint="Type to search Customer Master, then select a row. Free text is not allowed."
+          >
+            <MasterAutocomplete
               id="bid-consignee"
-              value={bid.consigneeId > 0 ? String(bid.consigneeId) : ""}
-              onValueChange={(value) => handleConsigneeChange(Number(value) || 0)}
+              value={customerName(bid.consigneeId)}
               options={customers.map((customer) => ({
-                label: customerLabel(customer),
-                value: String(customer.id),
+                id: customer.id,
+                label: customer.name,
+                description: customer.code,
+                keywords: `${customer.code} ${customer.gst} ${customer.city} ${customer.address}`,
               }))}
-              placeholder="Select Consignee from Customer Master"
+              onSelect={(option) => {
+                const customer = customers.find((row) => row.id === option.id);
+                if (customer) handleConsigneeChange(customer.id);
+              }}
+              onClear={() => handleConsigneeChange(0)}
+              placeholder="Type to find consignee..."
+              emptyMessage="No matching customer in master data."
             />
           </FormField>
           <FormField label="Drop-off Location" htmlFor="bid-dropoff" required error={errors.dropoffLocation}>
@@ -262,7 +304,22 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
 
       <FormSection title="Load & Commercial">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <FormField label="Material" htmlFor="bid-material" required error={errors.materialId}>
+          <div className="sm:col-span-2">
+            <FormField
+              label="Material Description"
+              htmlFor="bid-material-description"
+              error={errors.materialDescription}
+              hint="Free text exactly as written on the tender document. Not linked to Material Master."
+            >
+              <Textarea
+                id="bid-material-description"
+                placeholder='e.g. UN-SHREDDED RDF FROM MSW AS PER TENDER'
+                value={bid.materialDescription}
+                onChange={(e) => update("materialDescription", e.target.value)}
+              />
+            </FormField>
+          </div>
+          <FormField label="Material" htmlFor="bid-material" error={errors.materialId}>
             <FormSelect
               id="bid-material"
               value={bid.materialId > 0 ? String(bid.materialId) : ""}
@@ -274,7 +331,7 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
               placeholder="Select from Material Master"
             />
           </FormField>
-          <FormField label="Vehicle Type" htmlFor="bid-vehicle-type" required error={errors.vehicleType}>
+          <FormField label="Vehicle Type" htmlFor="bid-vehicle-type" error={errors.vehicleType}>
             <FormSelect
               id="bid-vehicle-type"
               value={bid.vehicleType}
@@ -283,7 +340,7 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
               placeholder="Select Vehicle Type"
             />
           </FormField>
-          <FormField label="Total Bid Quantity (MT)" htmlFor="bid-total-qty" required error={errors.totalQuantityMT}>
+          <FormField label="Total Bid Quantity (MT)" htmlFor="bid-total-qty" error={errors.totalQuantityMT}>
             <BlankableNumberInput
               id="bid-total-qty"
               min={0}
@@ -291,7 +348,7 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
               onChange={(value) => update("totalQuantityMT", value)}
             />
           </FormField>
-          <FormField label="Expected Load Per Vehicle (MT)" htmlFor="bid-expected-load" required error={errors.expectedLoadMT}>
+          <FormField label="Expected Load Per Vehicle (MT)" htmlFor="bid-expected-load" error={errors.expectedLoadMT}>
             <BlankableNumberInput
               id="bid-expected-load"
               min={0}
@@ -304,7 +361,7 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
 
       <FormSection title="Market Vehicle Cost">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <FormField label="Market Vehicle Quote (₹ / vehicle)" htmlFor="bid-market-quote" required error={errors.marketVehicleQuote}>
+          <FormField label="Market Vehicle Quote (₹ / vehicle)" htmlFor="bid-market-quote" error={errors.marketVehicleQuote}>
             <BlankableNumberInput
               id="bid-market-quote"
               min={0}
@@ -322,16 +379,16 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
 
       <FormSection title="Our Bid">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <FormField label="Bid Rate Basis" htmlFor="bid-rate-basis" required error={errors.bidRateBasis}>
+          <FormField label="Bid Rate Basis" htmlFor="bid-rate-basis" error={errors.bidRateBasis}>
             <FormSelect
               id="bid-rate-basis"
-              value={bid.bidRateBasis}
-              onValueChange={(value) => update("bidRateBasis", value as Bid["bidRateBasis"])}
+              value={bid.bidRateBasis ?? ""}
+              onValueChange={(value) => update("bidRateBasis", (value || null) as Bid["bidRateBasis"])}
               options={toOptions(BID_RATE_BASIS_OPTIONS)}
               placeholder="Select Basis"
             />
           </FormField>
-          <FormField label="Our Bid Rate" htmlFor="bid-rate" required error={errors.bidRate}>
+          <FormField label="Our Bid Rate" htmlFor="bid-rate" error={errors.bidRate}>
             <BlankableNumberInput
               id="bid-rate"
               min={0}
@@ -343,11 +400,21 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
       </FormSection>
 
       <FormSection title="Profitability Calculator">
-        <ProfitRow label="Market Vehicle Quote" value={formatINR(bid.marketVehicleQuote)} />
-        <ProfitRow label="Market Cost / Vehicle" value={formatINR(bid.marketVehicleQuote)} />
-        <ProfitRow label="Expected Load / Vehicle" value={formatMT(bid.expectedLoadMT)} />
+        <ProfitRow label="Market Vehicle Quote" value={bid.marketVehicleQuote > 0 ? formatINR(bid.marketVehicleQuote) : "—"} />
+        <ProfitRow label="Market Cost / Vehicle" value={bid.marketVehicleQuote > 0 ? formatINR(bid.marketVehicleQuote) : "—"} />
+        <ProfitRow
+          label="Expected Load / Vehicle"
+          value={bid.expectedLoadMT > 0 ? formatMT(bid.expectedLoadMT) : "—"}
+        />
         <ProfitRow label="Market Cost / MT" value={`${formatINR(calc.marketCostPerMT)} / MT`} />
-        <ProfitRow label="Our Bid Rate" value={`${formatINR(bid.bidRate)} ${bid.bidRateBasis === "Per MT" ? "/ MT" : "/ vehicle"}`} />
+        <ProfitRow
+          label="Our Bid Rate"
+          value={
+            bid.bidRate > 0 && bid.bidRateBasis
+              ? `${formatINR(bid.bidRate)} ${bid.bidRateBasis === "Per MT" ? "/ MT" : "/ vehicle"}`
+              : "—"
+          }
+        />
         <ProfitRow label="Equivalent Bid Rate / MT" value={`${formatINR(calc.equivalentRatePerMT)} / MT`} />
         <ProfitRow label="Revenue / Vehicle" value={formatINR(calc.revenuePerVehicle)} />
         <ProfitRow label="Expected Profit / Vehicle" value={formatINR(calc.grossProfitPerVehicle)} isLoss={isLoss} />

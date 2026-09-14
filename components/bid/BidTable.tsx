@@ -9,7 +9,6 @@ import { formatReminderTime, type BidReminder } from "@/components/services/bidR
 import {
   calculateBidProfitability,
   formatINR,
-  formatMT,
   formatPercent,
 } from "@/lib/calculations/bidCalculations";
 
@@ -40,8 +39,6 @@ export default function BidTable({ bids, loading = false, pageSize, onView, onEd
       render: (row) => row.bidReference || "—",
     },
     { key: "billingPartyName", header: "Billing Party", sortable: true },
-    { key: "consignorName", header: "Consignor", sortable: true, render: (row) => row.consignorName || "—" },
-    { key: "consigneeName", header: "Consignee", sortable: true, render: (row) => row.consigneeName || "—" },
     { key: "status", header: "Status", type: "status", sortable: true },
     {
       key: "route",
@@ -49,32 +46,16 @@ export default function BidTable({ bids, loading = false, pageSize, onView, onEd
       render: (row) => `${row.pickupLocation} → ${row.dropoffLocation}`,
       sortAccessor: (row) => `${row.pickupLocation} ${row.dropoffLocation}`,
     },
-    {
-      key: "distanceKm",
-      header: "KM",
-      align: "right",
-      render: (row) => row.distanceKm.toLocaleString("en-IN"),
-    },
     { key: "materialName", header: "Material", sortable: true, render: (row) => row.materialName || "—" },
     { key: "vehicleType", header: "Vehicle", sortable: true },
-    {
-      key: "totalQuantityMT",
-      header: "Qty (MT)",
-      align: "right",
-      render: (row) => formatMT(row.totalQuantityMT, 1),
-    },
-    {
-      key: "marketVehicleQuote",
-      header: "Market ₹/Veh",
-      align: "right",
-      render: (row) => formatINR(row.marketVehicleQuote),
-    },
     {
       key: "bidRate",
       header: "Our Rate",
       align: "right",
       render: (row) =>
-        `${formatINR(row.bidRate)}${row.bidRateBasis === "Per MT" ? " /MT" : " /Veh"}`,
+        row.bidRate > 0 && row.bidRateBasis
+          ? `${formatINR(row.bidRate)}${row.bidRateBasis === "Per MT" ? " /MT" : " /Veh"}`
+          : "—",
     },
     {
       key: "profitPerMT",
