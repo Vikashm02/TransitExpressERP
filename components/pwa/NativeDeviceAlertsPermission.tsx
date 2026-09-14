@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import type { PluginListenerHandle } from "@capacitor/core";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { toast } from "sonner";
@@ -36,6 +36,9 @@ async function scheduleForegroundNotification(notification: {
 }) {
   if (typeof window === "undefined") return;
   if (!isNativeAndroid()) return;
+  // Older installed APKs may load this web code before the
+  // LocalNotifications native plugin exists; skip silently.
+  if (!Capacitor.isPluginAvailable("LocalNotifications")) return;
 
   const permission = await LocalNotifications.checkPermissions();
   if (permission.display !== "granted") {
@@ -111,7 +114,7 @@ export default function NativeDeviceAlertsPermission() {
           return;
         }
 
-        const nextHandles = await Promise.all([
+        const listenerPromises: Promise<PluginListenerHandle>[] = [
           PushNotifications.addListener("registration", (token) => {
             // Do not log the token: it is a device credential.
             console.info("[Native Push] device-token RPC attempted");
@@ -138,11 +141,18 @@ export default function NativeDeviceAlertsPermission() {
             const href = getSafeNativeNotificationHref(action.notification.data);
             if (href) router.push(href);
           }),
-          LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
-            const href = getSafeNativeNotificationHref(action.notification.extra);
-            if (href) router.push(href);
-          }),
-        ]);
+        ];
+        // Older installed APKs may not include the LocalNotifications native
+        // plugin yet; never let its absence break push registration.
+        if (Capacitor.isPluginAvailable("LocalNotifications")) {
+          listenerPromises.push(
+            LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+              const href = getSafeNativeNotificationHref(action.notification.extra);
+              if (href) router.push(href);
+            }),
+          );
+        }
+        const nextHandles = await Promise.all(listenerPromises);
 
         if (cancelled) {
           await Promise.all(nextHandles.map((handle) => handle.remove()));
