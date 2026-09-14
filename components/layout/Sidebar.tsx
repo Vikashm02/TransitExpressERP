@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   ScrollText,
   ClipboardList,
+  Gavel,
   MessageSquareText,
   ReceiptIndianRupee,
   FileMinus2,
@@ -83,6 +84,7 @@ const menuSections: MenuSection[] = [
         permissionKey: "delivery_challans",
       },
       { labelKey: "nav.asn", href: "/asn", icon: ClipboardList, permissionKey: "asn_creations" },
+      { labelKey: "nav.bids", href: "/bids", icon: Gavel, permissionKey: "bids" },
       {
         labelKey: "nav.consigneeIntelligence",
         href: "/consignee-intelligence",

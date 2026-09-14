@@ -88,6 +88,7 @@ export type PermissionKey =
   | "ledger"
   | "reports"
   | "notifications"
+  | "bids"
   | "consignee_intelligence"
   | "supplier_intelligence";
 
@@ -110,6 +111,7 @@ export const MODULE_SUPPORTED_ACTIONS: Record<PermissionKey, PermissionAction[]>
   ledger: ["view", "print", "share"],
   reports: ["view", "print", "share"],
   notifications: ["view"],
+  bids: ["view", "create", "edit"],
   consignee_intelligence: ["view", "create"],
   supplier_intelligence: ["view", "create", "edit"],
 };
@@ -140,6 +142,12 @@ export const PERMISSION_MODULES: {
     key: "notifications",
     label: "Notifications",
     description: "Receive and view operational ERP notifications.",
+  },
+  {
+    key: "bids",
+    label: "Bid Management",
+    routePrefix: "/bids",
+    description: "Track transport bids, expected profitability, and results.",
   },
   {
     key: "consignee_intelligence",

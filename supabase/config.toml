@@ -23,3 +23,9 @@ verify_jwt = false
 # requires a project Secret API key; it is not a browser endpoint.
 [functions.process-trusted-lr-notifications]
 verify_jwt = false
+
+# Bid reminder dispatcher (Phase 1, NOT YET DEPLOYED — review only).
+# Cron uses a Secret API Key on apikey; authorization is enforced
+# inside the handler. Scheduler activation stays manual.
+[functions.process-bid-reminders]
+verify_jwt = false

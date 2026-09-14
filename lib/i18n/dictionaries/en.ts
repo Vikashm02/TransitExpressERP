@@ -43,6 +43,7 @@ const en: TranslationDict = {
   "nav.pod": "POD Entry",
   "nav.deliveryChallans": "Delivery Challan",
   "nav.asn": "ASN Creation",
+  "nav.bids": "Bid Management",
   "nav.consigneeIntelligence": "Consignee Intelligence",
   "nav.lorryExpenses": "Financials",
   "nav.billing": "Billing",

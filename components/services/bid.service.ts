@@ -1,0 +1,129 @@
+import { supabase } from "@/lib/supabase";
+import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
+import type { Bid } from "@/components/bid/bid.schema";
+
+/** A persisted transport bid row, as returned by Supabase (adds server-owned columns). */
+export interface BidRecord extends Bid {
+  id: string;
+  billingPartyName: string;
+  consignorName: string;
+  consigneeName: string;
+  materialName: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+const TABLE = "transport_bids";
+
+/** Numeric columns arrive as number|string depending on the driver; coerce safely. */
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const NUMERIC_KEYS = [
+  "distanceKm",
+  "totalQuantityMT",
+  "expectedLoadMT",
+  "marketVehicleQuote",
+  "bidRate",
+] as const;
+
+/** Supabase returns raw snake_case columns; `id`/timestamps pass through unchanged. */
+function fromRow(row: Record<string, unknown>): BidRecord {
+  const { id, created_at, updated_at, ...rest } = row;
+  const mapped = objectToCamelCase<Bid>(rest);
+  const record = mapped as Record<string, unknown>;
+
+  for (const key of NUMERIC_KEYS) {
+    record[key] = toNumber(record[key]);
+  }
+  if (record.winningRate !== null && record.winningRate !== undefined) {
+    record.winningRate = toNumber(record.winningRate);
+  }
+  for (const key of ["bidReference", "transitTime", "resultRemarks", "notes"] as const) {
+    if (record[key] === null || record[key] === undefined) record[key] = "";
+  }
+  if (record.lossReason === null) record.lossReason = null;
+
+  const source = row as Record<string, unknown>;
+  return {
+    ...(record as Bid),
+    id: String(id),
+    billingPartyName: String(source.billing_party_name ?? ""),
+    consignorName: String(source.consignor_name ?? ""),
+    consigneeName: String(source.consignee_name ?? ""),
+    materialName: String(source.material_name ?? ""),
+    created_at: created_at as string | undefined,
+    updated_at: updated_at as string | undefined,
+  };
+}
+
+/* ==========================================================
+   GET ALL BIDS
+========================================================== */
+
+export async function getBids(): Promise<BidRecord[]> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => fromRow(row as Record<string, unknown>));
+}
+
+/* ==========================================================
+   GET ONE BID
+========================================================== */
+
+export async function getBid(id: string): Promise<BidRecord> {
+  const { data, error } = await supabase.from(TABLE).select("*").eq("id", id).single();
+
+  if (error) throw error;
+
+  return fromRow(data as Record<string, unknown>);
+}
+
+/* ==========================================================
+   CREATE BID
+========================================================== */
+
+export async function createBid(values: Bid): Promise<BidRecord> {
+  // Snapshot names travel with the payload for immediate UI use; the
+  // database trigger re-freezes them from the master rows at write time.
+  const { data, error } = await supabase
+    .from(TABLE)
+    .insert(objectToSnakeCase({ ...values }))
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return fromRow(data as Record<string, unknown>);
+}
+
+/* ==========================================================
+   UPDATE BID
+========================================================== */
+
+export async function updateBid(id: string, values: Bid): Promise<BidRecord> {
+  // `id`/timestamps/snapshots are server-owned — none may ever reach the
+  // update payload. Snapshot names are re-frozen by the trigger.
+  const { ...updatable } = omitServerFields(values as unknown as Record<string, unknown>);
+  for (const key of ["billingPartyName", "consignorName", "consigneeName", "materialName"] as const) {
+    delete (updatable as Record<string, unknown>)[key];
+  }
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .update(objectToSnakeCase(updatable))
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return fromRow(data as Record<string, unknown>);
+}

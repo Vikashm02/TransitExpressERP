@@ -43,6 +43,7 @@ const hi: TranslationDict = {
   "nav.pod": "पीओडी एंट्री",
   "nav.deliveryChallans": "डिलीवरी चालान",
   "nav.asn": "एएसएन निर्माण",
+  "nav.bids": "बिड प्रबंधन",
   "nav.consigneeIntelligence": "कंसाइनरी इंटेलिजेंस",
   "nav.lorryExpenses": "वित्तीय",
   "nav.billing": "बिलिंग",
