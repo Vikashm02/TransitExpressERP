@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ClipboardList,
@@ -75,7 +75,13 @@ const DRAFT_STATUS_FILTER = "__draft__";
 
 type LrDialogMode = "create" | "view" | "edit";
 
-export default function LRListPage() {
+function LRListPageContent() {
+  // Subscribing to search params makes notification deep links
+  // (router.push to the same /lr pathname with a new ?view=&focus=)
+  // rerun the notification-target effect below.
+  const searchParams = useSearchParams();
+  const notificationViewId = searchParams.get("view");
+  const notificationFocusParam = searchParams.get("focus");
   const router = useRouter();
   const { isAdmin, isCreator, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lr", "create_view");
@@ -90,7 +96,10 @@ export default function LRListPage() {
   const [lrs, setLRs] = useState<LRRecord[]>([]);
   const [staff, setStaff] = useState<AppUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const notificationTargetHandledRef = useRef(false);
+  // Notification deep-link target currently being (or just) processed, as
+  // "viewId|focus". Released back to null once the query is consumed so a
+  // future notification with the exact same LR + focus works again.
+  const lastHandledNotificationTargetRef = useRef<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -187,19 +196,32 @@ export default function LRListPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("view");
-    const focus = params.get("focus");
-    if (loading || notificationTargetHandledRef.current) return;
-    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return;
+    if (loading) return;
+    const id = notificationViewId;
+    const focus = notificationFocusParam;
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      // No pending notification target (query absent or already consumed):
+      // release the marker so a future notification with the exact same
+      // LR + focus is processed again instead of being ignored.
+      if (!id && !focus) lastHandledNotificationTargetRef.current = null;
+      return;
+    }
     if (!focus || !["lr", "party", "vehicle", "material", "dispatch", "remarks"].includes(focus)) return;
+    const targetKey = `${id}|${focus}`;
+    if (lastHandledNotificationTargetRef.current === targetKey) return;
     const target = lrs.find((row) => String(row.id) === id);
-    notificationTargetHandledRef.current = true;
-    window.history.replaceState(null, "", "/lr");
     if (!target) {
+      lastHandledNotificationTargetRef.current = targetKey;
+      window.history.replaceState(null, "", "/lr");
       router.replace("/");
       return;
     }
+    lastHandledNotificationTargetRef.current = targetKey;
+    // Consume the query through Next.js routing (raw replaceState would not
+    // update useSearchParams): this reruns the effect with no view, which
+    // releases the marker above. The dialog state is untouched, so the
+    // View dialog stays open.
+    router.replace("/lr", { scroll: false });
     const openTimer = window.setTimeout(() => {
       beginExistingLrSession();
       setDialogMode("view");
@@ -208,7 +230,7 @@ export default function LRListPage() {
       setDialogOpen(true);
     }, 0);
     return () => window.clearTimeout(openTimer);
-  }, [loading, lrs, router]);
+  }, [loading, lrs, router, notificationViewId, notificationFocusParam]);
 
   useEffect(() => {
     getStaffUsers()
@@ -1113,5 +1135,20 @@ export default function LRListPage() {
         />
       </FormDialog>
     </div>
+  );
+}
+
+/**
+ * useSearchParams() requires a Suspense boundary, otherwise the production
+ * build fails. The boundary is kept inside this file so the /lr route file
+ * stays unchanged.
+ */
+export default function LRListPage() {
+  return (
+    <Suspense
+      fallback={<div className="p-8 text-center text-sm text-muted-foreground">Loading LRs…</div>}
+    >
+      <LRListPageContent />
+    </Suspense>
   );
 }
