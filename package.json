@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@capacitor/android": "8.5.1",
     "@capacitor/core": "^8.5.1",
+    "@capacitor/local-notifications": "8.3.1",
     "@capacitor/push-notifications": "8.1.2",
     "@pdf-lib/fontkit": "^1.1.1",
     "@supabase/supabase-js": "^2.112.1",
@@ -36,6 +38,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

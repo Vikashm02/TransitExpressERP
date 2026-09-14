@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { toast } from "sonner";
 
 import {
@@ -17,6 +18,59 @@ import {
 } from "@/components/services/nativePush.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
+function getNotificationId(eventId: string | undefined): number {
+  if (typeof eventId === "string" && /^[0-9]+$/.test(eventId)) {
+    const parsed = Number(eventId);
+    if (Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 2147483647) {
+      return parsed;
+    }
+  }
+  const fallback = Date.now() % 2147483647;
+  return fallback === 0 ? 1 : fallback;
+}
+
+async function scheduleForegroundNotification(notification: {
+  title?: string;
+  body?: string;
+  data?: Record<string, unknown>;
+}) {
+  if (typeof window === "undefined") return;
+  if (!isNativeAndroid()) return;
+
+  const permission = await LocalNotifications.checkPermissions();
+  if (permission.display !== "granted") {
+    return;
+  }
+
+  const href = getSafeNativeNotificationHref(notification.data ?? {});
+  if (!href) {
+    return;
+  }
+
+  const eventId = notification.data?.eventId as string | undefined;
+  const notificationId = getNotificationId(eventId);
+
+  const notificationPayload = {
+    id: notificationId,
+    title: notification.title ?? "Transit Express ERP",
+    body: notification.body ?? "",
+    extra: {
+      href,
+      eventId: eventId ?? "",
+    },
+    channelId: "transjit_erp_alerts_v1",
+    smallIcon: "ic_stat_transjit_notification",
+  };
+
+  try {
+    await LocalNotifications.schedule({
+      notifications: [notificationPayload],
+    });
+  } catch (error) {
+    console.error("Failed to schedule foreground notification.", error);
+  }
+}
+
 /**
  * Requests Android's notification permission only after an authenticated ERP
  * session is available. It has no browser behavior and never registers FCM.
@@ -28,10 +82,6 @@ export default function NativeDeviceAlertsPermission() {
 
   useEffect(() => {
     const userId = session?.user.id;
-    console.info("[NativePushDiag] effect start", {
-      hasUserId: Boolean(userId),
-      isNativeAndroid: isNativeAndroid(),
-    });
     if (!userId || !isNativeAndroid() || configuredUserId.current === userId) return;
 
     configuredUserId.current = userId;
@@ -41,7 +91,6 @@ export default function NativeDeviceAlertsPermission() {
     async function configureNativeRegistration() {
       try {
         const permission = await ensureNativeDeviceAlertsPermission();
-        console.info("[NativePushDiag] permission result", { permission });
         if (cancelled) return;
 
         if (permission !== "granted") {
@@ -62,7 +111,6 @@ export default function NativeDeviceAlertsPermission() {
           return;
         }
 
-        console.info("[NativePushDiag] registering native listeners");
         const nextHandles = await Promise.all([
           PushNotifications.addListener("registration", (token) => {
             // Do not log the token: it is a device credential.
@@ -83,19 +131,16 @@ export default function NativeDeviceAlertsPermission() {
           PushNotifications.addListener("registrationError", () => {
             console.error("Native push registration failed");
           }),
-          PushNotifications.addListener("pushNotificationReceived", () => {
-            // Phase 1 deliberately adds no foreground-notification UI.
+          PushNotifications.addListener("pushNotificationReceived", (notification) => {
+            void scheduleForegroundNotification(notification);
           }),
           PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-            console.info("[NativePushDiag] tap received", {
-              data: action.notification.data ?? null,
-            });
             const href = getSafeNativeNotificationHref(action.notification.data);
-            console.info("[NativePushDiag] tap resolved href", { href });
-            if (href) {
-              console.info("[NativePushDiag] router.push href");
-              router.push(href);
-            }
+            if (href) router.push(href);
+          }),
+          LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+            const href = getSafeNativeNotificationHref(action.notification.extra);
+            if (href) router.push(href);
           }),
         ]);
 
