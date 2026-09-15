@@ -20,7 +20,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { importPKCS8, SignJWT } from "npm:jose@5.10.0";
 import webpush from "npm:web-push@3.6.7";
 
-const APP_ID = "in.transjitexpresserp.app";
+const APP_ID = "in.transjitexpresserp.mobile";
 const PLATFORM = "android";
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
