@@ -30,6 +30,7 @@ import { FREIGHT_TYPE_OPTIONS, LR_STATUS_OPTIONS, type LR } from "./lr.schema";
 import { downloadLRUploadTemplate } from "./lrBulkUpload";
 import PodDialog from "@/components/pod/PodDialog";
 import type { Pod } from "@/components/pod/pod.schema";
+import { computePodNotificationChanges } from "@/components/pod/podNotificationChanges";
 
 import {
   createLR,
@@ -489,7 +490,8 @@ function LRListPageContent() {
       setPodSaving(true);
 
       if (podDialogRecord) {
-        await updatePod(podDialogRecord.id, values);
+        const changedFields = computePodNotificationChanges(podDialogRecord, values);
+        await updatePod(podDialogRecord.id, values, changedFields);
         toast.success("POD updated successfully.");
       } else {
         await createPod(values);

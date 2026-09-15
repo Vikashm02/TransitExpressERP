@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { FileDown, Upload } from "lucide-react";
 
@@ -13,6 +14,7 @@ import PodDialog from "./PodDialog";
 import PodBulkUploadDialog from "./PodBulkUploadDialog";
 import PodTable, { type PodListRow } from "./PodTable";
 import type { Pod } from "./pod.schema";
+import { computePodNotificationChanges } from "./podNotificationChanges";
 import { downloadPodUploadTemplate } from "./podBulkUpload";
 
 import {
@@ -33,6 +35,8 @@ export default function PodListPage() {
   const canCreate = hasPermission("pod", "create_view");
   const canEdit = hasPermission("pod", "edit");
   const canDelete = isAdmin;
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [pods, setPods] = useState<PodRecord[]>([]);
   const [lrs, setLrs] = useState<LRRecord[]>([]);
@@ -51,9 +55,35 @@ export default function PodListPage() {
   const [deleteTarget, setDeleteTarget] = useState<PodRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Deep-link handling for notification taps: /pod?view=<id>&focus=<focusKey>
+  const deepLinkId = searchParams.get("view");
+  const deepLinkFocus = searchParams.get("focus");
+  const handledDeepLinkRef = useRef<string | null>(null);
+  const pendingFocusKeyRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     loadData();
   }, []);
+
+  // Handle a notification navigation once, then release the marker once
+  // router.replace consumes its query so the same record can open again later.
+  useEffect(() => {
+    if (loading) return;
+    if (!deepLinkId) {
+      handledDeepLinkRef.current = null;
+      return;
+    }
+
+    const signature = `${deepLinkId}|${deepLinkFocus ?? ""}`;
+    if (handledDeepLinkRef.current === signature) return;
+
+    const target = pods.find((p) => String(p.id) === deepLinkId);
+    if (!target) return;
+
+    handledDeepLinkRef.current = signature;
+    router.replace("/pod", { scroll: false });
+    handleView(target, deepLinkFocus ?? undefined);
+  }, [loading, pods, deepLinkId, deepLinkFocus, router]);
 
   async function loadData() {
     try {
@@ -121,10 +151,13 @@ export default function PodListPage() {
     setDialogOpen(true);
   }
 
-  function handleView(pod: PodRecord) {
+  function handleView(pod: PodRecord, focusKey?: string) {
     setEditingPod(pod);
     setViewOnly(true);
     setDialogOpen(true);
+    if (focusKey) {
+      pendingFocusKeyRef.current = focusKey;
+    }
   }
 
   function handleDialogOpenChange(open: boolean) {
@@ -132,6 +165,7 @@ export default function PodListPage() {
     if (!open) {
       setEditingPod(null);
       setViewOnly(false);
+      pendingFocusKeyRef.current = undefined;
     }
   }
 
@@ -151,8 +185,13 @@ export default function PodListPage() {
       setSaving(true);
 
       if (editingPod) {
-        await updatePod(editingPod.id, values);
-        toast.success("POD updated successfully.");
+        const changedFields = computePodNotificationChanges(editingPod, values);
+        await updatePod(editingPod.id, values, changedFields);
+        if (changedFields.length > 0) {
+          toast.success("POD updated successfully.");
+        } else {
+          toast.success("POD saved (no changes detected).");
+        }
       } else {
         await createPod(values);
         toast.success("POD created successfully.");
@@ -162,6 +201,7 @@ export default function PodListPage() {
 
       setDialogOpen(false);
       setEditingPod(null);
+      pendingFocusKeyRef.current = undefined;
       await loadData();
     } catch (error) {
       console.error(error);
@@ -287,6 +327,7 @@ export default function PodListPage() {
         loading={saving}
         readOnly={viewOnly}
         onSubmit={handleSubmit}
+        focusKey={pendingFocusKeyRef.current}
       />
 
       <PodBulkUploadDialog

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import FormDialog from "@/components/ui/FormDialog";
@@ -27,6 +27,7 @@ interface PodDialogProps {
   /** Renders every field disabled and hides Save — used by the "View" action. */
   readOnly?: boolean;
   onSubmit: (values: Pod) => void | Promise<void>;
+  focusKey?: string;
 }
 
 const emptyPod: Pod = {
@@ -56,6 +57,7 @@ export default function PodDialog({
   loading = false,
   readOnly = false,
   onSubmit,
+  focusKey,
 }: PodDialogProps) {
   const [values, setValues] = useState<Pod>(emptyPod);
   const [errors, setErrors] = useState<FieldErrors<Pod>>({});
@@ -64,8 +66,84 @@ export default function PodDialog({
   const [uploadingProof, setUploadingProof] = useState(false);
 
   const isEditing = Boolean(pod);
+  const focusRecordId = pod?.id ?? "new";
   const preselectedLr = (initialLrNumber ?? "").trim();
   const lockLrNumber = isEditing || Boolean(preselectedLr);
+
+  // Focus/highlight handling for notification deep links.
+  const focusTimeoutRef = useRef<number | null>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+  const highlightedElementRef = useRef<{
+    element: HTMLElement;
+    transition: string;
+    boxShadow: string;
+    borderColor: string;
+  } | null>(null);
+  const handledFocusRef = useRef<string | null>(null);
+
+  const clearFocusHighlight = useCallback(() => {
+    if (focusTimeoutRef.current !== null) {
+      clearTimeout(focusTimeoutRef.current);
+      focusTimeoutRef.current = null;
+    }
+    if (highlightTimeoutRef.current !== null) {
+      clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
+    const highlighted = highlightedElementRef.current;
+    if (highlighted) {
+      highlighted.element.style.transition = highlighted.transition;
+      highlighted.element.style.boxShadow = highlighted.boxShadow;
+      highlighted.element.style.borderColor = highlighted.borderColor;
+      highlightedElementRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      clearFocusHighlight();
+      handledFocusRef.current = null;
+      return;
+    }
+    if (!focusKey || !readOnly) return;
+
+    const focusMap: Record<string, string> = {
+      "pod-date": "pod-date",
+      "unloading-weight": "pod-unloading-weight",
+      "unloading-date": "pod-unloading-date",
+      "proof-upload": "pod-proof-section",
+    };
+    const elementId = focusMap[focusKey];
+    if (!elementId) return;
+
+    const signature = `${focusRecordId}|${focusKey}`;
+    if (handledFocusRef.current === signature) return;
+    handledFocusRef.current = signature;
+    clearFocusHighlight();
+
+    focusTimeoutRef.current = window.setTimeout(() => {
+      focusTimeoutRef.current = null;
+      const element = document.getElementById(elementId);
+      if (!element) return;
+
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      highlightedElementRef.current = {
+        element,
+        transition: element.style.transition,
+        boxShadow: element.style.boxShadow,
+        borderColor: element.style.borderColor,
+      };
+      element.style.transition = "box-shadow 0.3s ease, border-color 0.3s ease";
+      element.style.boxShadow = "0 0 0 3px rgb(59 130 246 / 0.5)";
+      element.style.borderColor = "rgb(59 130 246)";
+      highlightTimeoutRef.current = window.setTimeout(() => {
+        highlightTimeoutRef.current = null;
+        clearFocusHighlight();
+      }, 3000);
+    }, 100);
+
+    return clearFocusHighlight;
+  }, [open, focusKey, readOnly, focusRecordId, clearFocusHighlight]);
 
   useEffect(() => {
     if (open) {
@@ -172,7 +250,7 @@ export default function PodDialog({
               Cancel
             </Button>
 
-            <Button onClick={handleSave} disabled={loading}>
+            <Button onClick={handleSave} disabled={loading || uploadingProof}>
               {loading ? "Saving..." : "Save POD"}
             </Button>
           </>

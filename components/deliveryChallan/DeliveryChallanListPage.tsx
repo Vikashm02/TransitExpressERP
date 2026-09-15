@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -17,10 +18,64 @@ import {
   getDeliveryChallans,
   updateDeliveryChallan,
   type DeliveryChallanRecord,
+  type DCChangedField,
 } from "@/components/services/deliveryChallan.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
 const PAGE_SIZE = 10;
+
+// Editable DC fields in form order for diff computation
+const DC_EDITABLE_FIELDS: Array<{ key: keyof DeliveryChallan; label: string; focusKey: string }> = [
+  { key: "byName", label: "By", focusKey: "by-name" },
+  { key: "poNumber", label: "PO Number", focusKey: "po-number" },
+  { key: "poDate", label: "PO Date", focusKey: "po-date" },
+  { key: "hsn", label: "HSN", focusKey: "hsn" },
+];
+
+function normalizeString(value: unknown): string {
+  if (value == null) return "";
+  return String(value).trim();
+}
+
+function normalizeDate(value: unknown): string {
+  if (value == null) return "";
+  const str = String(value).trim();
+  return str;
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function valuesEqual(a: unknown, b: unknown, type: "string" | "date" | "number"): boolean {
+  switch (type) {
+    case "string":
+      return normalizeString(a) === normalizeString(b);
+    case "date":
+      return normalizeDate(a) === normalizeDate(b);
+    case "number":
+      return normalizeNumber(a) === normalizeNumber(b);
+  }
+}
+
+function computeDCChangedFields(
+  original: DeliveryChallanRecord,
+  submitted: DeliveryChallan
+): DCChangedField[] {
+  const changed: DCChangedField[] = [];
+  for (const field of DC_EDITABLE_FIELDS) {
+    const originalValue = original[field.key];
+    const submittedValue = submitted[field.key];
+    let type: "string" | "date" | "number" = "string";
+    if (field.key === "poDate") type = "date";
+    if (!valuesEqual(originalValue, submittedValue, type)) {
+      changed.push({ key: field.key, label: field.label, focusKey: field.focusKey });
+    }
+  }
+  return changed;
+}
 
 export default function DeliveryChallanListPage() {
   const { hasPermission, hasAction } = useAuth();
@@ -29,6 +84,8 @@ export default function DeliveryChallanListPage() {
     hasPermission("delivery_challans", "edit") || hasAction("delivery_challans", "edit");
   const canPrint = hasAction("delivery_challans", "print");
   const canShare = hasAction("delivery_challans", "share");
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [challans, setChallans] = useState<DeliveryChallanRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,9 +100,34 @@ export default function DeliveryChallanListPage() {
   const [shareTarget, setShareTarget] = useState<DeliveryChallanRecord | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
 
+  // Deep-link handling for notification taps: /delivery-challans?view=<id>&focus=<focusKey>
+  const deepLinkId = searchParams.get("view");
+  const deepLinkFocus = searchParams.get("focus");
+  const handledDeepLinkRef = useRef<string | null>(null);
+
   useEffect(() => {
     loadData();
   }, []);
+
+  // Handle a notification navigation once, then release the marker once
+  // router.replace consumes its query so the same record can open again later.
+  useEffect(() => {
+    if (loading) return;
+    if (!deepLinkId) {
+      handledDeepLinkRef.current = null;
+      return;
+    }
+
+    const signature = `${deepLinkId}|${deepLinkFocus ?? ""}`;
+    if (handledDeepLinkRef.current === signature) return;
+
+    const target = challans.find((c) => String(c.id) === deepLinkId);
+    if (!target) return;
+
+    handledDeepLinkRef.current = signature;
+    router.replace("/delivery-challans", { scroll: false });
+    handleView(target, deepLinkFocus ?? undefined);
+  }, [loading, challans, deepLinkId, deepLinkFocus, router]);
 
   async function loadData() {
     try {
@@ -91,10 +173,15 @@ export default function DeliveryChallanListPage() {
     setDialogOpen(true);
   }
 
-  function handleView(challan: DeliveryChallanRecord) {
+  function handleView(challan: DeliveryChallanRecord, focusKey?: string) {
     setEditing(challan);
     setDialogMode("view");
+    // Pass focusKey via a ref or state to the dialog
     setDialogOpen(true);
+    // Store focusKey for dialog to use
+    if (focusKey) {
+      pendingFocusKeyRef.current = focusKey;
+    }
   }
 
   function handlePrint(challan: DeliveryChallanRecord) {
@@ -106,11 +193,14 @@ export default function DeliveryChallanListPage() {
     setShareOpen(true);
   }
 
+  const pendingFocusKeyRef = useRef<string | undefined>(undefined);
+
   function handleDialogOpenChange(open: boolean) {
     setDialogOpen(open);
     if (!open) {
       setEditing(null);
       setDialogMode("create");
+      pendingFocusKeyRef.current = undefined;
     }
   }
 
@@ -119,8 +209,13 @@ export default function DeliveryChallanListPage() {
       setSaving(true);
 
       if (editing) {
-        await updateDeliveryChallan(editing.id, values);
-        toast.success("Delivery Challan updated successfully.");
+        const changedFields = computeDCChangedFields(editing, values);
+        await updateDeliveryChallan(editing.id, values, changedFields);
+        if (changedFields.length > 0) {
+          toast.success("Delivery Challan updated successfully.");
+        } else {
+          toast.success("Delivery Challan saved (no changes detected).");
+        }
       } else {
         await createDeliveryChallan(values);
         toast.success("Delivery Challan created successfully.");
@@ -128,6 +223,7 @@ export default function DeliveryChallanListPage() {
 
       setDialogOpen(false);
       setEditing(null);
+      pendingFocusKeyRef.current = undefined;
       await loadData();
     } catch (error) {
       console.error(error);
@@ -220,6 +316,7 @@ export default function DeliveryChallanListPage() {
         challan={editing}
         loading={saving}
         onSubmit={handleSubmit}
+        focusKey={pendingFocusKeyRef.current}
       />
 
       <ShareDeliveryChallanDialog

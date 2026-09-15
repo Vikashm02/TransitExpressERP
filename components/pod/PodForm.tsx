@@ -205,6 +205,7 @@ export default function PodForm({
           className="sm:col-span-2"
         >
           <div
+            id="pod-proof-section"
             ref={dropZoneRef}
             tabIndex={readOnly ? -1 : 0}
             role="button"

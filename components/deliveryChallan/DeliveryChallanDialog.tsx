@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import FormDialog from "@/components/ui/FormDialog";
 import FormField from "@/components/ui/FormField";
@@ -25,6 +25,7 @@ interface DeliveryChallanDialogProps {
   challan?: DeliveryChallanRecord | null;
   loading?: boolean;
   onSubmit: (values: DeliveryChallan) => void | Promise<void>;
+  focusKey?: string;
 }
 
 const emptyState: DeliveryChallan = {
@@ -77,6 +78,7 @@ export default function DeliveryChallanDialog({
   challan,
   loading = false,
   onSubmit,
+  focusKey,
 }: DeliveryChallanDialogProps) {
   const [values, setValues] = useState<DeliveryChallan>(emptyState);
   const [errors, setErrors] = useState<FieldErrors<DeliveryChallan>>({});
@@ -84,7 +86,83 @@ export default function DeliveryChallanDialog({
   const [lrFetched, setLrFetched] = useState(false);
 
   const readOnly = mode === "view";
+  const focusRecordId = challan?.id ?? "new";
   const lrLocked = mode !== "create" || lrFetched;
+
+  // Focus/highlight handling for notification deep links.
+  const focusTimeoutRef = useRef<number | null>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+  const highlightedElementRef = useRef<{
+    element: HTMLElement;
+    transition: string;
+    boxShadow: string;
+    borderColor: string;
+  } | null>(null);
+  const handledFocusRef = useRef<string | null>(null);
+
+  const clearFocusHighlight = useCallback(() => {
+    if (focusTimeoutRef.current !== null) {
+      clearTimeout(focusTimeoutRef.current);
+      focusTimeoutRef.current = null;
+    }
+    if (highlightTimeoutRef.current !== null) {
+      clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
+    const highlighted = highlightedElementRef.current;
+    if (highlighted) {
+      highlighted.element.style.transition = highlighted.transition;
+      highlighted.element.style.boxShadow = highlighted.boxShadow;
+      highlighted.element.style.borderColor = highlighted.borderColor;
+      highlightedElementRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      clearFocusHighlight();
+      handledFocusRef.current = null;
+      return;
+    }
+    if (!focusKey || !readOnly) return;
+
+    const focusMap: Record<string, string> = {
+      "by-name": "dc-by",
+      "po-number": "dc-po-number",
+      "po-date": "dc-po-date",
+      hsn: "dc-hsn",
+    };
+    const elementId = focusMap[focusKey];
+    if (!elementId) return;
+
+    const signature = `${focusRecordId}|${focusKey}`;
+    if (handledFocusRef.current === signature) return;
+    handledFocusRef.current = signature;
+    clearFocusHighlight();
+
+    focusTimeoutRef.current = window.setTimeout(() => {
+      focusTimeoutRef.current = null;
+      const element = document.getElementById(elementId);
+      if (!element) return;
+
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      highlightedElementRef.current = {
+        element,
+        transition: element.style.transition,
+        boxShadow: element.style.boxShadow,
+        borderColor: element.style.borderColor,
+      };
+      element.style.transition = "box-shadow 0.3s ease, border-color 0.3s ease";
+      element.style.boxShadow = "0 0 0 3px rgb(59 130 246 / 0.5)";
+      element.style.borderColor = "rgb(59 130 246)";
+      highlightTimeoutRef.current = window.setTimeout(() => {
+        highlightTimeoutRef.current = null;
+        clearFocusHighlight();
+      }, 3000);
+    }, 100);
+
+    return clearFocusHighlight;
+  }, [open, focusKey, readOnly, focusRecordId, clearFocusHighlight]);
 
   useEffect(() => {
     if (!open) return;

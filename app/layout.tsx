@@ -6,6 +6,7 @@ import { LearningModeProvider } from "@/lib/help/LearningModeProvider";
 import { LanguageProvider } from "@/lib/i18n";
 import AppThemeProvider from "@/components/theme/AppThemeProvider";
 import PwaRegister from "@/components/pwa/PwaRegister";
+import NativePushRuntime from "@/components/pwa/NativePushRuntime";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <LearningModeProvider>
               <LanguageProvider>
                 <PwaRegister />
+                <NativePushRuntime />
                 {children}
                 <Toaster />
               </LanguageProvider>

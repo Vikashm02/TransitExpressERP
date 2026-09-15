@@ -15,6 +15,12 @@ export interface PodRecord extends Pod {
   updated_at?: string;
 }
 
+export interface PodChangedField {
+  key: string;
+  label: string;
+  focusKey: string;
+}
+
 const TABLE = "pods";
 const ASSETS_BUCKET = "pod-assets";
 
@@ -139,13 +145,13 @@ export async function createPod(values: Pod): Promise<PodRecord> {
   void emitNotificationEvent({
     ruleKey: "pod.created",
     title: `POD created for ${record.lrNumber}`,
-    href: "/pod",
+    href: `/pod?view=${record.id}`,
     payload: { podId: record.id, lrNumber: record.lrNumber },
   });
   return record;
 }
 
-export async function updatePod(id: number, values: Pod): Promise<PodRecord> {
+export async function updatePod(id: number, values: Pod, changedFields: PodChangedField[]): Promise<PodRecord> {
   // `id`/`created_at` are server-owned and must never reach the update
   // payload. (The edit dialog seeds its state from the full DB record, so
   // the caller can't be trusted to have already excluded them.)
@@ -161,12 +167,19 @@ export async function updatePod(id: number, values: Pod): Promise<PodRecord> {
   if (error) throw error;
 
   const record = fromRow(data);
-  void emitNotificationEvent({
-    ruleKey: "pod.updated",
-    title: `POD updated for ${record.lrNumber}`,
-    href: "/pod",
-    payload: { podId: record.id, lrNumber: record.lrNumber },
-  });
+
+  if (changedFields.length > 0) {
+    const labels = changedFields.map((f) => f.label).join(", ");
+    const firstFocusKey = changedFields[0].focusKey;
+    void emitNotificationEvent({
+      ruleKey: "pod.updated",
+      title: `POD updated for ${record.lrNumber}`,
+      body: `Changed: ${labels}`,
+      href: `/pod?view=${record.id}&focus=${firstFocusKey}`,
+      payload: { podId: record.id, lrNumber: record.lrNumber, changedFields },
+    });
+  }
+
   return record;
 }
 

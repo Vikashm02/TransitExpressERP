@@ -91,7 +91,7 @@ export async function createDeliveryChallan(
   void emitNotificationEvent({
     ruleKey: "dc.created",
     title: `Delivery Challan created for ${record.lrNumber}`,
-    href: "/delivery-challans",
+    href: `/delivery-challans/${record.id}/print`,
     payload: { id: record.id, lrNumber: record.lrNumber },
   });
   return record;
@@ -101,9 +101,16 @@ export async function createDeliveryChallan(
    UPDATE
 ========================================================== */
 
+export interface DCChangedField {
+  key: string;
+  label: string;
+  focusKey: string;
+}
+
 export async function updateDeliveryChallan(
   id: number,
-  values: DeliveryChallan
+  values: DeliveryChallan,
+  changedFields?: DCChangedField[]
 ): Promise<DeliveryChallanRecord> {
   const sanitized = omitServerFields(values as unknown as Record<string, unknown>) as DeliveryChallan;
 
@@ -117,12 +124,19 @@ export async function updateDeliveryChallan(
   if (error) throw error;
 
   const record = fromRow(data);
-  void emitNotificationEvent({
-    ruleKey: "dc.updated",
-    title: `Delivery Challan updated for ${record.lrNumber}`,
-    href: "/delivery-challans",
-    payload: { id: record.id, lrNumber: record.lrNumber },
-  });
+
+  if (changedFields && changedFields.length > 0) {
+    const labels = changedFields.map((f) => f.label).join(", ");
+    const firstFocusKey = changedFields[0].focusKey;
+    void emitNotificationEvent({
+      ruleKey: "dc.updated",
+      title: `Delivery Challan updated for ${record.lrNumber}`,
+      body: `Changed: ${labels}`,
+      href: `/delivery-challans?view=${record.id}&focus=${firstFocusKey}`,
+      payload: { id: record.id, lrNumber: record.lrNumber, changedFields },
+    });
+  }
+
   return record;
 }
 
