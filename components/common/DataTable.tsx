@@ -49,6 +49,18 @@ export interface DataTableColumn<T> {
    * Numeric `0` and boolean `false` are never treated as empty.
    */
   emptyDisplay?: "auto" | "important" | "optional" | "none";
+  /**
+   * Mobile card placement (below `md`). Fully opt-in — columns without
+   * this property keep the existing behavior (first column = title,
+   * "status"-typed column = badge, everything else = detail row).
+   * - `"top"`: render compactly in the card top area next to the badge.
+   * - `"full"`: render as a full-width detail row spanning both grid columns.
+   * - `"summary"`: render as a full-width label-left/value-right summary
+   *   row (right-aligned tabular numerals) in a divided section below
+   *   the detail grid. Ideal for financial metrics.
+   * - `"actions"`: render in the bottom action strip instead of a detail row.
+   */
+  mobile?: "top" | "full" | "summary" | "actions";
 }
 
 export interface DataTableAction<T> {
@@ -351,7 +363,25 @@ export default function DataTable<T extends Record<string, any>>({
   // other column renders as a label/value row.
   const titleColumn = columns[0];
   const statusColumn = columns.find((c) => c.type === "status" && c !== titleColumn);
-  const detailColumns = columns.filter((c) => c !== titleColumn && c !== statusColumn);
+  const topColumns = columns.filter(
+    (c) => c.mobile === "top" && c !== titleColumn && c !== statusColumn
+  );
+  const fullColumns = columns.filter(
+    (c) => c.mobile === "full" && c !== titleColumn && c !== statusColumn
+  );
+  const summaryColumns = columns.filter(
+    (c) => c.mobile === "summary" && c !== titleColumn && c !== statusColumn
+  );
+  const actionColumns = columns.filter((c) => c.mobile === "actions");
+  const detailColumns = columns.filter(
+    (c) =>
+      c !== titleColumn &&
+      c !== statusColumn &&
+      c.mobile !== "top" &&
+      c.mobile !== "full" &&
+      c.mobile !== "summary" &&
+      c.mobile !== "actions"
+  );
 
   function renderCellValue(column: DataTableColumn<T>, row: T, index: number) {
     if (column.render) return column.render(row, index);
@@ -541,7 +571,9 @@ export default function DataTable<T extends Record<string, any>>({
                         column.className
                       )}
                     >
-                      {renderCellValue(column, row, index)}
+                      {renderCellValue(column, row, index) ?? (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -636,34 +668,86 @@ export default function DataTable<T extends Record<string, any>>({
                   {renderCellValue(titleColumn, row, index)}
                 </p>
 
-                {statusColumn && (
-                  <div className="shrink-0">
-                    {renderCellValue(statusColumn, row, index)}
-                  </div>
-                )}
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {topColumns.map((column) => (
+                    <span key={column.key} className="inline-flex">
+                      {renderCellValue(column, row, index)}
+                    </span>
+                  ))}
+                  {statusColumn && renderCellValue(statusColumn, row, index)}
+                </div>
               </div>
 
-              {detailColumns.length > 0 && (
+              {(fullColumns.length > 0 || detailColumns.length > 0) && (
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-                  {detailColumns.map((column) => (
-                    <div key={column.key} className="min-w-0">
-                      <dt className="truncate text-xs text-muted-foreground">
-                        {column.header}
-                      </dt>
-                      <dd
-                        className={cn(
-                          "break-words font-medium text-foreground [overflow-wrap:anywhere]",
-                          column.align === "right" && "text-right"
-                        )}
-                      >
-                        {renderCellValue(column, row, index)}
-                      </dd>
-                    </div>
-                  ))}
+                  {fullColumns.map((column) => {
+                    const value = renderCellValue(column, row, index);
+                    // Full-width rows (e.g. long party/route names) wrap
+                    // naturally across the card. Null/undefined omitted.
+                    if (value == null) return null;
+                    return (
+                      <div key={column.key} className="col-span-2 min-w-0">
+                        <dt className="truncate text-xs text-muted-foreground">
+                          {column.header}
+                        </dt>
+                        <dd className="break-words font-medium text-foreground [overflow-wrap:anywhere]">
+                          {value}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                  {detailColumns.map((column) => {
+                    const value = renderCellValue(column, row, index);
+                    // Omit unavailable optional values on mobile so cards
+                    // stay clean — no blank label rows. Only null/undefined
+                    // are skipped; 0, false and "" still render.
+                    if (value == null) return null;
+                    return (
+                      <div key={column.key} className="min-w-0">
+                        <dt className="truncate text-xs text-muted-foreground">
+                          {column.header}
+                        </dt>
+                        <dd
+                          className={cn(
+                            "break-words font-medium text-foreground [overflow-wrap:anywhere]",
+                            column.align === "right" && "text-right"
+                          )}
+                        >
+                          {value}
+                        </dd>
+                      </div>
+                    );
+                  })}
                 </dl>
               )}
 
-              {hasActions && (
+              {summaryColumns.length > 0 && (
+                <div className="mt-1 border-t border-border/60 pt-2">
+                  <dl className="space-y-1.5 text-sm">
+                    {summaryColumns.map((column) => {
+                      const value = renderCellValue(column, row, index);
+                      // Same omission rule as detail rows: null/undefined
+                      // rows disappear entirely — no blank separators.
+                      if (value == null) return null;
+                      return (
+                        <div
+                          key={column.key}
+                          className="flex items-baseline justify-between gap-3"
+                        >
+                          <dt className="shrink-0 truncate text-xs text-muted-foreground">
+                            {column.header}
+                          </dt>
+                          <dd className="min-w-0 break-words text-right font-semibold tabular-nums text-foreground [overflow-wrap:anywhere]">
+                            {value}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                </div>
+              )}
+
+              {(hasActions || actionColumns.length > 0) && (
                 <div
                   className={cn(
                     ACTION_STRIP_CLASS,
@@ -672,6 +756,11 @@ export default function DataTable<T extends Record<string, any>>({
                   onClick={(e) => e.stopPropagation()}
                 >
                   {renderActionButtons(row)}
+                  {actionColumns.map((column) => (
+                    <span key={column.key} className="inline-flex">
+                      {renderCellValue(column, row, index)}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
