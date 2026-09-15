@@ -17,7 +17,22 @@
 //   { mode: "scheduled" }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { importPKCS8, SignJWT } from "npm:jose@5.10.0";
 import webpush from "npm:web-push@3.6.7";
+
+const APP_ID = "in.transjitexpresserp.app";
+const PLATFORM = "android";
+const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const EXACT_EVENT_NAVIGATION_RULES = new Set([
+  "dc.created",
+  "dc.updated",
+  "pod.created",
+  "pod.updated",
+]);
+
+type ServiceAccount = { project_id: string; client_email: string; private_key: string };
+type NativeDevice = { id: string; user_id: string; fcm_token: string };
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -123,7 +138,10 @@ Deno.serve(async (req) => {
 
     const groups = new Map<string, Array<Record<string, unknown>>>();
     for (const event of events) {
-      const key = String(event.rule_key);
+      const ruleKey = String(event.rule_key);
+      // DC/POD notifications navigate to one specific record. Keep each such
+      // event intact even when scheduled/quiet-hour processing has a batch.
+      const key = EXACT_EVENT_NAVIGATION_RULES.has(ruleKey) ? `${ruleKey}:${String(event.id)}` : ruleKey;
       const list = groups.get(key) ?? [];
       list.push(event);
       groups.set(key, list);
@@ -132,7 +150,8 @@ Deno.serve(async (req) => {
     let processed = 0;
     let failed = 0;
 
-    for (const [ruleKey, group] of groups) {
+    for (const [, group] of groups) {
+      const ruleKey = String(group[0].rule_key);
       const ids = group.map((e) => Number(e.id));
       await admin.from("notification_events").update({ status: "processing" }).in("id", ids);
 
@@ -159,6 +178,13 @@ Deno.serve(async (req) => {
           href,
         }));
         await admin.from("notification_inbox").insert(inboxRows);
+      }
+
+      // Native delivery intentionally follows the existing generic audience:
+      // only users who already own a browser push subscription are eligible.
+      // It is best-effort and never affects generic browser/inbox event status.
+      if (EXACT_EVENT_NAVIGATION_RULES.has(ruleKey) && userIds.length > 0) {
+        await deliverNativeAndroid(admin, group[0], userIds);
       }
 
       const payload = JSON.stringify({ title, body: bodyText, href });
@@ -295,6 +321,136 @@ function isPublishableOrAnonKey(apiKey: string): boolean {
   }
 
   return false;
+}
+
+async function deliverNativeAndroid(
+  admin: ReturnType<typeof createClient>,
+  event: Record<string, unknown>,
+  userIds: string[]
+): Promise<void> {
+  const serviceAccount = getServiceAccount();
+  if (!serviceAccount) {
+    console.error("[notifications] native FCM skipped", { eventId: Number(event.id), reason: "server_misconfigured" });
+    return;
+  }
+
+  const { data, error } = await admin
+    .from("native_device_tokens")
+    .select("id, user_id, fcm_token")
+    .in("user_id", userIds)
+    .eq("active", true)
+    .eq("platform", PLATFORM)
+    .eq("app_id", APP_ID);
+  if (error) {
+    console.error("[notifications] native FCM skipped", { eventId: Number(event.id), reason: "token_query_failed" });
+    return;
+  }
+
+  let accessToken: string | null = null;
+  const getAccessToken = async () => {
+    accessToken ??= await getGoogleAccessToken(serviceAccount);
+    return accessToken;
+  };
+
+  for (const device of (data ?? []) as NativeDevice[]) {
+    try {
+      const response = await fetch(
+        `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(serviceAccount.project_id)}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${await getAccessToken()}`,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
+          body: JSON.stringify({
+            message: {
+              token: device.fcm_token,
+              notification: {
+                title: String(event.title),
+                body: String(event.body ?? ""),
+              },
+              data: {
+                href: String(event.href ?? "/"),
+                eventId: String(event.id),
+              },
+              android: {
+                priority: "high",
+                notification: {
+                  channel_id: "transjit_erp_alerts_v1",
+                  sound: "transjit_koyal_notification",
+                  default_vibrate_timings: true,
+                },
+              },
+            },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        console.info("[notifications] native FCM sent", { eventId: Number(event.id), deviceId: device.id });
+        continue;
+      }
+      if (await isUnregisteredFcmToken(response)) {
+        await admin
+          .from("native_device_tokens")
+          .update({ active: false, disabled_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", device.id)
+          .eq("active", true);
+        console.info("[notifications] native FCM token deactivated", { eventId: Number(event.id), deviceId: device.id });
+      } else {
+        console.error("[notifications] native FCM failed", { eventId: Number(event.id), deviceId: device.id, status: response.status });
+      }
+    } catch {
+      // OAuth or transport failures may have an unknown external outcome.
+      // Do not retry this generic event or alter its browser/inbox status.
+      console.error("[notifications] native FCM outcome unknown", { eventId: Number(event.id), deviceId: device.id });
+    }
+  }
+}
+
+function getServiceAccount(): ServiceAccount | null {
+  const raw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ServiceAccount>;
+    if (typeof parsed.project_id !== "string" || typeof parsed.client_email !== "string" || typeof parsed.private_key !== "string") {
+      return null;
+    }
+    return { project_id: parsed.project_id, client_email: parsed.client_email, private_key: parsed.private_key };
+  } catch {
+    return null;
+  }
+}
+
+async function getGoogleAccessToken(serviceAccount: ServiceAccount): Promise<string> {
+  const key = await importPKCS8(serviceAccount.private_key, "RS256");
+  const assertion = await new SignJWT({ scope: FCM_SCOPE })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(serviceAccount.client_email)
+    .setSubject(serviceAccount.client_email)
+    .setAudience(OAUTH_TOKEN_URL)
+    .setIssuedAt()
+    .setExpirationTime("55m")
+    .sign(key);
+  const response = await fetch(OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
+  });
+  if (!response.ok) throw new Error("OAuth token request failed");
+  const payload = (await response.json()) as { access_token?: unknown };
+  if (typeof payload.access_token !== "string" || payload.access_token.length === 0) {
+    throw new Error("OAuth token response was invalid");
+  }
+  return payload.access_token;
+}
+
+async function isUnregisteredFcmToken(response: Response): Promise<boolean> {
+  if (response.status !== 404) return false;
+  const payload = (await response.json().catch(() => null)) as {
+    error?: { details?: Array<{ errorCode?: unknown }> };
+  } | null;
+  return payload?.error?.details?.some((detail) => detail.errorCode === "UNREGISTERED") === true;
 }
 
 function summarizeTitle(ruleKey: string, count: number): string {
