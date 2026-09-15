@@ -1,5 +1,10 @@
 import { supabase } from "@/lib/supabase";
-import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
+import {
+  objectToCamelCase,
+  omitServerFields,
+  toCamelCase,
+  toSnakeCase,
+} from "@/lib/caseMapping";
 import type { Bid } from "@/components/bid/bid.schema";
 
 /** A persisted transport bid row, as returned by Supabase (adds server-owned columns). */
@@ -14,6 +19,28 @@ export interface BidRecord extends Bid {
 }
 
 const TABLE = "transport_bids";
+
+/**
+ * The generic toSnakeCase() inserts "_" before EVERY capital letter, so
+ * consecutive-capital acronyms mistranslate (expectedLoadMT becomes
+ * expected_load_m_t, which PostgREST rejects with PGRST204). These two
+ * keys are mapped explicitly in both directions; every other Bid key
+ * has no consecutive capitals and uses the generic mapper safely.
+ * (Do not "fix" the shared helper — the whole ERP depends on it.)
+ */
+const ACRONYM_KEYS = [
+  ["totalQuantityMT", "total_quantity_mt"],
+  ["expectedLoadMT", "expected_load_mt"],
+] as const;
+
+function toBidSnakeCase(input: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const fixed = ACRONYM_KEYS.find(([camel]) => camel === key);
+    result[fixed ? fixed[1] : toSnakeCase(key)] = value;
+  }
+  return result;
+}
 
 /** Numeric columns arrive as number|string depending on the driver; coerce safely. */
 function toNumber(value: unknown, fallback = 0): number {
@@ -37,6 +64,14 @@ function fromRow(row: Record<string, unknown>): BidRecord {
   const { id, created_at, updated_at, ...rest } = row;
   const mapped = objectToCamelCase<Bid>(rest);
   const record = mapped as Record<string, unknown>;
+  // Repair the same acronym mistranslation on read: total_quantity_mt
+  // generically becomes totalQuantityMt, so copy the real value over.
+  for (const [camel, snake] of ACRONYM_KEYS) {
+    if (snake in rest) {
+      record[camel] = (rest as Record<string, unknown>)[snake];
+      delete record[toCamelCase(snake)];
+    }
+  }
 
   for (const key of NUMERIC_KEYS) {
     record[key] = toNumber(record[key]);
@@ -120,7 +155,7 @@ export async function createBid(values: Bid): Promise<BidRecord> {
   // database trigger re-freezes them from the master rows at write time.
   const { data, error } = await supabase
     .from(TABLE)
-    .insert(objectToSnakeCase(toWritePayload(values)))
+    .insert(toBidSnakeCase(toWritePayload(values)))
     .select()
     .single();
 
@@ -143,7 +178,7 @@ export async function updateBid(id: string, values: Bid): Promise<BidRecord> {
 
   const { data, error } = await supabase
     .from(TABLE)
-    .update(objectToSnakeCase(updatable))
+    .update(toBidSnakeCase(updatable))
     .eq("id", id)
     .select()
     .single();
