@@ -35,6 +35,8 @@ interface BidFormProps {
   billingParties: BillingPartyRecord[];
   customers: CustomerRecord[];
   materials: MaterialRecord[];
+  /** Preserved server-side snapshot for an existing Bid whose material ID is legacy. */
+  legacyMaterialName?: string;
   isNew?: boolean;
   /** View-only mode disables the whole form via fieldset. */
   readOnly?: boolean;
@@ -76,7 +78,7 @@ function ProfitRow({ label, value, isLoss }: { label: string; value: string; isL
   );
 }
 
-export default function BidForm({ bid, errors = {}, onChange, billingParties, customers, materials, readOnly = false }: BidFormProps) {
+export default function BidForm({ bid, errors = {}, onChange, billingParties, customers, materials, legacyMaterialName = "", readOnly = false }: BidFormProps) {
   function update<K extends keyof Bid>(key: K, value: Bid[K]) {
     onChange({ ...bid, [key]: value });
   }
@@ -324,10 +326,18 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
               id="bid-material"
               value={bid.materialId > 0 ? String(bid.materialId) : ""}
               onValueChange={(value) => update("materialId", Number(value) || 0)}
-              options={materials.map((material) => ({
-                label: `${material.materialName} (${material.code})`,
-                value: String(material.id),
-              }))}
+              options={[
+                ...materials.map((material) => ({
+                  label: `${material.materialName} (${material.code})`,
+                  value: String(material.id),
+                })),
+                // A retained legacy material ID may be intentionally hidden
+                // from new canonical choices. Keep that existing bid editable
+                // without rewriting its foreign key.
+                ...(bid.materialId > 0 && !materials.some((material) => material.id === bid.materialId)
+                  ? [{ label: `Existing legacy material: ${legacyMaterialName || `ID ${bid.materialId}`}`, value: String(bid.materialId) }]
+                  : []),
+              ]}
               placeholder="Select from Material Master"
             />
           </FormField>

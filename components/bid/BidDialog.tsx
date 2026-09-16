@@ -121,6 +121,7 @@ export default function BidDialog({
         billingParties={billingParties}
         customers={customers}
         materials={materials}
+        legacyMaterialName={bid?.materialName ?? ""}
         isNew={!isEditing}
         readOnly={readOnly}
       />

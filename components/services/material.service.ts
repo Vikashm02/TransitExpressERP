@@ -5,7 +5,16 @@ import type { Material } from "@/components/material/material.schema";
 /** A persisted material row, as returned by Supabase (adds server-owned columns). */
 export interface MaterialRecord extends Material {
   id: number;
+  canonicalMaterialId?: number | null;
   created_at?: string;
+}
+
+export interface MaterialDescriptionRecord {
+  id: number;
+  materialId: number;
+  description: string;
+  active: boolean;
+  sortOrder: number;
 }
 
 const TABLE = "materials";
@@ -49,11 +58,16 @@ async function generateMaterialCode(): Promise<string> {
    GET ALL MATERIALS
 ========================================================== */
 
-export async function getMaterials(): Promise<MaterialRecord[]> {
-  const { data, error } = await supabase
+export async function getMaterials(options: { includeInactive?: boolean } = {}): Promise<MaterialRecord[]> {
+  let query = supabase
     .from(TABLE)
     .select("*")
+    .is("canonical_material_id", null)
     .order("created_at", { ascending: false });
+
+  if (!options.includeInactive) query = query.eq("status", "Active");
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -68,7 +82,9 @@ export async function getMaterials(): Promise<MaterialRecord[]> {
 export type LrMaterialLookupRow = Pick<
   MaterialRecord,
   "id" | "code" | "materialName" | "category" | "unit" | "description" | "status"
->;
+> & {
+  recommendedDescriptions: string[];
+};
 
 export async function getLrMaterialLookup(): Promise<LrMaterialLookupRow[]> {
   const { data, error } = await supabase.rpc("get_lr_material_lookup");
@@ -88,8 +104,49 @@ export async function getLrMaterialLookup(): Promise<LrMaterialLookupRow[]> {
       unit: String(row.unit ?? ""),
       description: String(row.description ?? ""),
       status,
+      recommendedDescriptions: Array.isArray(row.recommended_descriptions)
+        ? row.recommended_descriptions.map((value) => String(value))
+        : [],
     };
   });
+}
+
+export async function getMaterialDescriptions(materialId: number): Promise<MaterialDescriptionRecord[]> {
+  const { data, error } = await supabase
+    .from("material_descriptions")
+    .select("id, material_id, description, active, sort_order")
+    .eq("material_id", materialId)
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: Number(row.id),
+    materialId: Number(row.material_id),
+    description: String(row.description),
+    active: Boolean(row.active),
+    sortOrder: Number(row.sort_order ?? 0),
+  }));
+}
+
+export async function createMaterialDescription(materialId: number, description: string): Promise<void> {
+  const { error } = await supabase.from("material_descriptions").insert({
+    material_id: materialId,
+    description: description.trim(),
+    active: true,
+  });
+  if (error) throw error;
+}
+
+export async function updateMaterialDescription(
+  id: number,
+  patch: Pick<MaterialDescriptionRecord, "description" | "active" | "sortOrder">
+): Promise<void> {
+  const { error } = await supabase.from("material_descriptions").update({
+    description: patch.description.trim(),
+    active: patch.active,
+    sort_order: patch.sortOrder,
+  }).eq("id", id);
+  if (error) throw error;
 }
 
 /* ==========================================================

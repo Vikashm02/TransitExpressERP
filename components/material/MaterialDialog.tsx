@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import FormDialog from "@/components/ui/FormDialog";
 import { Button } from "@/components/ui/button";
 import MaterialForm from "./MaterialForm";
+import MaterialDescriptionsEditor from "./MaterialDescriptionsEditor";
 import { validateMaterial, type Material } from "./material.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { MaterialRecord } from "@/components/services/material.service";
@@ -104,12 +105,15 @@ export default function MaterialDialog({
         </>
       }
     >
-      <MaterialForm
-        material={values}
-        errors={errors}
-        onChange={setValues}
-        isNew={!isEditing}
-      />
+      <div className="space-y-6">
+        <MaterialForm
+          material={values}
+          errors={errors}
+          onChange={setValues}
+          isNew={!isEditing}
+        />
+        {material?.id ? <MaterialDescriptionsEditor materialId={material.id} /> : null}
+      </div>
     </FormDialog>
   );
 }

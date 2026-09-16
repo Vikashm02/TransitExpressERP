@@ -49,7 +49,7 @@ export default function MaterialListPage() {
   async function loadMaterials() {
     try {
       setLoading(true);
-      const data = await getMaterials();
+      const data = await getMaterials({ includeInactive: true });
       setMaterials(data);
     } catch (error) {
       console.error(error);

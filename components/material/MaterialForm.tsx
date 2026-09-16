@@ -122,13 +122,13 @@ export default function MaterialForm({
         />
 
         <FormField
-          label="Description / Remarks"
+          label={isNew ? "Initial Recommended Description" : "Description / Remarks"}
           htmlFor="material-description"
           className="sm:col-span-2"
         >
           <Textarea
             id="material-description"
-            placeholder="Description / Remarks"
+            placeholder={isNew ? "Optional first recommended description" : "Description / Remarks"}
             value={material.description}
             onChange={(e) => update("description", e.target.value)}
           />

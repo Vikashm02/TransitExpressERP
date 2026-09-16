@@ -186,6 +186,10 @@ export async function parseAndValidateMaterialUpload(
 
   const parsedRows: ParsedRow[] = [];
   const rowsByCode = new Map<string, number[]>();
+  const rowsByNormalizedMaterialName = new Map<string, number[]>();
+  const existingCanonicalNames = new Set(
+    existingMaterials.map((material) => material.materialName.trim().toLocaleLowerCase()),
+  );
 
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) return; // header row
@@ -276,6 +280,17 @@ export async function parseAndValidateMaterialUpload(
       rowsByCode.set(code, [...(rowsByCode.get(code) ?? []), rowNumber]);
     }
 
+    const normalizedMaterialName = materialName.trim().toLocaleLowerCase();
+    if (normalizedMaterialName) {
+      if (existingCanonicalNames.has(normalizedMaterialName)) {
+        messages.push(`Material Name "${materialName}" already exists as a canonical Material. Add its wording as a recommended description instead.`);
+      }
+      rowsByNormalizedMaterialName.set(
+        normalizedMaterialName,
+        [...(rowsByNormalizedMaterialName.get(normalizedMaterialName) ?? []), rowNumber],
+      );
+    }
+
     parsedRows.push({ excelRow: rowNumber, values: candidate, messages });
   });
 
@@ -285,6 +300,14 @@ export async function parseAndValidateMaterialUpload(
     if (rowNumbers.length <= 1) continue;
 
     const message = `Material Code "${code}" is used by more than one row in this file (rows ${rowNumbers.join(", ")}).`;
+    for (const parsedRow of parsedRows) {
+      if (rowNumbers.includes(parsedRow.excelRow)) parsedRow.messages.push(message);
+    }
+  }
+
+  for (const [materialName, rowNumbers] of rowsByNormalizedMaterialName) {
+    if (rowNumbers.length <= 1) continue;
+    const message = `Material Name "${materialName}" is used by more than one row in this file (rows ${rowNumbers.join(", ")}). Import one canonical material only.`;
     for (const parsedRow of parsedRows) {
       if (rowNumbers.includes(parsedRow.excelRow)) parsedRow.messages.push(message);
     }
