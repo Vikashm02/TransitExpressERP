@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { parseISO } from "date-fns";
 import { toast } from "sonner";
+import { sharePdfNatively } from "@/components/services/nativePdfShare.service";
 import type { Border } from "exceljs";
 
 import {
@@ -360,6 +361,11 @@ export default function LedgerExportDialog({
           share?: (data: ShareData) => Promise<void>;
           canShare?: (data: ShareData) => boolean;
         };
+
+        if (await sharePdfNatively(file, { title: `Ledger - ${statement.billingParty.name}` })) {
+          onOpenChange(false);
+          return;
+        }
 
         if (nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
           await nav.share({ files: [file], title: `Ledger - ${statement.billingParty.name}` });

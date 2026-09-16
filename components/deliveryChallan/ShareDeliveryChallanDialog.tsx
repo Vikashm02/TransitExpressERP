@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { DeliveryChallanRecord } from "@/components/services/deliveryChallan.service";
 import { generateDeliveryChallanPdfFile } from "@/components/deliveryChallan/deliveryChallanPdfOverlay";
+import { sharePdfNatively } from "@/components/services/nativePdfShare.service";
 
 interface ShareDeliveryChallanDialogProps {
   open: boolean;
@@ -68,6 +69,11 @@ export default function ShareDeliveryChallanDialog({
       const canFileShare =
         typeof nav.share === "function" &&
         (typeof nav.canShare !== "function" || nav.canShare({ files: [file] }));
+
+      if (await sharePdfNatively(file, { title: shareLabel, text: shareLabel })) {
+        onOpenChange(false);
+        return;
+      }
 
       if (canFileShare) {
         try {

@@ -16,6 +16,7 @@ import {
   deliveryChallanPdfFileName,
   generateDeliveryChallanPdfFile,
 } from "@/components/deliveryChallan/deliveryChallanPdfOverlay";
+import { sharePdfNatively } from "@/components/services/nativePdfShare.service";
 
 const PRINT_LOAD_TIMEOUT_MS = 25_000;
 
@@ -197,6 +198,10 @@ export default function DeliveryChallanPrintPage() {
         title: shareLabel,
         text: shareLabel,
       };
+
+      if (await sharePdfNatively(pdfFile, { title: shareLabel, text: shareLabel })) {
+        return;
+      }
 
       if (nav.share && (!nav.canShare || nav.canShare({ files: [pdfFile] }))) {
         await nav.share(shareData);

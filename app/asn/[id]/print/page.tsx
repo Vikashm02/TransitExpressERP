@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { getAsn, type AsnRecord } from "@/components/services/asn.service";
 import { generateAsnPdfFile } from "@/components/asn/asnPdf";
+import { sharePdfNatively } from "@/components/services/nativePdfShare.service";
 
 function isShareCancelled(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
@@ -74,6 +75,10 @@ export default function AsnPrintPage() {
         canShare?: (data: ShareData) => boolean;
       };
       const title = pdfFile.name.replace(/\.pdf$/i, "");
+      if (await sharePdfNatively(pdfFile, { title, text: title })) {
+        return;
+      }
+
       if (nav.share && (!nav.canShare || nav.canShare({ files: [pdfFile] }))) {
         await nav.share({ files: [pdfFile], title, text: title });
       } else {

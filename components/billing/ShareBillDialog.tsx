@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import BillPrint from "./BillPrint";
 import { getBill, type BillDetail } from "@/components/services/billing.service";
 import { getCompany, type CompanyRecord } from "@/components/services/company.service";
+import { sharePdfNatively } from "@/components/services/nativePdfShare.service";
 
 type ShareFormat = "pdf" | "jpg";
 
@@ -210,6 +211,11 @@ export default function ShareBillDialog({ open, onOpenChange, billId }: ShareBil
         share?: (data: ShareData) => Promise<void>;
         canShare?: (data: ShareData) => boolean;
       };
+
+      if (await sharePdfNatively(file, { title: `Bill ${detail.bill.billNumber}` })) {
+        onOpenChange(false);
+        return;
+      }
 
       if (nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({ files: [file], title: `Bill ${detail.bill.billNumber}` });

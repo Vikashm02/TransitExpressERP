@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { LRRecord } from "@/components/services/lr.service";
 import { generateLrPdfFile } from "@/components/lr/lrPdfOverlay";
+import { sharePdfNatively } from "@/components/services/nativePdfShare.service";
 
 interface ShareLRDialogProps {
   open: boolean;
@@ -71,6 +72,11 @@ export default function ShareLRDialog({ open, onOpenChange, lr }: ShareLRDialogP
       const shareText = vehicle
         ? `LR ${lr.lrNumber} | Vehicle: ${vehicle}`
         : `LR ${lr.lrNumber}`;
+
+      if (await sharePdfNatively(file, { title: shareTitle, text: shareText })) {
+        onOpenChange(false);
+        return;
+      }
 
       if (canFileShare) {
         try {

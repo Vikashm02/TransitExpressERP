@@ -1,4 +1,5 @@
 import type { Border } from "exceljs";
+import { sharePdfNatively } from "@/components/services/nativePdfShare.service";
 
 /**
  * Shared PDF/Excel/download/share plumbing for the Reports module only.
@@ -30,6 +31,10 @@ export async function shareOrDownloadFile(file: File, shareTitle: string) {
     share?: (data: ShareData) => Promise<void>;
     canShare?: (data: ShareData) => boolean;
   };
+
+  if (await sharePdfNatively(file, { title: shareTitle })) {
+    return;
+  }
 
   if (nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
     await nav.share({ files: [file], title: shareTitle });
