@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Capacitor } from "@capacitor/core";
 
 import {
   Dialog,
@@ -46,10 +48,23 @@ function downloadPdfFile(file: File) {
  * Final artifact is the PDF itself (not an HTML/CSS recreation).
  */
 export default function ShareLRDialog({ open, onOpenChange, lr }: ShareLRDialogProps) {
+  const router = useRouter();
   const [generating, setGenerating] = useState(false);
 
   async function handleShare() {
     if (!lr) return;
+
+    const isOldCapacitorAndroid =
+      Capacitor.isNativePlatform() &&
+      Capacitor.getPlatform() === "android" &&
+      (!Capacitor.isPluginAvailable("Share") ||
+        !Capacitor.isPluginAvailable("Filesystem"));
+
+    if (isOldCapacitorAndroid) {
+      onOpenChange(false);
+      router.push(`/lr/${lr.id}/print`);
+      return;
+    }
 
     try {
       setGenerating(true);
