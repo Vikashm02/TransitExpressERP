@@ -3,6 +3,7 @@
 import { Bell, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import StatusBadge from "@/components/ui/StatusBadge";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import type { BidRecord } from "@/components/services/bid.service";
 import { formatReminderTime, type BidReminder } from "@/components/services/bidReminder.service";
@@ -45,7 +46,13 @@ export default function BidTable({ bids, loading = false, pageSize, onView, onEd
       // Mobile: full-width row so long party names wrap naturally.
       mobile: "full",
     },
-    { key: "status", header: "Status", type: "status", sortable: true },
+    {
+      key: "status",
+      header: "Status",
+      type: "status",
+      sortable: true,
+      render: (row) => <StatusBadge status={row.status} showDot />,
+    },
     {
       key: "route",
       header: "Route",
@@ -140,11 +147,16 @@ export default function BidTable({ bids, loading = false, pageSize, onView, onEd
           <Button
             variant="ghost"
             size="sm"
-            className="min-h-[40px]"
+            className={
+              info
+                ? "min-h-[40px] border border-amber-500/35 bg-amber-500/10 text-amber-800 hover:bg-amber-500/15 hover:text-amber-900 focus-visible:ring-amber-500 dark:text-amber-200 dark:hover:text-amber-100"
+                : "min-h-[40px] border border-transparent text-muted-foreground hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 focus-visible:ring-amber-500 dark:hover:text-amber-300"
+            }
             title={info ? `Next: ${formatReminderTime(info.nearest.remindAt)}` : "Set a reminder"}
+            aria-label={info ? `Reminder set: ${formatReminderTime(info.nearest.remindAt)}` : "Set reminder"}
             onClick={() => onReminderClick?.(row)}
           >
-            <Bell className="mr-1 h-4 w-4" />
+            <Bell className={info ? "mr-1 h-4 w-4 text-amber-600 dark:text-amber-300" : "mr-1 h-4 w-4"} />
             {label}
           </Button>
         );
