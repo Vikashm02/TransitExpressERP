@@ -39,7 +39,7 @@ async function fileToBase64(file: File): Promise<string> {
 
 function scheduleCacheCleanup(path: string) {
   setTimeout(() => {
-    void Filesystem.deleteFile({ path, directory: Directory.Cache }).catch(() => {
+    void Filesystem.rmdir({ path, directory: Directory.Cache, recursive: true }).catch(() => {
       // Cache cleanup is best-effort. Android may still be reading the shared file.
     });
   }, CLEANUP_DELAY_MS);
@@ -63,7 +63,8 @@ export async function sharePdfNatively(
   }
 
   const filename = safePdfFilename(file.name);
-  const path = `${SHARE_DIRECTORY}/${Date.now()}-${filename}`;
+  const shareDirectory = `${SHARE_DIRECTORY}/${Date.now()}`;
+  const path = `${shareDirectory}/${filename}`;
 
   try {
     const supported = await Share.canShare();
@@ -85,10 +86,10 @@ export async function sharePdfNatively(
       dialogTitle: options.dialogTitle ?? "Share PDF",
     });
 
-    scheduleCacheCleanup(path);
+    scheduleCacheCleanup(shareDirectory);
     return true;
   } catch (error) {
-    await Filesystem.deleteFile({ path, directory: Directory.Cache }).catch(() => {
+    await Filesystem.rmdir({ path: shareDirectory, directory: Directory.Cache, recursive: true }).catch(() => {
       // The write may not have completed; cleanup must never hide the share error.
     });
     throw error;
