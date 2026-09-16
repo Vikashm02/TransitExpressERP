@@ -1050,7 +1050,10 @@ function LRListPageContent() {
         }
         onSubmit={handleSubmit}
         onAutosave={
-          dialogMode !== "view" && canContinueDraft ? handleAutosave : undefined
+          canContinueDraft &&
+          (dialogMode === "create" || isDraftEntry(editingLR?.entryStatus))
+            ? handleAutosave
+            : undefined
         }
       />
 
