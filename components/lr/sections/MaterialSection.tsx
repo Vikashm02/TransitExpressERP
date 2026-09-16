@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import FormField from "@/components/ui/FormField";
 import FormSection from "@/components/ui/FormSection";
-import MaterialLookup from "@/components/lookup/MaterialLookup";
+import MaterialLookup, { type MaterialLookupItem } from "@/components/lookup/MaterialLookup";
 import {
   getLrMaterialLookup,
   type LrMaterialLookupRow,
@@ -65,7 +65,7 @@ export default function MaterialSection({
 
   // Selection changes only the material snapshot and package type. It never
   // rewrites a historical or staff-entered description.
-  function handleMaterialSelect(material: LrMaterialLookupRow) {
+  function handleMaterialSelect(material: MaterialLookupItem) {
     setRecommendationSearch("");
     onChange({
       ...lr,
