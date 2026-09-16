@@ -4,7 +4,6 @@ import { supabase } from "@/lib/supabase";
 
 export const TRANSJIT_ALERTS_CHANNEL_ID = "transjit_erp_alerts_v1";
 const TRANSJIT_ALERTS_SOUND = "transjit_koyal_notification";
-const AUTO_PERMISSION_REQUESTED_KEY = "transjit_native_alerts_permission_requested_v1";
 const REMINDER_SHOWN_AT_KEY = "transjit_native_alerts_reminder_shown_at_v1";
 const REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -55,23 +54,6 @@ function normalizePermission(permission: string): NativeDeviceAlertsPermission {
   // rationale state means it was previously declined, so do not re-prompt.
   if (permission === "prompt") return "prompt";
   return "denied";
-}
-
-function wasAutoPermissionRequested(): boolean {
-  try {
-    return window.localStorage.getItem(AUTO_PERMISSION_REQUESTED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function markAutoPermissionRequested(): void {
-  try {
-    window.localStorage.setItem(AUTO_PERMISSION_REQUESTED_KEY, "1");
-  } catch {
-    // Android's own permission state still prevents repeated prompts when
-    // browser storage is unavailable.
-  }
 }
 
 export function shouldShowNativeDeviceAlertsReminder(now = Date.now()): boolean {
@@ -127,11 +109,12 @@ export async function getNativeDeviceAlertsPermission(): Promise<NativeDeviceAle
  */
 export async function ensureNativeDeviceAlertsPermission(): Promise<NativeDeviceAlertsPermission> {
   const permission = await getNativeDeviceAlertsPermission();
-  if (permission !== "prompt" || wasAutoPermissionRequested()) {
+  if (permission !== "prompt") {
     return permission;
   }
 
-  markAutoPermissionRequested();
+  // Android owns the permission decision state. Restored WebView storage must
+  // not suppress the first prompt after an app install or reinstall.
   const requested = await PushNotifications.requestPermissions();
   return normalizePermission(requested.receive);
 }

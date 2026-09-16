@@ -137,20 +137,30 @@ export default function NativePushRuntime() {
       }
     }
 
-    const handlePermissionGranted = () => {
+    const configureWhenActive = () => {
       void configureRuntime().catch((error) => {
         console.error("Unable to configure native push registration", error);
       });
     };
 
-    window.addEventListener(NATIVE_DEVICE_ALERTS_GRANTED_EVENT, handlePermissionGranted);
-    handlePermissionGranted();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        configureWhenActive();
+      }
+    };
+
+    window.addEventListener(NATIVE_DEVICE_ALERTS_GRANTED_EVENT, configureWhenActive);
+    window.addEventListener("focus", configureWhenActive);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    configureWhenActive();
 
     return () => {
       cancelled = true;
       configuredUserId.current = null;
       configuringUserId.current = null;
-      window.removeEventListener(NATIVE_DEVICE_ALERTS_GRANTED_EVENT, handlePermissionGranted);
+      window.removeEventListener(NATIVE_DEVICE_ALERTS_GRANTED_EVENT, configureWhenActive);
+      window.removeEventListener("focus", configureWhenActive);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       void Promise.all(handles.map((handle) => handle.remove()));
     };
   }, [router, session?.user.id]);
