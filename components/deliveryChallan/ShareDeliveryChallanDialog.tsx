@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { toast } from "sonner";
 
 import {
@@ -21,6 +22,7 @@ interface ShareDeliveryChallanDialogProps {
   challan: DeliveryChallanRecord | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for temporary diagnostic rollback.
 function isShareCancelled(error: unknown): boolean {
   return (
     (error instanceof DOMException || error instanceof Error) &&
@@ -29,6 +31,7 @@ function isShareCancelled(error: unknown): boolean {
 }
 
 /** Download the generated PDF; delay revoke so mobile browsers can start the save. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for temporary diagnostic rollback.
 function downloadPdfFile(file: File) {
   const url = URL.createObjectURL(file);
   const link = document.createElement("a");
@@ -51,12 +54,14 @@ export default function ShareDeliveryChallanDialog({
   challan,
 }: ShareDeliveryChallanDialogProps) {
   const [generating, setGenerating] = useState(false);
+  const [diagnostic, setDiagnostic] = useState<string[] | null>(null);
 
   async function handleShare() {
     if (!challan) return;
 
     try {
       setGenerating(true);
+      setDiagnostic(null);
 
       const file = await generateDeliveryChallanPdfFile(challan);
       const shareLabel = file.name.replace(/\.pdf$/i, "");
@@ -66,34 +71,40 @@ export default function ShareDeliveryChallanDialog({
         canShare?: (data: ShareData) => boolean;
       };
 
-      const canFileShare =
-        typeof nav.share === "function" &&
-        (typeof nav.canShare !== "function" || nav.canShare({ files: [file] }));
-
-      if (await sharePdfNatively(file, { title: shareLabel, text: shareLabel })) {
-        onOpenChange(false);
-        return;
-      }
-
-      if (canFileShare) {
+      let canShareResult = "not available";
+      if (typeof nav.canShare === "function") {
         try {
-          await nav.share!({
-            files: [file],
-            title: shareLabel,
-            text: shareLabel,
-          });
-          onOpenChange(false);
-          return;
-        } catch (shareError) {
-          if (isShareCancelled(shareError)) return;
-          // Share can fail on some mobile browsers even when canShare is true —
-          // keep the PDF via download instead of surfacing a hard error.
-          console.error(shareError);
+          canShareResult = String(nav.canShare({ files: [file] }));
+        } catch (error) {
+          const safeError = error instanceof Error ? error : new Error("Unknown error");
+          canShareResult = `exception: ${safeError.name}: ${safeError.message}`;
         }
       }
 
-      downloadPdfFile(file);
-      onOpenChange(false);
+      let nativeShareResult = "exception: Unknown error";
+      try {
+        nativeShareResult = String(
+          await sharePdfNatively(file, { title: shareLabel, text: shareLabel }),
+        );
+      } catch (error) {
+        const safeError = error instanceof Error ? error : new Error("Unknown error");
+        nativeShareResult = `exception: ${safeError.name}: ${safeError.message}`;
+      }
+
+      setDiagnostic([
+        `Capacitor platform: ${Capacitor.getPlatform()}`,
+        `Capacitor native platform: ${String(Capacitor.isNativePlatform())}`,
+        `Capacitor Share plugin: ${String(Capacitor.isPluginAvailable("Share"))}`,
+        `Capacitor Filesystem plugin: ${String(Capacitor.isPluginAvailable("Filesystem"))}`,
+        `navigator.share: ${typeof nav.share}`,
+        `navigator.canShare: ${typeof nav.canShare}`,
+        `navigator.canShare({ files }): ${canShareResult}`,
+        `sharePdfNatively result: ${nativeShareResult}`,
+      ]);
+
+      // Temporary device diagnostic: deliberately do not use Web Share or
+      // Blob-download fallback after displaying the capability results.
+      return;
     } catch (error) {
       console.error(error);
       toast.error("Unable to share Delivery Challan as PDF.");
@@ -118,13 +129,24 @@ export default function ShareDeliveryChallanDialog({
           19179.pdf).
         </p>
 
+        {diagnostic && (
+          <div className="rounded-md border bg-muted p-3 text-xs">
+            <p className="mb-2 font-medium">Temporary share diagnostic</p>
+            <ul className="space-y-1 break-words font-mono">
+              {diagnostic.map((value) => (
+                <li key={value}>{value}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <DialogFooter>
           <Button
             variant="outline"
             disabled={generating}
             onClick={() => onOpenChange(false)}
           >
-            Cancel
+            {diagnostic ? "Close" : "Cancel"}
           </Button>
           <Button
             disabled={generating || !challan}
