@@ -1,11 +1,23 @@
 "use client";
 
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 
 const SHARE_DIRECTORY = "transjit-shares";
 const CLEANUP_DELAY_MS = 10 * 60 * 1000;
+
+interface NativeMediaStorePdfSharePlugin {
+  sharePdf(options: {
+    base64: string;
+    filename: string;
+    title: string;
+    text?: string;
+    dialogTitle?: string;
+  }): Promise<{ shared: boolean }>;
+}
+
+const NativeMediaStorePdfShare = registerPlugin<NativeMediaStorePdfSharePlugin>("NativeMediaStorePdfShare");
 
 export function isNativeAndroid(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
@@ -53,16 +65,27 @@ export async function sharePdfNatively(
   file: File,
   options: { title: string; text?: string; dialogTitle?: string }
 ): Promise<boolean> {
-  if (
-    !isNativeAndroid() ||
-    file.type !== "application/pdf" ||
-    !Capacitor.isPluginAvailable("Share") ||
-    !Capacitor.isPluginAvailable("Filesystem")
-  ) {
+  if (!isNativeAndroid() || file.type !== "application/pdf") {
     return false;
   }
 
   const filename = safePdfFilename(file.name);
+
+  if (Capacitor.isPluginAvailable("NativeMediaStorePdfShare")) {
+    const result = await NativeMediaStorePdfShare.sharePdf({
+      base64: await fileToBase64(file),
+      filename,
+      title: options.title,
+      text: options.text,
+      dialogTitle: options.dialogTitle,
+    });
+    if (result.shared) return true;
+  }
+
+  if (!Capacitor.isPluginAvailable("Share") || !Capacitor.isPluginAvailable("Filesystem")) {
+    return false;
+  }
+
   const shareDirectory = `${SHARE_DIRECTORY}/${Date.now()}`;
   const path = `${shareDirectory}/${filename}`;
 
