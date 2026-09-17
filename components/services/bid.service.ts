@@ -135,6 +135,97 @@ export async function getLiveBidCount(): Promise<number> {
 /** Browser-only signal after a local Bid save so the shell badge can refresh. */
 export const LIVE_BID_COUNT_REFRESH_EVENT = "transjit-live-bid-count-refresh";
 
+/** Native-only signal after a local Bid create/update so the native indicator can refresh. */
+export const LIVE_BID_STATE_CHANGED_EVENT = "transjit-live-bid-state-changed";
+
+export interface LiveBidIndicatorSummary {
+  count: number;
+  label: string | null;
+  closesAtEpochMs: number | null;
+  deadlineState: "future" | "passed" | "none";
+}
+
+type LiveBidIndicatorRow = {
+  bid_reference: string | null;
+  billing_party_name: string | null;
+  consignee_name: string | null;
+  closes_at: string | null;
+};
+
+function liveBidLabel(row: { bid_reference: string | null; billing_party_name: string | null; consignee_name: string | null } | undefined): string | null {
+  if (!row) return null;
+  for (const value of [row.bid_reference, row.consignee_name, row.billing_party_name]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+/**
+ * RLS-protected summary for the native Live Bid indicator. It first requests
+ * only the exact count, then at most one selected Live Bid row; it never loads
+ * the Bid table or any commercial detail beyond the display label and deadline.
+ */
+export async function getLiveBidIndicatorSummary(): Promise<{
+  count: number;
+  label: string | null;
+  closesAtEpochMs: number | null;
+  deadlineState: "future" | "passed" | "none";
+}> {
+  const { count, error: countError } = await supabase
+    .from(TABLE)
+    .select("id", { count: "exact", head: true })
+    .eq("status", "Live");
+  if (countError) throw countError;
+
+  const liveCount = count ?? 0;
+  if (liveCount === 0) {
+    return { count: 0, label: null, closesAtEpochMs: null, deadlineState: "none" };
+  }
+
+  const now = new Date().toISOString();
+  const fields = "bid_reference, billing_party_name, consignee_name, closes_at";
+  const { data: futureRows, error: futureError } = await supabase
+    .from(TABLE)
+    .select("bid_reference, billing_party_name, consignee_name, closes_at")
+    .eq("status", "Live")
+    .gt("closes_at", now)
+    .order("closes_at", { ascending: true })
+    .limit(1);
+  if (futureError) throw futureError;
+
+  const future = (futureRows ?? [])[0] as { bid_reference: string | null; billing_party_name: string | null; consignee_name: string | null; closes_at: string | null } | undefined;
+  if (future?.closes_at) {
+    const closesAtEpochMs = Date.parse(future.closes_at);
+    if (Number.isFinite(closesAtEpochMs) && closesAtEpochMs > Date.now()) {
+      return { count: liveCount, label: liveBidLabel(future), closesAtEpochMs, deadlineState: "future" };
+    }
+  }
+
+  const { data: passedRows, error: passedError } = await supabase
+    .from(TABLE)
+    .select("bid_reference, billing_party_name, consignee_name, closes_at")
+    .eq("status", "Live")
+    .not("closes_at", "is", null)
+    .lte("closes_at", now)
+    .order("closes_at", { ascending: false })
+    .limit(1);
+  if (passedError) throw passedError;
+
+  const passed = (passedRows ?? [])[0] as { bid_reference: string | null; billing_party_name: string | null; consignee_name: string | null; closes_at: string | null } | undefined;
+  if (passed) {
+    return { count: liveCount, label: liveBidLabel(passed), closesAtEpochMs: null, deadlineState: "passed" };
+  }
+
+  return { count: liveCount, label: null, closesAtEpochMs: null, deadlineState: "none" };
+}
+
+/** Browser-only signal after a local Bid create/update so the native indicator can refresh. */
+function announceLiveBidStateChange(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(LIVE_BID_STATE_CHANGED_EVENT));
+  }
+}
+
 /* ==========================================================
    GET ONE BID
 ========================================================== */
@@ -181,7 +272,9 @@ export async function createBid(values: Bid): Promise<BidRecord> {
 
   if (error) throw error;
 
-  return fromRow(data as Record<string, unknown>);
+  const result = fromRow(data as Record<string, unknown>);
+  announceLiveBidStateChange();
+  return result;
 }
 
 /* ==========================================================
@@ -205,5 +298,7 @@ export async function updateBid(id: string, values: Bid): Promise<BidRecord> {
 
   if (error) throw error;
 
-  return fromRow(data as Record<string, unknown>);
+  const result = fromRow(data as Record<string, unknown>);
+  announceLiveBidStateChange();
+  return result;
 }

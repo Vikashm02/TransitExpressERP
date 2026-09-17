@@ -7,6 +7,7 @@ import { LanguageProvider } from "@/lib/i18n";
 import AppThemeProvider from "@/components/theme/AppThemeProvider";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import NativePushRuntime from "@/components/pwa/NativePushRuntime";
+import NativeLiveBidIndicatorRuntime from "@/components/pwa/NativeLiveBidIndicatorRuntime";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <LanguageProvider>
                 <PwaRegister />
                 <NativePushRuntime />
+                <NativeLiveBidIndicatorRuntime />
                 {children}
                 <Toaster />
               </LanguageProvider>
