@@ -118,6 +118,23 @@ export async function getBids(): Promise<BidRecord[]> {
   return (data ?? []).map((row) => fromRow(row as Record<string, unknown>));
 }
 
+/**
+ * Lightweight, RLS-protected count for the persistent Bid navigation badge.
+ * It intentionally requests no Bid rows or customer/commercial data.
+ */
+export async function getLiveBidCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from(TABLE)
+    .select("id", { count: "exact", head: true })
+    .eq("status", "Live");
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Browser-only signal after a local Bid save so the shell badge can refresh. */
+export const LIVE_BID_COUNT_REFRESH_EVENT = "transjit-live-bid-count-refresh";
+
 /* ==========================================================
    GET ONE BID
 ========================================================== */

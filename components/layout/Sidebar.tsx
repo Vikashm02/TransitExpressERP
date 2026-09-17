@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import {
@@ -34,6 +35,7 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLanguage } from "@/lib/i18n";
 import type { PermissionKey } from "@/lib/permissions";
 import { organizationalRoleLabel } from "@/components/services/appUser.service";
+import { getLiveBidCount, LIVE_BID_COUNT_REFRESH_EVENT } from "@/components/services/bid.service";
 
 type MenuItem = {
   labelKey: string;
@@ -141,6 +143,45 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
   const router = useRouter();
   const { profile, isAdmin, signOut, hasPermission } = useAuth();
   const { t } = useLanguage();
+  const canViewBids = hasPermission("bids", "view");
+  const [liveBidCount, setLiveBidCount] = useState(0);
+  const liveBidCountRequestInFlight = useRef(false);
+
+  const refreshLiveBidCount = useCallback(async () => {
+    if (!canViewBids || liveBidCountRequestInFlight.current) return;
+    liveBidCountRequestInFlight.current = true;
+    try {
+      setLiveBidCount(await getLiveBidCount());
+    } catch (error) {
+      // A badge failure must never block sidebar navigation or reveal data.
+      console.error("Unable to refresh Live Bid count", error);
+    } finally {
+      liveBidCountRequestInFlight.current = false;
+    }
+  }, [canViewBids]);
+
+  useEffect(() => {
+    if (!canViewBids) return;
+    const initialRefresh = window.setTimeout(() => void refreshLiveBidCount(), 0);
+    return () => window.clearTimeout(initialRefresh);
+  }, [canViewBids, refreshLiveBidCount]);
+
+  useEffect(() => {
+    if (!canViewBids) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshLiveBidCount();
+    };
+    const refreshAfterBidSave = () => void refreshLiveBidCount();
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener(LIVE_BID_COUNT_REFRESH_EVENT, refreshAfterBidSave);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener(LIVE_BID_COUNT_REFRESH_EVENT, refreshAfterBidSave);
+    };
+  }, [canViewBids, refreshLiveBidCount]);
 
   const visibleSections = menuSections
     .map((section) => ({
@@ -179,30 +220,43 @@ export default function Sidebar({ mobileOpen = false, onMobileOpenChange }: Side
           const active = isActive(menu.href);
           const label = t(menu.labelKey);
 
+          const showLiveBidBadge = menu.permissionKey === "bids" && liveBidCount > 0;
+
           return (
-            <Link
-              key={menu.labelKey}
-              href={menu.href}
-              title={label}
-              onClick={onNavigate}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
-                active
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md shadow-black/10"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-            >
-              {active && (
-                <span className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-r bg-sidebar-primary-foreground/80" />
-              )}
-              <Icon
+            <div key={menu.labelKey} className="flex items-center gap-1">
+              <Link
+                href={menu.href}
+                title={label}
+                onClick={onNavigate}
                 className={cn(
-                  "h-4 w-4 shrink-0 transition-transform duration-150",
-                  active ? "scale-105" : "opacity-80 group-hover:opacity-100"
+                  "group relative flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                  active
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md shadow-black/10"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 )}
-              />
-              <span className="truncate">{label}</span>
-            </Link>
+              >
+                {active && (
+                  <span className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-r bg-sidebar-primary-foreground/80" />
+                )}
+                <Icon
+                  className={cn(
+                    "h-4 w-4 shrink-0 transition-transform duration-150",
+                    active ? "scale-105" : "opacity-80 group-hover:opacity-100"
+                  )}
+                />
+                <span className="truncate">{label}</span>
+              </Link>
+              {showLiveBidBadge && (
+                <Link
+                  href="/bids?liveOnly=1"
+                  title={`${liveBidCount} Live Bids`}
+                  onClick={onNavigate}
+                  className="shrink-0 rounded-md bg-sidebar-accent px-2 py-1 text-[10px] font-bold tracking-wide text-sidebar-accent-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
+                >
+                  {liveBidCount} LIVE
+                </Link>
+              )}
+            </div>
           );
         })}
       </div>

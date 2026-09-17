@@ -21,6 +21,7 @@ import {
   createBid,
   getBid,
   getBids,
+  LIVE_BID_COUNT_REFRESH_EVENT,
   updateBid,
   type BidRecord,
 } from "@/components/services/bid.service";
@@ -46,6 +47,7 @@ function BidListPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkBidId = searchParams.get("view");
+  const liveOnly = searchParams.get("liveOnly") === "1";
   // Single-shot per deep-link target so rerenders never reopen the dialog,
   // while a later different ?view= still works without remounting.
   const handledDeepLinkRef = useRef<string | null>(null);
@@ -121,13 +123,14 @@ function BidListPageInner() {
   }
 
   const tabStatuses = tab === "live" ? BID_LIVE_STATUSES : BID_HISTORY_STATUSES;
+  const filterStatuses = liveOnly ? ["Live"] : tabStatuses;
 
   const filteredBids = useMemo(() => {
     const query = search.trim().toLowerCase();
     const routeQuery = `${pickupFilter.trim()} ${dropoffFilter.trim()}`.trim().toLowerCase();
 
     return bids.filter((bid) => {
-      if (!tabStatuses.includes(bid.status)) return false;
+      if (liveOnly ? bid.status !== "Live" : !tabStatuses.includes(bid.status)) return false;
 
       const matchesSearch =
         !query ||
@@ -169,10 +172,17 @@ function BidListPageInner() {
 
       return matchesSearch && matchesParty && matchesStatus && matchesVehicle && matchesRoute && matchesDate;
     });
-  }, [bids, tab, tabStatuses, search, partyFilter, statusFilter, vehicleFilter, pickupFilter, dropoffFilter, fromDate, toDate]);
+  }, [bids, liveOnly, tab, tabStatuses, search, partyFilter, statusFilter, vehicleFilter, pickupFilter, dropoffFilter, fromDate, toDate]);
 
   function switchTab(next: BidTab) {
+    if (liveOnly) router.replace("/bids", { scroll: false });
     setTab(next);
+    setStatusFilter("");
+  }
+
+  function returnToNormalBidView() {
+    router.replace("/bids", { scroll: false });
+    setTab("live");
     setStatusFilter("");
   }
 
@@ -224,6 +234,7 @@ function BidListPageInner() {
       setDialogOpen(false);
       setEditingBid(null);
       await loadAll();
+      window.dispatchEvent(new Event(LIVE_BID_COUNT_REFRESH_EVENT));
     } catch (error) {
       console.error(error);
       const message = error instanceof Error ? error.message : "";
@@ -258,6 +269,15 @@ function BidListPageInner() {
         ))}
       </div>
 
+      {liveOnly && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3">
+          <p className="text-sm font-medium">Showing stored Live Bids only.</p>
+          <Button type="button" variant="outline" size="sm" onClick={returnToNormalBidView}>
+            Show normal Bid view
+          </Button>
+        </div>
+      )}
+
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
@@ -280,7 +300,7 @@ function BidListPageInner() {
             key: "status",
             label: tab === "live" ? "Status" : "Result",
             value: statusFilter,
-            options: tabStatuses.map((status) => ({ label: status, value: status })),
+            options: filterStatuses.map((status) => ({ label: status, value: status })),
             onChange: setStatusFilter,
             placeholder: "All statuses",
           },
