@@ -86,6 +86,9 @@ function fromRow(row: Record<string, unknown>): BidRecord {
     if (record[key] === null || record[key] === undefined) record[key] = "";
   }
   if (record.lossReason === null) record.lossReason = null;
+  // Existing rows predate the explicit basis. Their persisted quote has
+  // always meant the full trip amount, so missing/invalid values are Per Trip.
+  if (record.marketVehicleCostBasis !== "Per MT") record.marketVehicleCostBasis = "Per Trip";
 
   const source = row as Record<string, unknown>;
   return {

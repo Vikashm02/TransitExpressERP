@@ -95,6 +95,7 @@ export default function BidTable({ bids, loading = false, pageSize, onView, onEd
       render: (row) => {
         const calc = calculateBidProfitability({
           marketVehicleQuote: row.marketVehicleQuote,
+          marketVehicleCostBasis: row.marketVehicleCostBasis,
           expectedLoadMT: row.expectedLoadMT,
           bidRate: row.bidRate,
           bidRateBasis: row.bidRateBasis,
@@ -113,6 +114,7 @@ export default function BidTable({ bids, loading = false, pageSize, onView, onEd
       render: (row) => {
         const calc = calculateBidProfitability({
           marketVehicleQuote: row.marketVehicleQuote,
+          marketVehicleCostBasis: row.marketVehicleCostBasis,
           expectedLoadMT: row.expectedLoadMT,
           bidRate: row.bidRate,
           bidRateBasis: row.bidRateBasis,

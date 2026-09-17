@@ -8,7 +8,6 @@ import BidForm from "./BidForm";
 import { validateBid, type Bid } from "./bid.schema";
 import type { BidRecord } from "@/components/services/bid.service";
 import type { BillingPartyRecord } from "@/components/services/billingParty.service";
-import type { CustomerRecord } from "@/components/services/customer.service";
 import type { MaterialRecord } from "@/components/services/material.service";
 import { pickFields } from "@/lib/utils";
 import type { FieldErrors } from "@/lib/validation";
@@ -19,7 +18,6 @@ interface BidDialogProps {
   /** Pass a record to edit; omit/null to add a new bid. */
   bid?: BidRecord | null;
   billingParties: BillingPartyRecord[];
-  customers: CustomerRecord[];
   materials: MaterialRecord[];
   /** Shows the FormDialog's blocking "Saving..." overlay while a save is in flight. */
   loading?: boolean;
@@ -45,6 +43,7 @@ const emptyBid: Bid = {
   totalQuantityMT: 0,
   expectedLoadMT: 0,
   marketVehicleQuote: 0,
+  marketVehicleCostBasis: "Per Trip",
   bidRateBasis: null,
   bidRate: 0,
   winningRate: null,
@@ -68,7 +67,6 @@ export default function BidDialog({
   onOpenChange,
   bid,
   billingParties,
-  customers,
   materials,
   loading = false,
   readOnly = false,
@@ -115,12 +113,14 @@ export default function BidDialog({
       }
     >
       <BidForm
+        key={`${open}-${bid?.id ?? "new"}-${bid?.updated_at ?? ""}`}
         bid={values}
         errors={errors}
         onChange={setValues}
         billingParties={billingParties}
-        customers={customers}
         materials={materials}
+        initialConsignorName={bid?.consignorName ?? ""}
+        initialConsigneeName={bid?.consigneeName ?? ""}
         legacyMaterialName={bid?.materialName ?? ""}
         isNew={!isEditing}
         readOnly={readOnly}

@@ -103,6 +103,36 @@ export type LrCustomerLookupRow = Pick<
   "id" | "name" | "code" | "gst" | "city" | "address" | "entryStatus"
 >;
 
+/**
+ * Bid-only, bounded Customer Master search. Unlike getCustomers(), this does
+ * not depend on Customer Master list permission or an unbounded table read.
+ */
+export type BidCustomerLookupRow = Pick<
+  CustomerRecord,
+  "id" | "name" | "code" | "gst" | "city" | "address"
+>;
+
+export async function getBidCustomerLookup(query = ""): Promise<BidCustomerLookupRow[]> {
+  const { data, error } = await supabase.rpc("get_bid_customer_lookup", {
+    p_query: query,
+    p_limit: 25,
+  });
+
+  if (error) throw error;
+
+  return (Array.isArray(data) ? data : []).map((item) => {
+    const row = item as Record<string, unknown>;
+    return {
+      id: Number(row.id),
+      name: String(row.name ?? ""),
+      code: String(row.code ?? ""),
+      gst: String(row.gst ?? ""),
+      city: String(row.city ?? ""),
+      address: String(row.address ?? ""),
+    };
+  });
+}
+
 export async function getLrCustomerLookup(): Promise<LrCustomerLookupRow[]> {
   const { data, error } = await supabase.rpc("get_lr_customer_lookup");
 
