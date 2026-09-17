@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { getFieldErrors } from "@/lib/validation";
-import type { BidRateBasis } from "@/lib/calculations/bidCalculations";
+import type { BidRateBasis, MarketVehicleCostBasis } from "@/lib/calculations/bidCalculations";
 
 export const BID_SOURCE_OPTIONS = ["Cargo Exchange", "Email", "Manual", "Other"] as const;
 
@@ -19,6 +19,7 @@ export const BID_LIVE_STATUSES: readonly string[] = ["Draft", "Live"];
 export const BID_HISTORY_STATUSES: readonly string[] = ["Won", "Lost", "Cancelled", "Not Submitted"];
 
 export const BID_RATE_BASIS_OPTIONS: readonly BidRateBasis[] = ["Per MT", "Per Vehicle"];
+export const MARKET_VEHICLE_COST_BASIS_OPTIONS: readonly MarketVehicleCostBasis[] = ["Per MT", "Per Trip"];
 
 export const BID_LOSS_REASON_OPTIONS = [
   "Rate Too High",
@@ -65,7 +66,8 @@ export const bidSchema = z.object({
   vehicleType: z.string().trim().max(60, "Vehicle type must be 60 characters or less."),
   totalQuantityMT: z.number({ message: "Total quantity must be a number." }).min(0, "Total quantity cannot be negative."),
   expectedLoadMT: z.number({ message: "Expected load must be a number." }).min(0, "Expected load cannot be negative."),
-  marketVehicleQuote: nonNegativeNumber("Market vehicle quote cannot be negative."),
+  marketVehicleQuote: nonNegativeNumber("Market cost cannot be negative."),
+  marketVehicleCostBasis: z.enum(["Per MT", "Per Trip"] as const, { message: "Choose a market cost basis." }),
   bidRateBasis: z.enum(["Per MT", "Per Vehicle"] as const, { message: "Choose a rate basis." }).nullable(),
   bidRate: nonNegativeNumber("Bid rate cannot be negative."),
   // Winning rate is meaningful only with an explicit basis.

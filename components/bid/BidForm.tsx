@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import FormField from "@/components/ui/FormField";
@@ -7,9 +9,10 @@ import FormSelect from "@/components/ui/FormSelect";
 import FormSection from "@/components/ui/FormSection";
 import BlankableNumberInput from "@/components/common/BlankableNumberInput";
 import type { BillingPartyRecord } from "@/components/services/billingParty.service";
-import type { CustomerRecord } from "@/components/services/customer.service";
+import type { BidCustomerLookupRow } from "@/components/services/customer.service";
 import type { MaterialRecord } from "@/components/services/material.service";
 import MasterAutocomplete, { type MasterAutocompleteOption } from "@/components/lookup/MasterAutocomplete";
+import BidCustomerAutocomplete from "./BidCustomerAutocomplete";
 import { VEHICLE_TYPE_OPTIONS } from "@/components/vehicle/vehicle.schema";
 import {
   calculateBidProfitability,
@@ -22,6 +25,7 @@ import {
 import {
   BID_LOSS_REASON_OPTIONS,
   BID_RATE_BASIS_OPTIONS,
+  MARKET_VEHICLE_COST_BASIS_OPTIONS,
   BID_SOURCE_OPTIONS,
   BID_STATUS_OPTIONS,
   type Bid,
@@ -33,8 +37,10 @@ interface BidFormProps {
   errors?: FieldErrors<Bid>;
   onChange: (bid: Bid) => void;
   billingParties: BillingPartyRecord[];
-  customers: CustomerRecord[];
   materials: MaterialRecord[];
+  /** Server-frozen customer snapshots keep existing Bid selections visible. */
+  initialConsignorName?: string;
+  initialConsigneeName?: string;
   /** Preserved server-side snapshot for an existing Bid whose material ID is legacy. */
   legacyMaterialName?: string;
   isNew?: boolean;
@@ -78,17 +84,28 @@ function ProfitRow({ label, value, isLoss }: { label: string; value: string; isL
   );
 }
 
-export default function BidForm({ bid, errors = {}, onChange, billingParties, customers, materials, legacyMaterialName = "", readOnly = false }: BidFormProps) {
+export default function BidForm({
+  bid,
+  errors = {},
+  onChange,
+  billingParties,
+  materials,
+  initialConsignorName = "",
+  initialConsigneeName = "",
+  legacyMaterialName = "",
+  readOnly = false,
+}: BidFormProps) {
+  const [selectedNames, setSelectedNames] = useState({
+    consignor: initialConsignorName,
+    consignee: initialConsigneeName,
+  });
+
   function update<K extends keyof Bid>(key: K, value: Bid[K]) {
     onChange({ ...bid, [key]: value });
   }
 
   function partyName(parties: BillingPartyRecord[], id: number): string {
     return parties.find((row) => row.id === id)?.name ?? "";
-  }
-
-  function customerName(id: number): string {
-    return customers.find((row) => row.id === id)?.name ?? "";
   }
 
   function handlePartySelect(option: MasterAutocompleteOption) {
@@ -99,26 +116,27 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
   /** Mirror the LR consignor/consignee convention: selecting a party
    * suggests its city into the matching location field, but only when
    * that field is still empty. Distance stays manual — never auto-set. */
-  function handleConsignorChange(id: number) {
-    const customer = customers.find((row) => row.id === id);
-    const next = { ...bid, consignorId: id };
+  function handleConsignorChange(customer: BidCustomerLookupRow | null) {
+    const next = { ...bid, consignorId: customer?.id ?? 0 };
     if (customer && !next.pickupLocation.trim() && customer.city.trim()) {
       next.pickupLocation = customer.city.trim();
     }
+    setSelectedNames((current) => ({ ...current, consignor: customer?.name ?? "" }));
     onChange(next);
   }
 
-  function handleConsigneeChange(id: number) {
-    const customer = customers.find((row) => row.id === id);
-    const next = { ...bid, consigneeId: id };
+  function handleConsigneeChange(customer: BidCustomerLookupRow | null) {
+    const next = { ...bid, consigneeId: customer?.id ?? 0 };
     if (customer && !next.dropoffLocation.trim() && customer.city.trim()) {
       next.dropoffLocation = customer.city.trim();
     }
+    setSelectedNames((current) => ({ ...current, consignee: customer?.name ?? "" }));
     onChange(next);
   }
 
   const calc = calculateBidProfitability({
     marketVehicleQuote: bid.marketVehicleQuote,
+    marketVehicleCostBasis: bid.marketVehicleCostBasis,
     expectedLoadMT: bid.expectedLoadMT,
     bidRate: bid.bidRate,
     bidRateBasis: bid.bidRateBasis,
@@ -227,22 +245,13 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
             error={errors.consignorId}
             hint="Type to search Customer Master, then select a row. Free text is not allowed."
           >
-            <MasterAutocomplete
+            <BidCustomerAutocomplete
               id="bid-consignor"
-              value={customerName(bid.consignorId)}
-              options={customers.map((customer) => ({
-                id: customer.id,
-                label: customer.name,
-                description: customer.code,
-                keywords: `${customer.code} ${customer.gst} ${customer.city} ${customer.address}`,
-              }))}
-              onSelect={(option) => {
-                const customer = customers.find((row) => row.id === option.id);
-                if (customer) handleConsignorChange(customer.id);
-              }}
-              onClear={() => handleConsignorChange(0)}
+              value={bid.consignorId > 0 ? selectedNames.consignor : ""}
+              disabled={readOnly}
+              onSelect={handleConsignorChange}
+              onClear={() => handleConsignorChange(null)}
               placeholder="Type to find consignor..."
-              emptyMessage="No matching customer in master data."
             />
           </FormField>
           <FormField label="Pickup Location" htmlFor="bid-pickup" required error={errors.pickupLocation}>
@@ -259,22 +268,13 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
             error={errors.consigneeId}
             hint="Type to search Customer Master, then select a row. Free text is not allowed."
           >
-            <MasterAutocomplete
+            <BidCustomerAutocomplete
               id="bid-consignee"
-              value={customerName(bid.consigneeId)}
-              options={customers.map((customer) => ({
-                id: customer.id,
-                label: customer.name,
-                description: customer.code,
-                keywords: `${customer.code} ${customer.gst} ${customer.city} ${customer.address}`,
-              }))}
-              onSelect={(option) => {
-                const customer = customers.find((row) => row.id === option.id);
-                if (customer) handleConsigneeChange(customer.id);
-              }}
-              onClear={() => handleConsigneeChange(0)}
+              value={bid.consigneeId > 0 ? selectedNames.consignee : ""}
+              disabled={readOnly}
+              onSelect={handleConsigneeChange}
+              onClear={() => handleConsigneeChange(null)}
               placeholder="Type to find consignee..."
-              emptyMessage="No matching customer in master data."
             />
           </FormField>
           <FormField label="Drop-off Location" htmlFor="bid-dropoff" required error={errors.dropoffLocation}>
@@ -371,7 +371,19 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
 
       <FormSection title="Market Vehicle Cost">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <FormField label="Market Vehicle Quote (₹ / vehicle)" htmlFor="bid-market-quote" error={errors.marketVehicleQuote}>
+          <FormField label="Market Cost Basis" htmlFor="bid-market-cost-basis" error={errors.marketVehicleCostBasis}>
+            <FormSelect
+              id="bid-market-cost-basis"
+              value={bid.marketVehicleCostBasis}
+              onValueChange={(value) => update("marketVehicleCostBasis", value as Bid["marketVehicleCostBasis"])}
+              options={toOptions(MARKET_VEHICLE_COST_BASIS_OPTIONS)}
+            />
+          </FormField>
+          <FormField
+            label={bid.marketVehicleCostBasis === "Per MT" ? "Market Cost (₹ / MT)" : "Market Cost (₹ / Trip)"}
+            htmlFor="bid-market-quote"
+            error={errors.marketVehicleQuote}
+          >
             <BlankableNumberInput
               id="bid-market-quote"
               min={0}
@@ -379,7 +391,12 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
               onChange={(value) => update("marketVehicleQuote", value)}
             />
           </FormField>
-          <FormField label="Market Cost Per MT">
+          <FormField label="Effective Market Vehicle Cost">
+            <div className="rounded-lg border border-border/60 bg-surface-muted/60 px-3 py-2 text-sm font-semibold">
+              {formatINR(calc.effectiveMarketVehicleCost)}
+            </div>
+          </FormField>
+          <FormField label="Derived Market Cost / MT">
             <div className="rounded-lg border border-border/60 bg-surface-muted/60 px-3 py-2 text-sm font-semibold">
               {formatINR(calc.marketCostPerMT)} / MT
             </div>
@@ -410,8 +427,11 @@ export default function BidForm({ bid, errors = {}, onChange, billingParties, cu
       </FormSection>
 
       <FormSection title="Profitability Calculator">
-        <ProfitRow label="Market Vehicle Quote" value={bid.marketVehicleQuote > 0 ? formatINR(bid.marketVehicleQuote) : "—"} />
-        <ProfitRow label="Market Cost / Vehicle" value={bid.marketVehicleQuote > 0 ? formatINR(bid.marketVehicleQuote) : "—"} />
+        <ProfitRow
+          label={bid.marketVehicleCostBasis === "Per MT" ? "Market Cost / MT" : "Market Cost / Trip"}
+          value={bid.marketVehicleQuote > 0 ? formatINR(bid.marketVehicleQuote) : "—"}
+        />
+        <ProfitRow label="Effective Market Vehicle Cost" value={formatINR(calc.effectiveMarketVehicleCost)} />
         <ProfitRow
           label="Expected Load / Vehicle"
           value={bid.expectedLoadMT > 0 ? formatMT(bid.expectedLoadMT) : "—"}

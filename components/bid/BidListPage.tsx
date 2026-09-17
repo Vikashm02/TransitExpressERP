@@ -30,7 +30,6 @@ import {
   type BidReminder,
 } from "@/components/services/bidReminder.service";
 import { getBillingParties, type BillingPartyRecord } from "@/components/services/billingParty.service";
-import { getCustomers, type CustomerRecord } from "@/components/services/customer.service";
 import { getMaterials, type MaterialRecord } from "@/components/services/material.service";
 import { VEHICLE_TYPE_OPTIONS } from "@/components/vehicle/vehicle.schema";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -54,7 +53,6 @@ function BidListPageInner() {
   const [bids, setBids] = useState<BidRecord[]>([]);
   const [reminders, setReminders] = useState<BidReminder[]>([]);
   const [billingParties, setBillingParties] = useState<BillingPartyRecord[]>([]);
-  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [materials, setMaterials] = useState<MaterialRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -94,16 +92,14 @@ function BidListPageInner() {
   async function loadAll() {
     try {
       setLoading(true);
-      const [bidRows, partyRows, customerRows, materialRows, reminderRows] = await Promise.all([
+      const [bidRows, partyRows, materialRows, reminderRows] = await Promise.all([
         getBids(),
         getBillingParties().catch(() => [] as BillingPartyRecord[]),
-        getCustomers().catch(() => [] as CustomerRecord[]),
         getMaterials().catch(() => [] as MaterialRecord[]),
         getMyScheduledReminders().catch(() => [] as BidReminder[]),
       ]);
       setBids(bidRows);
       setBillingParties(partyRows);
-      setCustomers(customerRows);
       setMaterials(materialRows);
       setReminders(reminderRows);
     } catch (error) {
@@ -350,7 +346,6 @@ function BidListPageInner() {
         onOpenChange={handleDialogOpenChange}
         bid={editingBid ?? viewingBid}
         billingParties={billingParties}
-        customers={customers}
         materials={materials}
         loading={saving}
         readOnly={Boolean(viewingBid) && !editingBid}

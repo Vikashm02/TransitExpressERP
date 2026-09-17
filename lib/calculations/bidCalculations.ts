@@ -8,6 +8,7 @@
  */
 
 export type BidRateBasis = "Per MT" | "Per Vehicle";
+export type MarketVehicleCostBasis = "Per MT" | "Per Trip";
 
 /**
  * A blank (missing) commercial input is never a real zero: a ₹0 quote or
@@ -17,17 +18,41 @@ export type BidRateBasis = "Per MT" | "Per Vehicle";
  */
 export interface BidEconomicsInput {
   marketVehicleQuote: number;
+  marketVehicleCostBasis: MarketVehicleCostBasis;
   expectedLoadMT: number;
   bidRate: number;
   bidRateBasis: BidRateBasis | null;
   totalQuantityMT: number;
 }
 
-/** Market cost per MT = quote / expected load. Null when either is missing. */
-export function marketCostPerMT(marketVehicleQuote: number, expectedLoadMT: number): number | null {
-  if (!Number.isFinite(marketVehicleQuote) || !Number.isFinite(expectedLoadMT)) return null;
-  if (expectedLoadMT <= 0 || marketVehicleQuote <= 0) return null;
-  return marketVehicleQuote / expectedLoadMT;
+/**
+ * Raw market quote is either a rate per MT or a fixed trip amount. This is
+ * the single source of truth for converting it into a vehicle/trip cost.
+ */
+export function effectiveMarketVehicleCost(
+  marketVehicleQuote: number,
+  marketVehicleCostBasis: MarketVehicleCostBasis,
+  expectedLoadMT: number
+): number | null {
+  if (!Number.isFinite(marketVehicleQuote) || marketVehicleQuote <= 0) return null;
+  if (marketVehicleCostBasis === "Per Trip") return marketVehicleQuote;
+  if (!Number.isFinite(expectedLoadMT) || expectedLoadMT <= 0) return null;
+  return marketVehicleQuote * expectedLoadMT;
+}
+
+/** Derived market cost per MT, regardless of how the raw quote was entered. */
+export function marketCostPerMT(
+  marketVehicleQuote: number,
+  marketVehicleCostBasis: MarketVehicleCostBasis,
+  expectedLoadMT: number
+): number | null {
+  const effectiveCost = effectiveMarketVehicleCost(
+    marketVehicleQuote,
+    marketVehicleCostBasis,
+    expectedLoadMT
+  );
+  if (effectiveCost === null || !Number.isFinite(expectedLoadMT) || expectedLoadMT <= 0) return null;
+  return effectiveCost / expectedLoadMT;
 }
 
 /** Revenue per vehicle. For Per MT: rate × expected load. Null when missing. */
@@ -123,7 +148,11 @@ export interface BidProjectTotals {
 export function projectTotals(input: BidEconomicsInput): BidProjectTotals {
   const loadsRaw = estimatedLoadsRaw(input.totalQuantityMT, input.expectedLoadMT);
   const equivRate = equivalentRatePerMT(input.bidRate, input.bidRateBasis, input.expectedLoadMT);
-  const marketPerMT = marketCostPerMT(input.marketVehicleQuote, input.expectedLoadMT);
+  const marketPerMT = marketCostPerMT(
+    input.marketVehicleQuote,
+    input.marketVehicleCostBasis,
+    input.expectedLoadMT
+  );
 
   if (loadsRaw === null || equivRate === null || marketPerMT === null) {
     return {
@@ -147,6 +176,7 @@ export function projectTotals(input: BidEconomicsInput): BidProjectTotals {
 }
 
 export interface BidProfitability {
+  effectiveMarketVehicleCost: number | null;
   marketCostPerMT: number | null;
   revenuePerVehicle: number | null;
   equivalentRatePerMT: number | null;
@@ -158,10 +188,20 @@ export interface BidProfitability {
 
 /** One-call summary for forms and tables. */
 export function calculateBidProfitability(input: BidEconomicsInput): BidProfitability {
-  const marketPerMT = marketCostPerMT(input.marketVehicleQuote, input.expectedLoadMT);
+  const marketPerMT = marketCostPerMT(
+    input.marketVehicleQuote,
+    input.marketVehicleCostBasis,
+    input.expectedLoadMT
+  );
   const revenue = revenuePerVehicle(input.bidRate, input.bidRateBasis, input.expectedLoadMT);
-  const gross = grossProfitPerVehicle(revenue, input.marketVehicleQuote);
+  const effectiveMarketCost = effectiveMarketVehicleCost(
+    input.marketVehicleQuote,
+    input.marketVehicleCostBasis,
+    input.expectedLoadMT
+  );
+  const gross = effectiveMarketCost === null ? null : grossProfitPerVehicle(revenue, effectiveMarketCost);
   return {
+    effectiveMarketVehicleCost: effectiveMarketCost,
     marketCostPerMT: marketPerMT,
     revenuePerVehicle: revenue,
     equivalentRatePerMT: equivalentRatePerMT(input.bidRate, input.bidRateBasis, input.expectedLoadMT),
