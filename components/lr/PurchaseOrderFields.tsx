@@ -49,7 +49,9 @@ export default function PurchaseOrderFields({ lr, onChange, readOnly, autoSelect
       hint={hint} placeholder="Choose active PO" disabled={loading}
       onValueChange={(id) => {
         const po = options.find((p) => p.id === Number(id));
-        if (po) onChange({ ...lr, purchaseOrderId: po.id, poNumber: po.poNumber, poDate: po.issueDate });
+        if (po && po.id !== lr.purchaseOrderId) {
+          onChange({ ...lr, purchaseOrderId: po.id, poNumber: po.poNumber, poDate: po.issueDate });
+        }
       }} /> : null}
     <FormField label="PO Number" htmlFor="lr-po-number" hint={options.length ? undefined : hint}>
       <Input id="lr-po-number" value={lr.poNumber} placeholder="PO Number"
