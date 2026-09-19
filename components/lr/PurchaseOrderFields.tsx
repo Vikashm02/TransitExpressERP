@@ -5,6 +5,7 @@ import FormField from "@/components/ui/FormField";
 import FormSelect from "@/components/ui/FormSelect";
 import FormDatePicker from "@/components/ui/FormDatePicker";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { getActiveLrPurchaseOrders, type PurchaseOrderLookup } from "@/components/services/purchaseOrder.service";
 import type { LR } from "./lr.schema";
 
@@ -41,6 +42,8 @@ export default function PurchaseOrderFields({ lr, onChange, readOnly, autoSelect
     : options.length > 1 ? "Multiple active POs found. Choose the correct PO."
     : !options.length && lr.customer && lr.consignor ? "No active PO found for this Billing Party and Consignor." : undefined;
   const selectedIsActive = options.some((p) => p.id === lr.purchaseOrderId);
+  const selectedPO = options.find((p) => p.id === lr.purchaseOrderId);
+  const poMasterDiffers = selectedPO && (selectedPO.poNumber !== lr.poNumber || selectedPO.issueDate !== lr.poDate);
 
   return <>
     {!readOnly && options.length > 0 ? <FormSelect label="Active PO" id="lr-active-po"
@@ -53,6 +56,19 @@ export default function PurchaseOrderFields({ lr, onChange, readOnly, autoSelect
           onChange({ ...lr, purchaseOrderId: po.id, poNumber: po.poNumber, poDate: po.issueDate });
         }
       }} /> : null}
+    {poMasterDiffers && !readOnly && lr.purchaseOrderId && (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          const po = options.find((p) => p.id === lr.purchaseOrderId);
+          if (po) onChange({ ...lr, poNumber: po.poNumber, poDate: po.issueDate });
+        }}
+        className="mt-2 w-full"
+      >
+        Update from PO Master
+      </Button>
+    )}
     <FormField label="PO Number" htmlFor="lr-po-number" hint={options.length ? undefined : hint}>
       <Input id="lr-po-number" value={lr.poNumber} placeholder="PO Number"
         readOnly={readOnly || Boolean(lr.purchaseOrderId) || options.length > 0}
