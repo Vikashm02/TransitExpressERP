@@ -17,11 +17,12 @@ import {
   type AsnRecord,
 } from "@/components/services/asn.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
 
 const PAGE_SIZE = 10;
 
 export default function AsnListPage() {
-  const { hasPermission, hasAction, isCreator } = useAuth();
+  const { hasPermission, hasAction, isCreator, isAdmin } = useAuth();
   const canCreate = hasPermission("asn_creations", "create_view");
   const canEdit =
     hasPermission("asn_creations", "edit") || hasAction("asn_creations", "edit");
@@ -75,6 +76,10 @@ export default function AsnListPage() {
   }
 
   function handleEdit(asn: AsnRecord) {
+    if (!canStaffEditRecord(isAdmin, canEdit, asn)) {
+      toast.error(canEdit ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE : "You do not have permission to edit ASNs.");
+      return;
+    }
     setEditing(asn);
     setDialogMode("edit");
     setDialogOpen(true);
@@ -103,6 +108,10 @@ export default function AsnListPage() {
       setSaving(true);
 
       if (editing) {
+        if (!canStaffEditRecord(isAdmin, canEdit, editing)) {
+          toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+          return;
+        }
         await updateAsn(editing.id, values);
         toast.success("ASN updated successfully.");
       } else {
@@ -165,6 +174,7 @@ export default function AsnListPage() {
         canEdit={canEdit}
         canDelete={canDelete}
         canPrint={canPrint}
+        isAdmin={isAdmin}
       />
 
       <AsnDialog

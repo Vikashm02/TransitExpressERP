@@ -21,6 +21,7 @@ import {
   type DCChangedField,
 } from "@/components/services/deliveryChallan.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
 
 const PAGE_SIZE = 10;
 
@@ -78,7 +79,7 @@ function computeDCChangedFields(
 }
 
 export default function DeliveryChallanListPage() {
-  const { hasPermission, hasAction } = useAuth();
+  const { hasPermission, hasAction, isAdmin } = useAuth();
   const canCreate = hasPermission("delivery_challans", "create_view");
   const canEdit =
     hasPermission("delivery_challans", "edit") || hasAction("delivery_challans", "edit");
@@ -168,6 +169,10 @@ export default function DeliveryChallanListPage() {
   }
 
   function handleEdit(challan: DeliveryChallanRecord) {
+    if (!canStaffEditRecord(isAdmin, canEdit, challan)) {
+      toast.error(canEdit ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE : "You do not have permission to edit Delivery Challans.");
+      return;
+    }
     setEditing(challan);
     setDialogMode("edit");
     setDialogOpen(true);
@@ -209,6 +214,10 @@ export default function DeliveryChallanListPage() {
       setSaving(true);
 
       if (editing) {
+        if (!canStaffEditRecord(isAdmin, canEdit, editing)) {
+          toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+          return;
+        }
         const changedFields = computeDCChangedFields(editing, values);
         await updateDeliveryChallan(editing.id, values, changedFields);
         if (changedFields.length > 0) {
@@ -307,6 +316,7 @@ export default function DeliveryChallanListPage() {
         canEdit={canEdit}
         canPrint={canPrint}
         canShare={canShare}
+        isAdmin={isAdmin}
       />
 
       <DeliveryChallanDialog

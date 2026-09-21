@@ -7,6 +7,7 @@ import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type { PodRecord } from "@/components/services/pod.service";
+import { canStaffEditRecord } from "@/lib/editWindow";
 
 /** Same presentation as FormDatePicker (`dd MMM yyyy`). */
 const POD_DATE_DISPLAY = "dd MMM yyyy";
@@ -54,6 +55,8 @@ interface PodTableProps {
   canEdit?: boolean;
   /** Admin-only delete visibility (AuthProvider isAdmin). */
   canDelete?: boolean;
+  /** Creator/Admin bypass for the 48-hour staff edit window (matches DB is_admin()). */
+  isAdmin?: boolean;
 }
 
 export default function PodTable({
@@ -65,6 +68,7 @@ export default function PodTable({
   onDelete,
   canEdit = true,
   canDelete = false,
+  isAdmin = true,
 }: PodTableProps) {
   const columns: DataTableColumn<PodListRow>[] = [
     {
@@ -142,7 +146,7 @@ export default function PodTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: () => !canEdit,
+          hidden: (row) => !canStaffEditRecord(isAdmin, canEdit, row),
         },
         {
           label: "Delete",

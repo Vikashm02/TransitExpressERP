@@ -5,6 +5,7 @@ import { Eye, Pencil, Printer, ReceiptIndianRupee, Share2, Trash2 } from "lucide
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { BillRecord } from "@/components/services/billing.service";
+import { canStaffEditRecord } from "@/lib/editWindow";
 
 interface BillingTableProps {
   bills: BillRecord[];
@@ -22,6 +23,8 @@ interface BillingTableProps {
   canEdit?: boolean;
   /** Delete is Creator-only (migrations 047/048). */
   canDelete?: boolean;
+  /** Creator/Admin bypass for the 48-hour staff edit window (matches DB is_admin()). */
+  isAdmin?: boolean;
 }
 
 export default function BillingTable({
@@ -35,6 +38,7 @@ export default function BillingTable({
   onDelete,
   canEdit = true,
   canDelete = false,
+  isAdmin = true,
 }: BillingTableProps) {
   const columns: DataTableColumn<BillRecord>[] = [
     { key: "billNumber", header: "Bill No.", sortable: true, className: "font-medium" },
@@ -81,7 +85,7 @@ export default function BillingTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: () => !canEdit,
+          hidden: (row) => !canStaffEditRecord(isAdmin, canEdit, row),
         },
         {
           label: "Print",

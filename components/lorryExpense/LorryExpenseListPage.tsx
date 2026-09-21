@@ -40,6 +40,11 @@ import {
 } from "@/lib/calculations/lorrySettlement";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { isDraftEntry } from "@/lib/entryStatus";
+import {
+  STAFF_EDIT_WINDOW_EXPIRED_MESSAGE,
+  canStaffEditRecord,
+  isWithinEditWindow,
+} from "@/lib/editWindow";
 
 /** Supabase / RPC authorization failures for Financials writes. */
 function isFinancialsPermissionError(error: unknown): boolean {
@@ -63,7 +68,7 @@ function money(value: number): string {
  * Broker, and Beneficiary. Permission key remains `lorry_expenses`.
  */
 export default function LorryExpenseListPage() {
-  const { isCreator, hasPermission, hasAction } = useAuth();
+  const { isCreator, isAdmin, hasPermission, hasAction } = useAuth();
   const canCreate = hasPermission("lorry_expenses", "create_view");
   const canEdit =
     hasPermission("lorry_expenses", "edit") || hasAction("lorry_expenses", "edit");
@@ -214,8 +219,12 @@ export default function LorryExpenseListPage() {
 
   function handleEdit(row: LorryExpenseListRow) {
     if (isDraftEntry(row.entryStatus)) return;
-    if (!canEdit) {
-      toast.error("You do not have permission to edit finalized Financials.");
+    if (!canStaffEditRecord(isAdmin, canEdit, row)) {
+      toast.error(
+        canEdit
+          ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+          : "You do not have permission to edit finalized Financials."
+      );
       return;
     }
     const expense = expenses.find((item) => item.id === row.id) ?? null;
@@ -225,8 +234,12 @@ export default function LorryExpenseListPage() {
 
   function handleContinueDraft(row: LorryExpenseListRow) {
     if (!isDraftEntry(row.entryStatus)) return;
-    if (!canContinueDraft) {
-      toast.error("You do not have permission to continue this draft.");
+    if (!canStaffEditRecord(isAdmin, canContinueDraft, row)) {
+      toast.error(
+        canContinueDraft
+          ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+          : "You do not have permission to continue this draft."
+      );
       return;
     }
     const expense = expenses.find((item) => item.id === row.id) ?? null;
@@ -262,6 +275,13 @@ export default function LorryExpenseListPage() {
   ): Promise<number | null> {
     const draftValues = { ...values, entryStatus: "draft" as const };
     if (existingId) {
+      // Stale-dialog guard: an autosave is still an UPDATE (DB RLS authoritative).
+      const autosaveTarget =
+        expenses.find((item) => item.id === existingId) ?? editingExpense;
+      if (autosaveTarget && !canStaffEditRecord(isAdmin, canContinueDraft, autosaveTarget)) {
+        toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+        return null;
+      }
       const updated = await updateLorryExpense(existingId, draftValues);
       setEditingExpense(updated);
       return updated.id;
@@ -286,6 +306,13 @@ export default function LorryExpenseListPage() {
         return;
       }
 
+      // Staff 48h window applies to the linked LR's ORIGINAL created_at
+      // for the commercial RPC as well (DB RPC check authoritative).
+      if (!isAdmin && !isWithinEditWindow(linkedLr)) {
+        toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+        return;
+      }
+
       // Narrow Financials RPC — does not use updateLR() / lr.edit.
       await updateLRFinancials(String(linkedLr.id), {
         billRate: commercial.billRate,
@@ -297,13 +324,23 @@ export default function LorryExpenseListPage() {
       });
 
       if (existingId) {
+        const submitTarget =
+          expenses.find((item) => item.id === existingId) ?? editingExpense;
         if (editingExpense && isDraftEntry(editingExpense.entryStatus)) {
-          if (!canContinueDraft) {
-            toast.error("You do not have permission to continue this draft.");
+          if (!canStaffEditRecord(isAdmin, canContinueDraft, submitTarget)) {
+            toast.error(
+              canContinueDraft
+                ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+                : "You do not have permission to continue this draft."
+            );
             return;
           }
-        } else if (!canEdit) {
-          toast.error("You do not have permission to edit finalized Financials.");
+        } else if (!canStaffEditRecord(isAdmin, canEdit, submitTarget)) {
+          toast.error(
+            canEdit
+              ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+              : "You do not have permission to edit finalized Financials."
+          );
           return;
         }
         await updateLorryExpense(existingId, { ...values, entryStatus: "final" });
@@ -334,7 +371,10 @@ export default function LorryExpenseListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      if (isFinancialsPermissionError(error)) {
+      const errorText = error instanceof Error ? error.message.toLowerCase() : "";
+      if (errorText.includes("edit window has expired")) {
+        toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+      } else if (isFinancialsPermissionError(error)) {
         toast.error("You do not have permission to edit Financials for this LR.");
       } else {
         toast.error("Unable to save Financials.");
@@ -513,6 +553,7 @@ export default function LorryExpenseListPage() {
         canEdit={canEdit}
         canContinueDraft={canContinueDraft}
         canDelete={canDelete}
+        isAdmin={isAdmin}
       />
 
       <LorryExpenseDialog

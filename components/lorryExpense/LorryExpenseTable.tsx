@@ -12,6 +12,7 @@ import {
   entryStatusLabel,
   isDraftEntry,
 } from "@/lib/entryStatus";
+import { canStaffEditRecord } from "@/lib/editWindow";
 
 export interface LorryExpenseListRow extends LorryExpenseRecord {
   lrNumber: string;
@@ -37,6 +38,8 @@ interface LorryExpenseTableProps {
   canEdit?: boolean;
   canContinueDraft?: boolean;
   canDelete?: boolean;
+  /** Creator/Admin bypass for the 48-hour staff edit window (matches DB is_admin()). */
+  isAdmin?: boolean;
 }
 
 function money(value: number): string {
@@ -53,6 +56,7 @@ export default function LorryExpenseTable({
   canEdit = true,
   canContinueDraft = true,
   canDelete = true,
+  isAdmin = true,
 }: LorryExpenseTableProps) {
   const columns: DataTableColumn<LorryExpenseListRow>[] = [
     { key: "lrNumber", header: "LR No.", sortable: true, className: "font-medium" },
@@ -131,10 +135,10 @@ export default function LorryExpenseTable({
 
   function handleRowClick(row: LorryExpenseListRow) {
     if (isDraftEntry(row.entryStatus)) {
-      if (canContinueDraft) onContinueDraft(row);
+      if (canStaffEditRecord(isAdmin, canContinueDraft, row)) onContinueDraft(row);
       return;
     }
-    if (canEdit) onEdit(row);
+    if (canStaffEditRecord(isAdmin, canEdit, row)) onEdit(row);
   }
 
   return (
@@ -157,14 +161,17 @@ export default function LorryExpenseTable({
           icon: Pencil,
           variant: "outline",
           onClick: onContinueDraft,
-          hidden: (row) => !isDraftEntry(row.entryStatus) || !canContinueDraft,
+          hidden: (row) =>
+            !isDraftEntry(row.entryStatus) ||
+            !canStaffEditRecord(isAdmin, canContinueDraft, row),
         },
         {
           label: "Edit",
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: (row) => isDraftEntry(row.entryStatus) || !canEdit,
+          hidden: (row) =>
+            isDraftEntry(row.entryStatus) || !canStaffEditRecord(isAdmin, canEdit, row),
         },
         {
           label: "Delete",

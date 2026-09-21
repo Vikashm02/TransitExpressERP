@@ -27,6 +27,7 @@ import {
 import { getLRs, updateLR, type LRRecord } from "@/components/services/lr.service";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
 
 const PAGE_SIZE = 10;
 
@@ -146,6 +147,10 @@ export default function PodListPage() {
   }
 
   function handleEdit(pod: PodRecord) {
+    if (!canStaffEditRecord(isAdmin, canEdit, pod)) {
+      toast.error(canEdit ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE : "You do not have permission to edit PODs.");
+      return;
+    }
     setEditingPod(pod);
     setViewOnly(false);
     setDialogOpen(true);
@@ -177,7 +182,13 @@ export default function PodListPage() {
     const lr = lrs.find((record) => record.lrNumber === lrNumber);
     if (!lr || lr.status === "Delivered") return;
 
-    await updateLR(lr.id, { ...lr, status: "Delivered" });
+    // Best-effort: the POD save itself already succeeded. An old LR
+    // (e.g. past the staff 48h edit window) must not fail the POD save.
+    try {
+      await updateLR(lr.id, { ...lr, status: "Delivered" });
+    } catch (error) {
+      console.warn("Linked LR could not be marked Delivered.", error);
+    }
   }
 
   async function handleSubmit(values: Pod) {
@@ -185,6 +196,10 @@ export default function PodListPage() {
       setSaving(true);
 
       if (editingPod) {
+        if (!canStaffEditRecord(isAdmin, canEdit, editingPod)) {
+          toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+          return;
+        }
         const changedFields = computePodNotificationChanges(editingPod, values);
         await updatePod(editingPod.id, values, changedFields);
         if (changedFields.length > 0) {
@@ -318,6 +333,7 @@ export default function PodListPage() {
         onDelete={(pod) => setDeleteTarget(pod)}
         canEdit={canEdit}
         canDelete={canDelete}
+        isAdmin={isAdmin}
       />
 
       <PodDialog

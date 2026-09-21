@@ -59,6 +59,7 @@ import {
   isDraftLrNumber,
   needsLrNumberAllocation,
 } from "@/lib/entryStatus";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
 import { normalizeLrForDraftPersist } from "@/lib/draftPersistence";
 import LrSeriesStatus from "./LrSeriesStatus";
 import PendingDraftLrsDialog from "./PendingDraftLrsDialog";
@@ -389,8 +390,12 @@ function LRListPageContent() {
 
   function handleEdit(lr: LRRecord) {
     if (isDraftEntry(lr.entryStatus)) return;
-    if (!canEdit) {
-      toast.error("You do not have permission to edit finalized LRs.");
+    if (!canStaffEditRecord(isAdmin, canEdit, lr)) {
+      toast.error(
+        canEdit
+          ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+          : "You do not have permission to edit finalized LRs."
+      );
       return;
     }
     beginExistingLrSession();
@@ -401,8 +406,12 @@ function LRListPageContent() {
 
   function handleContinueDraft(lr: LRRecord) {
     if (!isDraftEntry(lr.entryStatus)) return;
-    if (!canContinueDraft) {
-      toast.error("You do not have permission to continue this draft.");
+    if (!canStaffEditRecord(isAdmin, canContinueDraft, lr)) {
+      toast.error(
+        canContinueDraft
+          ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+          : "You do not have permission to continue this draft."
+      );
       return;
     }
     beginExistingLrSession();
@@ -456,9 +465,19 @@ function LRListPageContent() {
     }
     try {
       const pod = await getPod(podId);
+      // The POD's own 48h clock (pod.created_at) applies — not the LR's.
+      // An expired POD falls back to view-only; POD RLS stays authoritative.
+      const podEditable = viewOnly || canStaffEditRecord(isAdmin, canEditPod, pod);
+      if (!viewOnly && !podEditable) {
+        toast.error(
+          canEditPod
+            ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+            : "You do not have permission to edit a POD."
+        );
+      }
       setPodDialogRecord(pod);
       setPodDialogInitialLr(null);
-      setPodDialogViewOnly(viewOnly);
+      setPodDialogViewOnly(viewOnly || !podEditable);
       setPodDialogOpen(true);
     } catch (error) {
       console.error(error);
@@ -482,7 +501,13 @@ function LRListPageContent() {
   async function markLRDeliveredFromPod(lrNumber: string) {
     const lr = lrs.find((record) => record.lrNumber === lrNumber);
     if (!lr || lr.status === "Delivered") return;
-    await updateLR(lr.id, { ...lr, status: "Delivered" });
+    // Best-effort: the POD save itself already succeeded. An old LR
+    // (e.g. past the staff 48h edit window) must not fail the POD save.
+    try {
+      await updateLR(lr.id, { ...lr, status: "Delivered" });
+    } catch (error) {
+      console.warn("Linked LR could not be marked Delivered.", error);
+    }
   }
 
   async function handlePodSubmit(values: Pod) {
@@ -490,6 +515,10 @@ function LRListPageContent() {
       setPodSaving(true);
 
       if (podDialogRecord) {
+        if (!canStaffEditRecord(isAdmin, canEditPod, podDialogRecord)) {
+          toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+          return;
+        }
         const changedFields = computePodNotificationChanges(podDialogRecord, values);
         await updatePod(podDialogRecord.id, values, changedFields);
         toast.success("POD updated successfully.");
@@ -544,8 +573,12 @@ function LRListPageContent() {
 
       if (editingLR) {
         if (editingLR.entryStatus === "draft" || isDraftLrNumber(editingLR.lrNumber)) {
-          if (!canContinueDraft) {
-            toast.error("You do not have permission to continue this draft.");
+          if (!canStaffEditRecord(isAdmin, canContinueDraft, editingLR)) {
+            toast.error(
+              canContinueDraft
+                ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+                : "You do not have permission to continue this draft."
+            );
             return;
           }
 
@@ -563,8 +596,12 @@ function LRListPageContent() {
           });
           successMessage = `LR ${lrNumber} saved successfully.`;
         } else {
-          if (!canEdit) {
-            toast.error("You do not have permission to edit finalized LRs.");
+          if (!canStaffEditRecord(isAdmin, canEdit, editingLR)) {
+            toast.error(
+              canEdit
+                ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
+                : "You do not have permission to edit finalized LRs."
+            );
             return;
           }
           await updateLR(editingLR.id, {
@@ -1036,7 +1073,7 @@ function LRListPageContent() {
           dialogMode === "view" &&
           editingLR &&
           !isDraftEntry(editingLR.entryStatus) &&
-          canEdit
+          canStaffEditRecord(isAdmin, canEdit, editingLR)
             ? () => setDialogMode("edit")
             : undefined
         }
@@ -1044,7 +1081,7 @@ function LRListPageContent() {
           dialogMode === "view" &&
           editingLR &&
           isDraftEntry(editingLR.entryStatus) &&
-          canContinueDraft
+          canStaffEditRecord(isAdmin, canContinueDraft, editingLR)
             ? () => handleContinueDraft(editingLR)
             : undefined
         }

@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import { amountInWords } from "@/lib/numberToWords";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, isWithinEditWindow } from "@/lib/editWindow";
 import {
   getBill,
   updateBill,
@@ -37,6 +39,7 @@ function money(value: number): string {
  * `updateBill()`. No LR can be added or removed from an existing Bill.
  */
 export default function EditBillDialog({ open, onOpenChange, bill, onSaved }: EditBillDialogProps) {
+  const { isAdmin } = useAuth();
   const [detail, setDetail] = useState<BillDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [billDate, setBillDate] = useState("");
@@ -72,6 +75,12 @@ export default function EditBillDialog({ open, onOpenChange, bill, onSaved }: Ed
   async function handleSave() {
     if (!bill || !billDate.trim()) {
       toast.error("Bill date is required.");
+      return;
+    }
+    // Stale-dialog guard: staff cannot keep an old Edit dialog open
+    // past the 48-hour window. Database RLS remains authoritative.
+    if (!isAdmin && !isWithinEditWindow(bill)) {
+      toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
       return;
     }
 

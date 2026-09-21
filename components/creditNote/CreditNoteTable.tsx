@@ -5,6 +5,7 @@ import { Eye, FileMinus2, Pencil } from "lucide-react";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { CreditNoteRecord } from "@/components/services/creditNote.service";
+import { canStaffEditRecord } from "@/lib/editWindow";
 
 interface CreditNoteTableProps {
   creditNotes: CreditNoteRecord[];
@@ -16,6 +17,8 @@ interface CreditNoteTableProps {
    * "credit_notes" edit permission. Defaults to `true` for existing
    * call sites. */
   canEdit?: boolean;
+  /** Creator/Admin bypass for the 48-hour staff edit window (matches DB is_admin()). */
+  isAdmin?: boolean;
 }
 
 export default function CreditNoteTable({
@@ -25,6 +28,7 @@ export default function CreditNoteTable({
   onView,
   onEdit,
   canEdit = true,
+  isAdmin = true,
 }: CreditNoteTableProps) {
   const columns: DataTableColumn<CreditNoteRecord>[] = [
     { key: "creditNoteNumber", header: "Credit Note No.", sortable: true, className: "font-medium" },
@@ -83,7 +87,7 @@ export default function CreditNoteTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: () => !canEdit,
+          hidden: (row) => !canStaffEditRecord(isAdmin, canEdit, row),
         },
       ]}
     />

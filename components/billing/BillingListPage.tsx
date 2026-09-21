@@ -26,11 +26,12 @@ import {
 import { getCompany, saveCompany } from "@/components/services/company.service";
 import { getLRs, updateLR } from "@/components/services/lr.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
 
 const PAGE_SIZE = 10;
 
 export default function BillingListPage() {
-  const { hasPermission, isCreator } = useAuth();
+  const { hasPermission, isCreator, isAdmin } = useAuth();
   const canCreate = hasPermission("billing", "create_view");
   const canEdit = hasPermission("billing", "edit");
   const canDelete = isCreator;
@@ -98,6 +99,10 @@ export default function BillingListPage() {
   }
 
   function handleEdit(bill: BillRecord) {
+    if (!canStaffEditRecord(isAdmin, canEdit, bill)) {
+      toast.error(canEdit ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE : "You do not have permission to edit bills.");
+      return;
+    }
     setEditTarget(bill);
     setEditOpen(true);
   }
@@ -145,7 +150,15 @@ export default function BillingListPage() {
   async function markLRsBilled(lrIds: string[]) {
     const lrs = await getLRs();
     const targets = lrs.filter((lr) => lrIds.includes(String(lr.id)) && lr.status !== "Billed");
-    await Promise.all(targets.map((lr) => updateLR(lr.id, { ...lr, status: "Billed" })));
+    // Best-effort: the Bill itself already saved. An old LR (e.g. past
+    // the staff 48h edit window) must not fail the Bill creation.
+    await Promise.all(
+      targets.map((lr) =>
+        updateLR(lr.id, { ...lr, status: "Billed" }).catch((error) => {
+          console.warn("Linked LR could not be marked Billed.", error);
+        })
+      )
+    );
   }
 
   async function handleSubmit(values: Bill, lines: BillLineInput[]) {
@@ -280,6 +293,7 @@ export default function BillingListPage() {
         onDelete={setDeleteTarget}
         canEdit={canEdit}
         canDelete={canDelete}
+        isAdmin={isAdmin}
       />
 
       <BillDialog

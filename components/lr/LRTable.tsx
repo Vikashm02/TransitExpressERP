@@ -21,6 +21,7 @@ import {
   isDraftLrNumber,
 } from "@/lib/entryStatus";
 import { cn } from "@/lib/utils";
+import { canStaffEditRecord } from "@/lib/editWindow";
 
 interface LRTableProps {
   lrs: LRRecord[];
@@ -267,14 +268,17 @@ export default function LRTable({
           icon: Pencil,
           variant: "outline",
           onClick: onContinueDraft,
-          hidden: (row) => !isDraftEntry(row.entryStatus) || !canContinueDraft,
+          hidden: (row) =>
+            !isDraftEntry(row.entryStatus) ||
+            !canStaffEditRecord(isAdmin, canContinueDraft, row),
         },
         {
           label: "Edit",
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: (row) => isDraftEntry(row.entryStatus) || !canEdit,
+          hidden: (row) =>
+            isDraftEntry(row.entryStatus) || !canStaffEditRecord(isAdmin, canEdit, row),
         },
         {
           label: "Create POD",
@@ -327,7 +331,9 @@ export default function LRTable({
                 icon: UserCog,
                 variant: "outline" as const,
                 onClick: onReassign,
-                hidden: (row: LRRecord) => isDraftEntry(row.entryStatus) || !canEdit,
+                hidden: (row: LRRecord) =>
+                  isDraftEntry(row.entryStatus) ||
+                  !canStaffEditRecord(isAdmin, canEdit, row),
               },
             ]
           : []),

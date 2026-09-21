@@ -6,6 +6,7 @@ import { format, parseISO } from "date-fns";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { AsnRecord } from "@/components/services/asn.service";
+import { canStaffEditRecord } from "@/lib/editWindow";
 
 interface AsnTableProps {
   asns: AsnRecord[];
@@ -21,6 +22,8 @@ interface AsnTableProps {
   canDelete?: boolean;
   /** Hides Print when the caller lacks asn_creations print action. */
   canPrint?: boolean;
+  /** Creator/Admin bypass for the 48-hour staff edit window (matches DB is_admin()). */
+  isAdmin?: boolean;
 }
 
 function formatEta(value: string): string {
@@ -44,6 +47,7 @@ export default function AsnTable({
   canEdit = true,
   canDelete = true,
   canPrint = true,
+  isAdmin = true,
 }: AsnTableProps) {
   const columns: DataTableColumn<AsnRecord>[] = [
     { key: "asnNumber", header: "ASN Number", sortable: true, className: "font-medium" },
@@ -89,7 +93,7 @@ export default function AsnTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: () => !canEdit,
+          hidden: (row) => !canStaffEditRecord(isAdmin, canEdit, row),
         },
         {
           label: "Print",

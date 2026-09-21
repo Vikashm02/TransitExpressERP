@@ -5,6 +5,7 @@ import { Eye, FileStack, Pencil, Printer, Share2 } from "lucide-react";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { DeliveryChallanRecord } from "@/components/services/deliveryChallan.service";
+import { canStaffEditRecord } from "@/lib/editWindow";
 
 interface DeliveryChallanTableProps {
   challans: DeliveryChallanRecord[];
@@ -17,6 +18,8 @@ interface DeliveryChallanTableProps {
   canEdit?: boolean;
   canPrint?: boolean;
   canShare?: boolean;
+  /** Creator/Admin bypass for the 48-hour staff edit window (matches DB is_admin()). */
+  isAdmin?: boolean;
 }
 
 export default function DeliveryChallanTable({
@@ -30,6 +33,7 @@ export default function DeliveryChallanTable({
   canEdit = true,
   canPrint = true,
   canShare = true,
+  isAdmin = true,
 }: DeliveryChallanTableProps) {
   const columns: DataTableColumn<DeliveryChallanRecord>[] = [
     { key: "lrNumber", header: "LR Number", sortable: true, className: "font-medium" },
@@ -78,7 +82,7 @@ export default function DeliveryChallanTable({
           icon: Pencil,
           variant: "outline",
           onClick: onEdit,
-          hidden: () => !canEdit,
+          hidden: (row) => !canStaffEditRecord(isAdmin, canEdit, row),
         },
         {
           label: "Print",

@@ -22,11 +22,12 @@ import {
 } from "@/components/services/debitNote.service";
 import { getBillingParty } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
 
 const PAGE_SIZE = 10;
 
 export default function DebitNoteListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isAdmin } = useAuth();
   const canCreate = hasPermission("debit_notes", "create_view");
   const canEdit = hasPermission("debit_notes", "edit");
 
@@ -89,6 +90,10 @@ export default function DebitNoteListPage() {
   }
 
   function handleEdit(note: DebitNoteRecord) {
+    if (!canStaffEditRecord(isAdmin, canEdit, note)) {
+      toast.error(canEdit ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE : "You do not have permission to edit debit notes.");
+      return;
+    }
     setActiveDebitNote(note);
     setDialogMode("edit");
     setDialogOpen(true);
@@ -104,6 +109,10 @@ export default function DebitNoteListPage() {
       setSaving(true);
 
       if (dialogMode === "edit" && activeDebitNote) {
+        if (!canStaffEditRecord(isAdmin, canEdit, activeDebitNote)) {
+          toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+          return;
+        }
         await updateDebitNote(activeDebitNote.id, values);
         toast.success(`Debit Note ${activeDebitNote.debitNoteNumber} updated successfully.`);
       } else {
@@ -217,6 +226,7 @@ export default function DebitNoteListPage() {
         onView={handleView}
         onEdit={handleEdit}
         canEdit={canEdit}
+        isAdmin={isAdmin}
       />
 
       <DebitNoteDialog

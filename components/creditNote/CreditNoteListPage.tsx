@@ -22,11 +22,12 @@ import {
 } from "@/components/services/creditNote.service";
 import { getBillingParty } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
 
 const PAGE_SIZE = 10;
 
 export default function CreditNoteListPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, isAdmin } = useAuth();
   const canCreate = hasPermission("credit_notes", "create_view");
   const canEdit = hasPermission("credit_notes", "edit");
 
@@ -89,6 +90,10 @@ export default function CreditNoteListPage() {
   }
 
   function handleEdit(note: CreditNoteRecord) {
+    if (!canStaffEditRecord(isAdmin, canEdit, note)) {
+      toast.error(canEdit ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE : "You do not have permission to edit credit notes.");
+      return;
+    }
     setActiveCreditNote(note);
     setDialogMode("edit");
     setDialogOpen(true);
@@ -104,6 +109,10 @@ export default function CreditNoteListPage() {
       setSaving(true);
 
       if (dialogMode === "edit" && activeCreditNote) {
+        if (!canStaffEditRecord(isAdmin, canEdit, activeCreditNote)) {
+          toast.error(STAFF_EDIT_WINDOW_EXPIRED_MESSAGE);
+          return;
+        }
         await updateCreditNote(activeCreditNote.id, values);
         toast.success(`Credit Note ${activeCreditNote.creditNoteNumber} updated successfully.`);
       } else {
@@ -217,6 +226,7 @@ export default function CreditNoteListPage() {
         onView={handleView}
         onEdit={handleEdit}
         canEdit={canEdit}
+        isAdmin={isAdmin}
       />
 
       <CreditNoteDialog
