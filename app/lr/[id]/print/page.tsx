@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Download, Printer } from "lucide-react";
+import { ArrowLeft, Download, Minus, Plus, Printer } from "lucide-react";
 
 import type { PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
 
@@ -28,6 +28,28 @@ export default function LRPrintPage() {
   const [previewReady, setPreviewReady] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Committed zoom (1 = 100%). Drives the crisp pdfjs re-render below.
+  const [zoom, setZoom] = useState(1);
+  // Active pointer positions during gestures (pointerId -> client coords).
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  // Pinch session baseline captured when the second pointer lands.
+  const pinchRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+  // True from the second finger down until every finger is up; survives a
+  // momentary single-finger lift so the final release still commits.
+  const pinchSessionRef = useRef(false);
+  // Live visual zoom including in-gesture feedback (mirrors committed zoom).
+  const liveZoomRef = useRef(1);
+  // Last single-tap for double-tap detection.
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  // Scroll position to restore after a zoom re-render (proportional ratios,
+  // plus optional tap point to center for double-tap).
+  const zoomRestoreRef = useRef<{
+    ratioX: number;
+    ratioY: number;
+    centerX?: number;
+    centerY?: number;
+  } | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState("LR.pdf");
   const [loading, setLoading] = useState(true);
@@ -74,6 +96,8 @@ export default function LRPrintPage() {
             return;
           }
           setPdfFile(file);
+          setZoom(1);
+          zoomRestoreRef.current = null;
           setPdfUrl(objectUrl);
           setFileName(lrPdfFileName(lrRecord.lrNumber, lrRecord.vehicleNumber));
           document.title = file.name.replace(/\.pdf$/i, "");
@@ -117,6 +141,8 @@ export default function LRPrintPage() {
 
   // Renders page 1 of the ACTUAL generated PDF into the preview canvas.
   // Nothing is redrawn manually; the bytes above are the source of truth.
+  // Render scale follows the committed zoom (base 1.5 × zoom) so zoomed
+  // output stays crisp — never a CSS-only upscale of a low-res bitmap.
   useEffect(() => {
     if (!pdfFile) return;
     const canvas = canvasRef.current;
@@ -124,6 +150,9 @@ export default function LRPrintPage() {
     let cancelled = false;
     let renderTask: RenderTask | null = null;
     let loadingTask: PDFDocumentLoadingTask | null = null;
+    // Capture the pending scroll restore before this render replaces pixels.
+    const restore = zoomRestoreRef.current;
+    zoomRestoreRef.current = null;
     (async () => {
       try {
         const pdfjs = await import("pdfjs-dist");
@@ -142,7 +171,7 @@ export default function LRPrintPage() {
           await loadingTask.destroy().catch(() => {});
           return;
         }
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({ scale: 1.5 * zoom });
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
         try {
@@ -157,6 +186,7 @@ export default function LRPrintPage() {
           return;
         }
         setPreviewReady(true);
+        restorePreviewScroll(restore);
         await doc.cleanup().catch(() => {});
       } catch {
         if (cancelled) return;
@@ -172,12 +202,19 @@ export default function LRPrintPage() {
       }
       if (loadingTask) void loadingTask.destroy().catch(() => {});
     };
-  }, [pdfFile]);
+  }, [pdfFile, zoom]);
 
   function handleRetry() {
     loadedLrIdRef.current = null;
     setError(null);
     setPreviewError(null);
+    setZoom(1);
+    liveZoomRef.current = 1;
+    zoomRestoreRef.current = null;
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    pinchSessionRef.current = false;
+    lastTapRef.current = null;
     setPreviewReady(false);
     setPdfFile(null);
     setPdfUrl(null);
@@ -204,6 +241,163 @@ export default function LRPrintPage() {
     window.print();
   }
 
+  const MIN_ZOOM = 1;
+  const MAX_ZOOM = 3;
+  const ZOOM_STEP = 0.25;
+
+  function clampZoom(value: number): number {
+    if (!Number.isFinite(value)) return MIN_ZOOM;
+    return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(value * 20) / 20));
+  }
+
+  /**
+   * Commit a zoom level: records the current scroll position (plus an
+   * optional content point to center, e.g. a double-tap) so the re-render
+   * below can preserve the user's viewing position instead of jumping.
+   */
+  function commitZoom(nextZoom: number, center?: { x: number; y: number }) {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    const clamped = clampZoom(nextZoom);
+    liveZoomRef.current = clamped;
+    if (container && canvas) {
+      const { scrollLeft, scrollTop, scrollWidth, scrollHeight } = container;
+      const restore: { ratioX: number; ratioY: number; centerX?: number; centerY?: number } = {
+        ratioX: scrollWidth > 0 ? scrollLeft / scrollWidth : 0,
+        ratioY: scrollHeight > 0 ? scrollTop / scrollHeight : 0,
+      };
+      if (center) {
+        const rect = canvas.getBoundingClientRect();
+        restore.centerX = center.x - rect.left + scrollLeft;
+        restore.centerY = center.y - rect.top + scrollTop;
+      }
+      zoomRestoreRef.current = restore;
+    }
+    setZoom((current) => (current === clamped ? current : clamped));
+  }
+
+  /** Applies a committed zoom's recorded scroll position after re-render. */
+  function restorePreviewScroll(
+    restore: { ratioX: number; ratioY: number; centerX?: number; centerY?: number } | null
+  ) {
+    const container = containerRef.current;
+    if (!container || !restore) return;
+    const maxLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (restore.centerX != null && restore.centerY != null) {
+      container.scrollLeft = Math.min(maxLeft, Math.max(0, restore.centerX - container.clientWidth / 2));
+      container.scrollTop = Math.min(maxTop, Math.max(0, restore.centerY - container.clientHeight / 2));
+      return;
+    }
+    container.scrollLeft = Math.min(maxLeft, Math.max(0, restore.ratioX * container.scrollWidth));
+    container.scrollTop = Math.min(maxTop, Math.max(0, restore.ratioY * container.scrollHeight));
+  }
+
+  function zoomIn() {
+    commitZoom(liveZoomRef.current + ZOOM_STEP);
+  }
+
+  function zoomOut() {
+    commitZoom(liveZoomRef.current - ZOOM_STEP);
+  }
+
+  function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  function setContainerTouchAction(value: string) {
+    const container = containerRef.current;
+    if (container) container.style.touchAction = value;
+  }
+
+  function handlePreviewPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!previewReady) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size === 2) {
+      // Second finger down: (re)begin pinch from the live visual zoom.
+      // Disable browser gesture handling for the duration; normal
+      // one-finger scroll is restored on release.
+      const [first, second] = [...pointersRef.current.values()];
+      const distance = pointerDistance(first, second);
+      if (distance > 0) {
+        pinchRef.current = { startDistance: distance, startZoom: liveZoomRef.current };
+        pinchSessionRef.current = true;
+        setContainerTouchAction("none");
+      }
+      lastTapRef.current = null;
+    }
+  }
+
+  function handlePreviewPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const pointer = pointersRef.current.get(event.pointerId);
+    if (!pointer || pointersRef.current.size !== 2 || !pinchRef.current) return;
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    const [first, second] = [...pointersRef.current.values()];
+    const distance = pointerDistance(first, second);
+    if (distance <= 0) return;
+    // Live visual feedback only (cheap CSS width); the crisp pdfjs
+    // re-render happens once on release via commitZoom.
+    const liveZoom = clampZoom(
+      (pinchRef.current.startZoom * distance) / pinchRef.current.startDistance
+    );
+    liveZoomRef.current = liveZoom;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (canvas && container && container.scrollWidth > 0) {
+      const midClientX = (first.x + second.x) / 2;
+      const midClientY = (first.y + second.y) / 2;
+      const rect = canvas.getBoundingClientRect();
+      const anchorX = midClientX - rect.left + container.scrollLeft;
+      const anchorY = midClientY - rect.top + container.scrollTop;
+      canvas.style.width = `${Math.round(liveZoom * 100)}%`;
+      const containerRect = container.getBoundingClientRect();
+      container.scrollLeft = Math.max(
+        0,
+        anchorX * (canvas.scrollWidth / Math.max(1, rect.width)) -
+          (midClientX - containerRect.left)
+      );
+      container.scrollTop = Math.max(
+        0,
+        anchorY * (canvas.scrollWidth / Math.max(1, rect.width)) -
+          (midClientY - containerRect.top)
+      );
+    }
+  }
+
+  function endPreviewPointer(event: React.PointerEvent<HTMLDivElement>) {
+    const inPinchSession = pinchSessionRef.current;
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null;
+      setContainerTouchAction("");
+    }
+    if (!inPinchSession || pointersRef.current.size !== 0) return;
+    // Pinch fully ended: commit one crisp re-render at the live zoom.
+    pinchSessionRef.current = false;
+    const canvas = canvasRef.current;
+    if (canvas) canvas.style.width = "";
+    commitZoom(liveZoomRef.current);
+  }
+
+  function handlePreviewPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    endPreviewPointer(event);
+    // Single-finger double-tap toggles 100% <-> 200%, centering the tap.
+    if (pointersRef.current.size !== 0 || pinchSessionRef.current) return;
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (
+      last &&
+      now - last.time < 300 &&
+      Math.hypot(event.clientX - last.x, event.clientY - last.y) < 24
+    ) {
+      lastTapRef.current = null;
+      commitZoom(liveZoomRef.current >= 1.5 ? MIN_ZOOM : 2, { x: event.clientX, y: event.clientY });
+      return;
+    }
+    lastTapRef.current = { time: now, x: event.clientX, y: event.clientY };
+  }
+
   if (loading) {
     return <div className="p-8 text-center text-sm text-muted-foreground">Loading LR…</div>;
   }
@@ -226,6 +420,36 @@ export default function LRPrintPage() {
   return (
     <div className="flex h-dvh flex-col bg-muted/40">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-end gap-2 px-4 py-3 print:hidden">
+        <div
+          className="mr-auto flex items-center gap-1"
+          role="group"
+          aria-label="Preview zoom"
+        >
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={zoomOut}
+            disabled={!previewReady || zoom <= MIN_ZOOM}
+            aria-label="Zoom out"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </Button>
+          <span
+            className="min-w-12 text-center text-xs font-medium tabular-nums text-muted-foreground"
+            aria-live="polite"
+          >
+            {Math.round(zoom * 100)}%
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={zoomIn}
+            disabled={!previewReady || zoom >= MAX_ZOOM}
+            aria-label="Zoom in"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         <Button variant="outline" onClick={() => router.push("/lr")}>
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
@@ -239,7 +463,14 @@ export default function LRPrintPage() {
           Print
         </Button>
       </div>
-      <div className="mx-auto mb-4 w-full max-w-6xl flex-1 overflow-auto bg-white p-2">
+      <div
+        ref={containerRef}
+        className="mx-auto mb-4 w-full max-w-6xl flex-1 overflow-auto bg-white p-2"
+        onPointerDown={handlePreviewPointerDown}
+        onPointerMove={handlePreviewPointerMove}
+        onPointerUp={handlePreviewPointerUp}
+        onPointerCancel={handlePreviewPointerUp}
+      >
         {!previewReady && !previewError && (
           <p className="p-8 text-center text-sm text-muted-foreground">Preparing preview…</p>
         )}
@@ -252,8 +483,8 @@ export default function LRPrintPage() {
         <canvas
           ref={canvasRef}
           hidden={!previewReady}
-          className="mx-auto h-auto w-full"
-          style={{ aspectRatio: "297 / 210" }}
+          className="mx-auto h-auto"
+          style={{ aspectRatio: "297 / 210", width: `${Math.round(zoom * 100)}%` }}
         />
       </div>
     </div>
