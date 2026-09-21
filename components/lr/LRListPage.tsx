@@ -154,6 +154,15 @@ function LRListPageContent() {
   /** Latest draft values typed while a previous autosave is in flight. */
   const queuedAutosaveRef = useRef<LR | null>(null);
   /**
+   * Waiters (explicit Save Draft / Close-flush) blocked until the current
+   * save round — including any queued follow-up — fully drains. Resolved
+   * only when a save completes with nothing left queued, so waiting can
+   * never miss a wakeup or hang: every handleAutosave invocation ends in
+   * the finally below, which either fires exactly one follow-up or
+   * resolves all waiters.
+   */
+  const draftDrainWaitersRef = useRef<Array<() => void>>([]);
+  /**
    * In-flight first create for this session. Concurrent autosaves await this
    * instead of calling create_numbered_lr_draft a second time.
    * DB RPC is still the source of truth for allocation atomicity.
@@ -695,11 +704,16 @@ function LRListPageContent() {
     }
   }
 
-  async function handleAutosave(values: LR) {
+  async function handleAutosave(values: LR, opts?: { waitForDrain?: boolean }) {
     // Hybrid numbering:
     // - Empty new form → no DB row, no allocate
     // - Consignor OR Consignee → create_numbered_lr_draft once (allocates)
     // - Later autosaves → update same draft; never allocate again
+    //
+    // opts.waitForDrain (explicit Save Draft / Close-flush only): when this
+    // call queues behind an in-flight save, wait until the queued work is
+    // durably persisted instead of returning immediately. The waiter is
+    // registered synchronously while queueing, so no wakeup can be missed.
     if (createSessionDiscardedRef.current) return;
 
     const tokenAtStart = createSessionTokenRef.current;
@@ -727,6 +741,11 @@ function LRListPageContent() {
       // Never discard a user edit just because an earlier draft request is
       // still running. The latest values are saved immediately afterwards.
       queuedAutosaveRef.current = values;
+      if (opts?.waitForDrain) {
+        await new Promise<void>((resolve) => {
+          draftDrainWaitersRef.current.push(resolve);
+        });
+      }
       return;
     }
     autosaveInFlightRef.current = true;
@@ -797,7 +816,13 @@ function LRListPageContent() {
       autosaveInFlightRef.current = false;
       const queued = queuedAutosaveRef.current;
       queuedAutosaveRef.current = null;
-      if (queued) void handleAutosave(queued);
+      if (queued) {
+        void handleAutosave(queued);
+      } else {
+        const waiters = draftDrainWaitersRef.current;
+        draftDrainWaitersRef.current = [];
+        for (const resolve of waiters) resolve();
+      }
     }
   }
 

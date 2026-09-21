@@ -31,8 +31,12 @@ interface LRDialogProps {
   /** Shown in view mode when the user may continue a draft. */
   onRequestContinueDraft?: () => void;
   onSubmit: (values: LR) => void | Promise<void>;
-  /** Optional draft autosave — does not finalize numbering. Ignored when readOnly. */
-  onAutosave?: (values: LR) => void | Promise<void>;
+  /**
+   * Optional draft autosave — does not finalize numbering. Ignored when readOnly.
+   * Accepts `{ waitForDrain: true }` so explicit Save Draft / Close-flush can
+   * await durability when queuing behind an in-flight autosave (LRListPage).
+   */
+  onAutosave?: (values: LR, opts?: { waitForDrain?: boolean }) => void | Promise<void>;
   notificationFocus?: string | null;
 }
 
@@ -169,14 +173,28 @@ export default function LRDialog({
     isDraftEntry(lr?.entryStatus) ||
     isDraftLrNumber(lr?.lrNumber);
 
-  useDebouncedAutosave({
+  const [draftSaving, setDraftSaving] = useState(false);
+
+  /** Existing meaningful-draft condition: Consignor OR Consignee. */
+  const hasMeaningfulDraft =
+    values.consignor.trim().length > 0 || values.consignee.trim().length > 0;
+
+  /**
+   * Save Draft surface: brand-new create plus existing-draft continuation
+   * (updates the same draft, never allocates again). Never view mode,
+   * never finalized-LR edit mode.
+   */
+  const showSaveDraft =
+    !readOnly && (!isEditing || isDraftEntry(lr?.entryStatus));
+
+  const { cancelPending: cancelPendingAutosave } = useDebouncedAutosave({
     values,
     enabled:
       open &&
       !readOnly &&
       Boolean(onAutosave) &&
       !loading &&
-      (values.consignor.trim().length > 0 || values.consignee.trim().length > 0),
+      hasMeaningfulDraft,
     delayMs: 2500,
     onSave: async (next) => {
       if (readOnly || !onAutosave) return;
@@ -188,6 +206,60 @@ export default function LRDialog({
       }
     },
   });
+
+  /**
+   * Explicit Save Draft: cancel any pending debounce, then persist latest
+   * values through the existing autosave path (single numbered draft,
+   * same-draft updates, waitForDrain durability). Never validates or
+   * finalizes — Save LR remains the only finalize action.
+   */
+  async function handleSaveDraft() {
+    if (readOnly || !onAutosave || draftSaving) return;
+    if (!hasMeaningfulDraft) {
+      toast.error("Enter Consignor or Consignee to save a draft.");
+      return;
+    }
+    cancelPendingAutosave();
+    setDraftSaving(true);
+    try {
+      await onAutosave({ ...values, entryStatus: "draft" }, { waitForDrain: true });
+      toast.success("Draft saved");
+      onOpenChange(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Draft could not be saved. Please try again.");
+    } finally {
+      setDraftSaving(false);
+    }
+  }
+
+  /**
+   * Close/Back protection: flush a meaningful pending draft before the
+   * dialog closes, awaiting durability. Keeps the dialog open with a safe
+   * error on failure; closes normally when there is nothing to save.
+   */
+  async function requestDialogClose() {
+    if (
+      !readOnly &&
+      showSaveDraft &&
+      onAutosave &&
+      !draftSaving &&
+      hasMeaningfulDraft
+    ) {
+      cancelPendingAutosave();
+      setDraftSaving(true);
+      try {
+        await onAutosave({ ...values, entryStatus: "draft" }, { waitForDrain: true });
+      } catch (error) {
+        console.error(error);
+        toast.error("Draft could not be saved. Please try again.");
+        setDraftSaving(false);
+        return;
+      }
+      setDraftSaving(false);
+    }
+    onOpenChange(false);
+  }
 
   useEffect(() => {
     if (!open) {
@@ -308,7 +380,7 @@ export default function LRDialog({
   }
 
   function handleCancel() {
-    onOpenChange(false);
+    void requestDialogClose();
   }
 
   const title = readOnly
@@ -324,7 +396,13 @@ export default function LRDialog({
   return (
     <FormDialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          onOpenChange(true);
+          return;
+        }
+        void requestDialogClose();
+      }}
       title={title}
       description={description}
       size="fullscreen"
@@ -349,12 +427,27 @@ export default function LRDialog({
             <Button
               variant="outline"
               onClick={handleCancel}
-              disabled={loading}
+              disabled={loading || draftSaving}
             >
               Cancel
             </Button>
 
-            <Button onClick={handleSave} disabled={loading || checkingPo}>
+            {showSaveDraft ? (
+              <Button
+                variant="secondary"
+                onClick={() => void handleSaveDraft()}
+                disabled={loading || checkingPo || draftSaving || !hasMeaningfulDraft}
+                title={
+                  hasMeaningfulDraft
+                    ? "Save as draft without finalizing"
+                    : "Enter Consignor or Consignee to save a draft"
+                }
+              >
+                {draftSaving ? "Saving Draft..." : "Save Draft"}
+              </Button>
+            ) : null}
+
+            <Button onClick={handleSave} disabled={loading || checkingPo || draftSaving}>
               {loading ? "Saving..." : "Save LR"}
             </Button>
           </>
