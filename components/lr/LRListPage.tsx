@@ -570,6 +570,7 @@ function LRListPageContent() {
       setSaving(true);
 
       let successMessage = "LR saved successfully.";
+      let savedLrId: string | null = null;
 
       if (editingLR) {
         if (editingLR.entryStatus === "draft" || isDraftLrNumber(editingLR.lrNumber)) {
@@ -594,6 +595,7 @@ function LRListPageContent() {
             lrNumber,
             entryStatus: "final",
           });
+          savedLrId = String(editingLR.id);
           successMessage = `LR ${lrNumber} saved successfully.`;
         } else {
           if (!canStaffEditRecord(isAdmin, canEdit, editingLR)) {
@@ -609,6 +611,7 @@ function LRListPageContent() {
             lrNumber: editingLR.lrNumber,
             entryStatus: "final",
           });
+          savedLrId = String(editingLR.id);
           successMessage = "LR updated successfully.";
         }
       } else {
@@ -622,6 +625,7 @@ function LRListPageContent() {
             lrNumber: draft.lrNumber,
             entryStatus: "final",
           });
+          savedLrId = String(finalized.id);
           successMessage = `LR ${finalized.lrNumber} saved successfully.`;
         } else if (sessionCreatedDraftIdRef.current != null) {
           const draftId = sessionCreatedDraftIdRef.current;
@@ -634,29 +638,44 @@ function LRListPageContent() {
             lrNumber: knownNumber,
             entryStatus: "final",
           });
+          savedLrId = String(finalized.id);
           successMessage = `LR ${finalized.lrNumber} saved successfully.`;
         } else {
           const lrNumber = await allocateNextLrNumber();
-          await createLR({ ...values, lrNumber, entryStatus: "final" });
+          const created = await createLR({ ...values, lrNumber, entryStatus: "final" });
+          savedLrId = String(created.id);
           successMessage = `LR ${lrNumber} created successfully.`;
         }
       }
 
       // Vehicle Master sync only after LR save succeeds (not on draft autosave).
-      try {
-        await syncVehicleMasterFromLr({
-          vehicleNumber: values.vehicleNumber,
-          vehicleType: values.vehicleType,
-          transporter: values.transporter,
-          driverName: values.driverName,
-          driverMobile: values.driverMobile,
-        });
+      // Edit optimization only: skip the RPC when vehicle details are
+      // unchanged. The RPC remains the security authority either way.
+      const isFinalEdit =
+        editingLR != null &&
+        !isDraftEntry(editingLR.entryStatus) &&
+        !isDraftLrNumber(editingLR.lrNumber);
+      const vehicleUnchanged =
+        editingLR != null &&
+        isFinalEdit &&
+        values.vehicleNumber === editingLR.vehicleNumber &&
+        values.vehicleType === editingLR.vehicleType &&
+        values.transporter === editingLR.transporter &&
+        values.driverName === editingLR.driverName &&
+        values.driverMobile === editingLR.driverMobile;
+
+      if (savedLrId == null || vehicleUnchanged) {
         toast.success(successMessage);
-      } catch (syncError) {
-        console.error(syncError);
-        toast.error(
-          "LR save हो गया, लेकिन Vehicle Master update नहीं हुआ। Vehicle Master में manually check करें।"
-        );
+      } else {
+        try {
+          await syncVehicleMasterFromLr(savedLrId);
+          toast.success(successMessage);
+        } catch (syncError) {
+          console.error(syncError);
+          toast.error(
+            "LR save हो गया, लेकिन Vehicle Master update नहीं हुआ। Vehicle Master में manually check करें।"
+          );
+        }
       }
 
       setDialogOpen(false);

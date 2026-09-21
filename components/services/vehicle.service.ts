@@ -15,15 +15,6 @@ export interface VehicleRecord extends Vehicle {
   created_at?: string;
 }
 
-/** Fields copied from a finalized LR into Vehicle Master (current state only). */
-export interface LrVehicleMasterSyncInput {
-  vehicleNumber: string;
-  vehicleType: string;
-  transporter: string;
-  driverName: string;
-  driverMobile: string;
-}
-
 const TABLE = "vehicles";
 
 /** Compliance expiry columns are nullable in the database; the app's `Vehicle`
@@ -234,98 +225,27 @@ export async function deleteVehicle(id: number): Promise<void> {
 }
 
 /**
- * After a successful LR save: upsert Vehicle Master current fields from
- * the LR vehicle details. Does not rewrite historical LRs.
- *
- * Updates only: vehicle_type, transporter, driver_name, driver_mobile.
- * Never touches owner_name / compliance / hire on update.
+ * After a successful LR save: sync Vehicle Master current fields from the
+ * finalized LR via SECURITY DEFINER `sync_vehicle_from_lr`
+ * (migration 091). The RPC derives every value from the stored LR row and
+ * enforces LR create/edit authorization server-side (staff 48h window +
+ * create_view-only attribution), so staff with LR permission but without
+ * vehicle:edit still sync correctly. Does not rewrite historical LRs.
  *
  * Called only from LR finalize flows (not draft autosave).
- * Relies on existing authenticated session; vehicles currently have no RLS.
- * Intended for users who already passed LR save authorization.
+ * Throw-on-failure contract preserved for the caller's sync toast.
  */
 export async function syncVehicleMasterFromLr(
-  input: LrVehicleMasterSyncInput
+  lrId: string
 ): Promise<VehicleRecord> {
-  const vehicleNumber = canonicalVehicleNumber(input.vehicleNumber);
-  if (!vehicleNumber) {
-    throw new Error("Vehicle number is required to sync Vehicle Master.");
-  }
+  const { data, error } = await supabase
+    .rpc("sync_vehicle_from_lr", { p_lr_id: lrId })
+    .single();
 
-  const vehicleType = input.vehicleType.trim();
-  const transporter = input.transporter.trim();
-  const driverName = input.driverName.trim();
-  const driverMobile = input.driverMobile.trim();
+  if (error) throw error;
+  if (!data) throw new Error("Vehicle Master sync returned no row.");
 
-  const existing = await findVehicleByNumber(vehicleNumber);
-
-  if (existing) {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .update({
-        vehicle_type: vehicleType || existing.vehicleType,
-        transporter,
-        driver_name: driverName,
-        driver_mobile: driverMobile,
-      })
-      .eq("id", existing.id)
-      .select("*")
-      .single();
-
-    if (error) throw error;
-    return fromRow(data);
-  }
-
-  const insertPayload: Vehicle = {
-    vehicleNumber,
-    rcNumber: "",
-    vehicleType: vehicleType || "Truck",
-    ownerName: "",
-    ownerType: "Market",
-    mobile: "",
-    transporter,
-    driverName,
-    driverMobile,
-    capacity: 0,
-    capacityUnit: "TON",
-    hireRate: 0,
-    hireType: "Fixed",
-    chassisNumber: "",
-    engineNumber: "",
-    insuranceNumber: "",
-    insuranceExpiry: "",
-    permitNumber: "",
-    permitExpiry: "",
-    fitnessNumber: "",
-    fitnessExpiry: "",
-    pucNumber: "",
-    pucExpiry: "",
-    remarks: "",
-    status: "Active",
-  };
-
-  try {
-    return await createVehicle(insertPayload);
-  } catch (error) {
-    // Concurrent create: unique(vehicle_number) — retry as update.
-    const raced = await findVehicleByNumber(vehicleNumber);
-    if (!raced) throw error;
-
-    const { data, error: updateError } = await supabase
-      .from(TABLE)
-      .update({
-        vehicle_type: vehicleType || raced.vehicleType,
-        transporter,
-        driver_name: driverName,
-        driver_mobile: driverMobile,
-      })
-      .eq("id", raced.id)
-      .select("*")
-      .single();
-
-    if (updateError) throw updateError;
-    return fromRow(data);
-  }
+  return fromRow(data as Record<string, unknown>);
 }
 
 /**
