@@ -26,6 +26,8 @@ interface LRFormProps {
   /** Exclude this LR from DC duplicate warnings while editing. */
   excludeLrId?: LRRecord["id"] | null;
   notificationFocus?: string | null;
+  onCreateReplacementPo?: (poNumber: string, issueDate: string) => Promise<void>;
+  replacementPoSaving?: boolean;
 }
 
 export default function LRForm({
@@ -37,6 +39,8 @@ export default function LRForm({
   readOnly = false,
   excludeLrId = null,
   notificationFocus = null,
+  onCreateReplacementPo,
+  replacementPoSaving = false,
 }: LRFormProps) {
   const [poSelectionRequested, setPoSelectionRequested] = useState(false);
   useEffect(() => {
@@ -96,6 +100,8 @@ export default function LRForm({
         excludeLrId={excludeLrId}
         readOnly={readOnly}
         autoSelectPo={poSelectionRequested || !excludeLrId || lr.entryStatus === "draft"}
+        onCreateReplacementPo={onCreateReplacementPo}
+        replacementPoSaving={replacementPoSaving}
       /></div>
 
       <CommercialSection

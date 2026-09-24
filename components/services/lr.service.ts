@@ -480,6 +480,36 @@ export async function updateLR(id: number, values: LR): Promise<LRRecord> {
   return record;
 }
 
+/**
+ * Creates a fresh Active PO only for the exact finalized LR currently linked
+ * to an Inactive PO. All authority and PO-context derivation are enforced by
+ * the server-side RPC; the client supplies only the replacement number/date.
+ */
+export async function createReplacementPurchaseOrderFromLr(
+  lrId: LRRecord["id"],
+  poNumber: string,
+  issueDate: string,
+): Promise<LRRecord> {
+  const { data, error } = await supabase.rpc("create_replacement_purchase_order_from_lr", {
+    p_lr_id: String(lrId),
+    p_po_number: poNumber,
+    p_issue_date: issueDate,
+  });
+
+  if (error) throw error;
+  if (!data || typeof data !== "object") {
+    throw new Error("create_replacement_purchase_order_from_lr returned no row.");
+  }
+
+  const record = fromRow(data as Record<string, unknown>);
+
+  // Reuse the established exact-LR DC snapshot synchronization path. This
+  // never searches or updates LRs by the old PO.
+  await syncDeliveryChallanFromLr(record.lrNumber, record.loadingWeight, record.poNumber);
+
+  return record;
+}
+
 /** Commercial fields owned by Financials — patched via update_lr_financials RPC
  * (migration 046). Does not require lr.edit and never writes non-financial LR columns. */
 export type LRFinancialsCommercialPatch = {

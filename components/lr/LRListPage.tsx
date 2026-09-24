@@ -1130,6 +1130,10 @@ function LRListPageContent() {
             : undefined
         }
         onSubmit={handleSubmit}
+        onReplacementCreated={async (updated) => {
+          setEditingLR(updated);
+          setLRs((current) => current.map((item) => item.id === updated.id ? updated : item));
+        }}
         onAutosave={
           canContinueDraft &&
           (dialogMode === "create" || isDraftEntry(editingLR?.entryStatus))

@@ -24,6 +24,8 @@ interface DispatchDocumentsSectionProps {
   excludeLrId?: LRRecord["id"] | null;
   readOnly?: boolean;
   autoSelectPo?: boolean;
+  onCreateReplacementPo?: (poNumber: string, issueDate: string) => Promise<void>;
+  replacementPoSaving?: boolean;
 }
 
 function formatDuplicateWarning(lrNumbers: string[]): string {
@@ -46,6 +48,8 @@ export default function DispatchDocumentsSection({
   excludeLrId = null,
   readOnly = false,
   autoSelectPo = false,
+  onCreateReplacementPo,
+  replacementPoSaving = false,
 }: DispatchDocumentsSectionProps) {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -94,7 +98,15 @@ export default function DispatchDocumentsSection({
       subtitle="Customer reference documents"
     >
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-        <PurchaseOrderFields key={lr.customer} lr={lr} onChange={onChange} readOnly={readOnly} autoSelect={autoSelectPo} />
+        <PurchaseOrderFields
+          key={lr.customer}
+          lr={lr}
+          onChange={onChange}
+          readOnly={readOnly}
+          autoSelect={autoSelectPo}
+          onCreateReplacementPo={onCreateReplacementPo}
+          replacementPoSaving={replacementPoSaving}
+        />
 
         <FormField
           label="Vendor Code"

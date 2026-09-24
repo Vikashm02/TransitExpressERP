@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import LRForm from "./LRForm";
 import { validateLR, type LR } from "./lr.schema";
 import type { FieldErrors } from "@/lib/validation";
-import type { LRRecord } from "@/components/services/lr.service";
+import { createReplacementPurchaseOrderFromLr, type LRRecord } from "@/components/services/lr.service";
 import { getCompany } from "@/components/services/company.service";
 import { pickFields } from "@/lib/utils";
 import { isDraftEntry, isDraftLrNumber } from "@/lib/entryStatus";
@@ -31,6 +31,8 @@ interface LRDialogProps {
   /** Shown in view mode when the user may continue a draft. */
   onRequestContinueDraft?: () => void;
   onSubmit: (values: LR) => void | Promise<void>;
+  /** Receives the server-returned LR after a replacement PO is created. */
+  onReplacementCreated?: (record: LRRecord) => void | Promise<void>;
   /**
    * Optional draft autosave — does not finalize numbering. Ignored when readOnly.
    * Accepts `{ waitForDrain: true }` so explicit Save Draft / Close-flush can
@@ -144,6 +146,7 @@ export default function LRDialog({
   onRequestEdit,
   onRequestContinueDraft,
   onSubmit,
+  onReplacementCreated,
   onAutosave,
   notificationFocus = null,
 }: LRDialogProps) {
@@ -174,6 +177,7 @@ export default function LRDialog({
     isDraftLrNumber(lr?.lrNumber);
 
   const [draftSaving, setDraftSaving] = useState(false);
+  const [replacementSaving, setReplacementSaving] = useState(false);
 
   /** Existing meaningful-draft condition: Consignor OR Consignee. */
   const hasMeaningfulDraft =
@@ -350,8 +354,30 @@ export default function LRDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lr, readOnly]);
 
+  async function handleCreateReplacementPo(poNumber: string, issueDate: string) {
+    if (readOnly || !lr || !isEditing || isDraftEntry(lr.entryStatus) || replacementSaving) return;
+
+    setReplacementSaving(true);
+    try {
+      const updated = await createReplacementPurchaseOrderFromLr(lr.id, poNumber, issueDate);
+      setErrors({});
+      setValues(normalizeLrTextFields({ ...emptyLR, ...toEditableLR(updated) }));
+      await onReplacementCreated?.(updated);
+      toast.success("Replacement PO created and linked to this LR.");
+    } catch (error) {
+      console.error(error);
+      const message =
+        typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Unable to create a replacement PO. Please try again.";
+      toast.error(message);
+    } finally {
+      setReplacementSaving(false);
+    }
+  }
+
   async function handleSave() {
-    if (readOnly || checkingPo || loading) return;
+    if (readOnly || checkingPo || loading || replacementSaving) return;
     const fieldErrors = validateLR(values, { requireMaterialDescription });
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -406,8 +432,8 @@ export default function LRDialog({
       title={title}
       description={description}
       size="fullscreen"
-      loading={loading || checkingPo}
-      loadingText="Saving Lorry Receipt..."
+      loading={loading || checkingPo || replacementSaving}
+      loadingText={replacementSaving ? "Creating Replacement PO..." : "Saving Lorry Receipt..."}
       footer={
         readOnly ? (
           <>
@@ -427,7 +453,7 @@ export default function LRDialog({
             <Button
               variant="outline"
               onClick={handleCancel}
-              disabled={loading || draftSaving}
+              disabled={loading || draftSaving || replacementSaving}
             >
               Cancel
             </Button>
@@ -436,7 +462,7 @@ export default function LRDialog({
               <Button
                 variant="secondary"
                 onClick={() => void handleSaveDraft()}
-                disabled={loading || checkingPo || draftSaving || !hasMeaningfulDraft}
+                disabled={loading || checkingPo || draftSaving || replacementSaving || !hasMeaningfulDraft}
                 title={
                   hasMeaningfulDraft
                     ? "Save as draft without finalizing"
@@ -447,7 +473,7 @@ export default function LRDialog({
               </Button>
             ) : null}
 
-            <Button onClick={handleSave} disabled={loading || checkingPo || draftSaving}>
+            <Button onClick={handleSave} disabled={loading || checkingPo || draftSaving || replacementSaving}>
               {loading ? "Saving..." : "Save LR"}
             </Button>
           </>
@@ -462,6 +488,12 @@ export default function LRDialog({
         readOnly={readOnly}
         excludeLrId={lr?.id ?? null}
         notificationFocus={notificationFocus}
+        onCreateReplacementPo={
+          !readOnly && lr && !isDraftEntry(lr.entryStatus)
+            ? handleCreateReplacementPo
+            : undefined
+        }
+        replacementPoSaving={replacementSaving}
       />
     </FormDialog>
   );
