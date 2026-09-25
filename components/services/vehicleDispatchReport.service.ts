@@ -35,12 +35,52 @@ function numberValue(value: unknown): number {
   return Number.isFinite(result) ? result : 0;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasFiniteNumber(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function stringValue(value: unknown): string {
   return value == null ? "" : String(value);
 }
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(stringValue).filter(Boolean) : [];
+}
+
+/**
+ * The report RPC returns a single JSON object. Validate its required envelope
+ * before mapping so a malformed response cannot look like a real zero-result
+ * report in the UI.
+ */
+function assertReportShape(data: unknown): asserts data is Record<string, unknown> {
+  if (!isRecord(data)) {
+    throw new Error("Vehicle Dispatch Report returned an invalid response object.");
+  }
+
+  const summary = data.summary;
+  const options = data.filter_options;
+  const pagination = data.pagination;
+
+  if (!isRecord(summary) || !isRecord(options) || !isRecord(pagination) || !Array.isArray(data.rows)) {
+    throw new Error("Vehicle Dispatch Report response is missing required report sections.");
+  }
+
+  if (
+    !hasFiniteNumber(summary.total_loads) ||
+    !hasFiniteNumber(summary.unique_vehicles) ||
+    !hasFiniteNumber(summary.total_loading_weight) ||
+    !hasFiniteNumber(pagination.page) ||
+    !hasFiniteNumber(pagination.page_size) ||
+    !hasFiniteNumber(pagination.total_count) ||
+    !Array.isArray(options.consignors) ||
+    !Array.isArray(options.consignees)
+  ) {
+    throw new Error("Vehicle Dispatch Report returned invalid summary, pagination, or filter values.");
+  }
 }
 
 function mapReport(data: Record<string, unknown>): VehicleDispatchReport {
@@ -99,8 +139,8 @@ export async function getVehicleDispatchReport(filters: VehicleDispatchFilters):
     p_page_size: filters.pageSize ?? 50,
   });
   if (error) throw error;
-  if (!data || typeof data !== "object") throw new Error("Vehicle Dispatch Report returned no data.");
-  return mapReport(data as Record<string, unknown>);
+  assertReportShape(data);
+  return mapReport(data);
 }
 
 /** Retrieves every result through bounded report-RPC pages for export only. */

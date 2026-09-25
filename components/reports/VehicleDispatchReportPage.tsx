@@ -37,6 +37,7 @@ export default function VehicleDispatchReportPage() {
   const [exportReport, setExportReport] = useState<VehicleDispatchReport | null>(null);
   const [exportDialog, setExportDialog] = useState<"download" | "share" | null>(null);
   const captureRef = useRef<HTMLDivElement>(null);
+  const latestRequestRef = useRef(0);
 
   const consignorOptions = useMemo(() => optionList(report?.filterOptions.consignors ?? []), [report]);
   const consigneeOptions = useMemo(() => optionList(report?.filterOptions.consignees ?? []), [report]);
@@ -47,15 +48,31 @@ export default function VehicleDispatchReportPage() {
   async function run(nextPage = page) {
     if (!fromDate || !toDate) { toast.error("Select both From Date and To Date."); return; }
     if (fromDate > toDate) { toast.error("From Date cannot be after To Date."); return; }
+
+    const requestId = ++latestRequestRef.current;
+    const requestFilters = {
+      fromDate,
+      toDate,
+      consignor,
+      consignee,
+      page: nextPage,
+      pageSize: PAGE_SIZE,
+    };
+
     try {
       setLoading(true);
       const [next, nextCompany] = await Promise.all([
-        getVehicleDispatchReport({ fromDate, toDate, consignor, consignee, page: nextPage, pageSize: PAGE_SIZE }),
+        getVehicleDispatchReport(requestFilters),
         getCompany(),
       ]);
+      if (requestId !== latestRequestRef.current) return;
       setReport(next); setCompany(nextCompany); setPage(nextPage);
-    } catch (error) { console.error(error); toast.error("Unable to load the Vehicle Dispatch Report."); }
-    finally { setLoading(false); }
+    } catch (error) {
+      if (requestId !== latestRequestRef.current) return;
+      console.error(error); toast.error("Unable to load the Vehicle Dispatch Report.");
+    } finally {
+      if (requestId === latestRequestRef.current) setLoading(false);
+    }
   }
 
   async function prepareExport(kind: "download" | "share") {
