@@ -19,6 +19,12 @@ interface ReportLink {
 
 const OPERATIONAL_REPORTS: ReportLink[] = [
   {
+    title: "Vehicle Dispatch Report",
+    description: "Vehicle loads/trips, unique vehicles, and loading weight by Consignor, Consignee, and LR date.",
+    href: "/reports/vehicle-dispatch",
+    icon: Package,
+  },
+  {
     title: "LR Summary by Billing Party",
     description: "Total, Billed, and Unbilled LRs for every Billing Party.",
     href: "/reports/lr-summary",
