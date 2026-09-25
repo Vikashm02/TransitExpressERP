@@ -16,7 +16,7 @@ import ReportExportDialog from "./ReportExportDialog";
 import VehicleDispatchPrintView from "./VehicleDispatchPrintView";
 import { getCompany, type CompanyRecord } from "@/components/services/company.service";
 import { buildReportExcelFile, renderElementToPdfFile, sanitizeFileNameSegment } from "@/lib/reportExport";
-import { getAllVehicleDispatchRows, getVehicleDispatchReport, type VehicleDispatchReport, type VehicleDispatchRow } from "@/components/services/vehicleDispatchReport.service";
+import { getAllVehicleDispatchRows, getVehicleDispatchFilterOptions, getVehicleDispatchReport, type VehicleDispatchFilterOptions, type VehicleDispatchReport, type VehicleDispatchRow } from "@/components/services/vehicleDispatchReport.service";
 
 const PAGE_SIZE = 50;
 
@@ -31,6 +31,7 @@ export default function VehicleDispatchReportPage() {
   const [consignee, setConsignee] = useState("");
   const [page, setPage] = useState(1);
   const [report, setReport] = useState<VehicleDispatchReport | null>(null);
+  const [partyOptions, setPartyOptions] = useState<VehicleDispatchFilterOptions>({ consignors: [], consignees: [] });
   const [company, setCompany] = useState<CompanyRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [preparingExport, setPreparingExport] = useState(false);
@@ -38,12 +39,42 @@ export default function VehicleDispatchReportPage() {
   const [exportDialog, setExportDialog] = useState<"download" | "share" | null>(null);
   const captureRef = useRef<HTMLDivElement>(null);
   const latestRequestRef = useRef(0);
+  const latestFilterOptionsRequestRef = useRef(0);
 
-  const consignorOptions = useMemo(() => optionList(report?.filterOptions.consignors ?? []), [report]);
-  const consigneeOptions = useMemo(() => optionList(report?.filterOptions.consignees ?? []), [report]);
+  const consignorOptions = useMemo(() => optionList(partyOptions.consignors), [partyOptions]);
+  const consigneeOptions = useMemo(() => optionList(partyOptions.consignees), [partyOptions]);
 
   useEffect(() => { void run(1); /* initial valid today range */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const requestId = ++latestFilterOptionsRequestRef.current;
+
+    void (async () => {
+      // Defer state work so the effect only begins the external request.
+      await Promise.resolve();
+      if (requestId !== latestFilterOptionsRequestRef.current) return;
+
+      if (!fromDate || !toDate || fromDate > toDate) {
+        setPartyOptions({ consignors: [], consignees: [] });
+        return;
+      }
+
+      const dateRange = { fromDate, toDate };
+      setPartyOptions({ consignors: [], consignees: [] });
+
+      try {
+        const nextOptions = await getVehicleDispatchFilterOptions(dateRange);
+        if (requestId === latestFilterOptionsRequestRef.current) {
+          setPartyOptions(nextOptions);
+        }
+      } catch (error) {
+        if (requestId === latestFilterOptionsRequestRef.current) {
+          console.error(error);
+        }
+      }
+    })();
+  }, [fromDate, toDate]);
 
   async function run(nextPage = page) {
     if (!fromDate || !toDate) { toast.error("Select both From Date and To Date."); return; }

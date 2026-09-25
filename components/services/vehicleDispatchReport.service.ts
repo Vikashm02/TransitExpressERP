@@ -129,6 +129,28 @@ function mapReport(data: Record<string, unknown>): VehicleDispatchReport {
   };
 }
 
+export interface VehicleDispatchFilterOptions {
+  consignors: string[];
+  consignees: string[];
+}
+
+/**
+ * Retrieves the selected period's historical party options without applying
+ * either party filter. The report RPC owns those options, so this requests a
+ * single detail row solely to obtain its filter-options payload.
+ */
+export async function getVehicleDispatchFilterOptions(
+  filters: Pick<VehicleDispatchFilters, "fromDate" | "toDate">
+): Promise<VehicleDispatchFilterOptions> {
+  const report = await getVehicleDispatchReport({
+    fromDate: filters.fromDate,
+    toDate: filters.toDate,
+    page: 1,
+    pageSize: 1,
+  });
+  return report.filterOptions;
+}
+
 export async function getVehicleDispatchReport(filters: VehicleDispatchFilters): Promise<VehicleDispatchReport> {
   const { data, error } = await supabase.rpc("get_vehicle_dispatch_report", {
     p_from: filters.fromDate,
