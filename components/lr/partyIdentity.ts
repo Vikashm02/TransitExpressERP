@@ -3,6 +3,20 @@ import type { LR } from "./lr.schema";
 type BillingPartySelection = { id: number; name: string };
 type CustomerSelection = BillingPartySelection & { gst: string; address: string; city: string };
 
+/** Finalization only: drafts and historical finalized rows may remain unresolved. */
+export function lrPartyFinalizationError(values: Pick<LR, "customer" | "consignor" | "consignee" | "billingPartyId" | "consignorId" | "consigneeId">): string | null {
+  if (values.customer.trim() !== "" && values.billingPartyId == null) {
+    return "Please reselect Billing Party from Billing Party Master.";
+  }
+  if (values.consignor.trim() !== "" && values.consignorId == null) {
+    return "Please reselect Consignor from Customer Master.";
+  }
+  if (values.consignee.trim() !== "" && values.consigneeId == null) {
+    return "Please reselect Consignee from Customer Master.";
+  }
+  return null;
+}
+
 /** Never resolve IDs from snapshots. Only master lookup selections call these helpers. */
 export function selectBillingParty(lr: LR, party: BillingPartySelection | null): LR {
   return { ...lr, customer: party?.name ?? "", billingPartyId: party?.id ?? null };
