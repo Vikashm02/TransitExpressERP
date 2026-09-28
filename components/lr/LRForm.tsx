@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { lrPoPartyChanged } from "./partyIdentity";
 import type { LR } from "./lr.schema";
 import type { FieldErrors } from "@/lib/validation";
 import type { LRRecord } from "@/components/services/lr.service";
@@ -43,6 +44,12 @@ export default function LRForm({
   replacementPoSaving = false,
 }: LRFormProps) {
   const [poSelectionRequested, setPoSelectionRequested] = useState(false);
+  function changeParty(next: LR) {
+    if (lrPoPartyChanged(lr, next)) {
+      setPoSelectionRequested(true);
+      onChange({ ...next, poNumber: "", poDate: "", purchaseOrderId: null });
+    } else onChange(next);
+  }
   useEffect(() => {
     if (!notificationFocus) return;
     const frame = window.requestAnimationFrame(() => {
@@ -55,12 +62,7 @@ export default function LRForm({
       <div data-lr-notification-focus="lr" className={notificationFocus === "lr" ? "rounded-xl ring-2 ring-primary/60" : undefined}><LRHeader
         lr={lr}
         errors={errors}
-        onChange={(next) => {
-          if (next.customer !== lr.customer || next.consignor !== lr.consignor) {
-            setPoSelectionRequested(true);
-            onChange({ ...next, poNumber: "", poDate: "", purchaseOrderId: null });
-          } else onChange(next);
-        }}
+        onChange={changeParty}
         nextLrNumberPreview={nextLrNumberPreview}
       /></div>
 
@@ -69,7 +71,7 @@ export default function LRForm({
           role="consignor"
           lr={lr}
           errors={errors}
-          onChange={onChange}
+          onChange={changeParty}
         /></div>
 
         <div data-lr-notification-focus="party" className={notificationFocus === "party" ? "rounded-xl ring-2 ring-primary/60" : undefined}><PartySection

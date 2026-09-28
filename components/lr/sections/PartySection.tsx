@@ -13,6 +13,7 @@ import {
   type LrCustomerLookupRow,
 } from "@/components/services/customer.service";
 
+import { selectCustomerParty } from "../partyIdentity";
 import type { LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
 import { lrFieldHelp } from "@/lib/help";
@@ -100,23 +101,11 @@ export default function PartySection({
   function handleSelect(option: MasterAutocompleteOption) {
     const customer = customers.find((c) => c.id === option.id);
     if (!customer) return;
-    onChange({
-      ...lr,
-      [config.nameField]: customer.name,
-      [config.gstField]: customer.gst,
-      [config.addressField]: customer.address,
-      ...(role === "consignor" ? { from: customer.city } : { to: customer.city }),
-    });
+    onChange(selectCustomerParty(lr, role, customer));
   }
 
   function handleClear() {
-    onChange({
-      ...lr,
-      [config.nameField]: "",
-      [config.gstField]: "",
-      [config.addressField]: "",
-      ...(role === "consignor" ? { from: "" } : { to: "" }),
-    });
+    onChange(selectCustomerParty(lr, role, null));
   }
 
   return (

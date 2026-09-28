@@ -489,6 +489,10 @@ export async function parseAndValidateLRUpload(
       lrDate,
       bookingBranch,
       customer,
+      // Historical names validate display data; they do not establish stable identity.
+      billingPartyId: null,
+      consignorId: null,
+      consigneeId: null,
       billingParty,
 
       consignor,

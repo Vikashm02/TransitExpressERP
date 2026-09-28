@@ -7,7 +7,7 @@ export interface PurchaseOrderRecord extends PurchaseOrder {
   usedWeight: number;
 }
 
-export type PurchaseOrderLookup = Pick<PurchaseOrderRecord, "id" | "poNumber" | "issueDate">;
+export type PurchaseOrderLookup = Pick<PurchaseOrderRecord, "id" | "poNumber" | "issueDate" | "billingPartyId">;
 export type PurchaseOrderParty = { id: number; name: string; code: string };
 
 export async function getPurchaseOrders(): Promise<PurchaseOrderRecord[]> {
@@ -34,12 +34,14 @@ export async function getPurchaseOrderParties(): Promise<PurchaseOrderParty[]> {
   }));
 }
 
-export async function getActiveLrPurchaseOrders(billingParty: string, consignor: string): Promise<PurchaseOrderLookup[]> {
-  const { data, error } = await supabase.rpc("get_lr_purchase_orders", { p_billing_party: billingParty, p_consignor: consignor });
+export async function getActiveLrPurchaseOrders(billingParty: string, consignor: string, billingPartyId?: number | null): Promise<PurchaseOrderLookup[]> {
+  const { data, error } = billingPartyId == null
+    ? await supabase.rpc("get_lr_purchase_orders", { p_billing_party: billingParty, p_consignor: consignor })
+    : await supabase.rpc("get_lr_purchase_orders_by_party_id", { p_billing_party_id: billingPartyId, p_consignor: consignor });
   if (error) throw error;
   return (data ?? []).map((row: Record<string, unknown>) => ({
-    id: Number(row.id), poNumber: String(row.po_number), issueDate: String(row.issue_date),
-  }));
+    id: Number(row.id), billingPartyId: Number(row.billing_party_id), poNumber: String(row.po_number), issueDate: String(row.issue_date),
+  })).filter((row: PurchaseOrderLookup) => billingPartyId == null || row.billingPartyId === billingPartyId);
 }
 
 export async function savePurchaseOrder(id: number | null, values: PurchaseOrder): Promise<void> {

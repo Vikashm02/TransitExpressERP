@@ -1,3 +1,4 @@
+import { partyIdentityColumns, readPartyIdentity } from "@/components/lr/partyIdentity";
 import { supabase } from "@/lib/supabase";
 import { emitNotificationEvent } from "@/components/services/notification.service";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
@@ -20,7 +21,7 @@ import { syncDeliveryChallanFromLr } from "@/components/services/deliveryChallan
  * `assignedTo` for an existing LR goes through the dedicated `reassignLR()`
  * below, not `updateLR()`. */
 export interface LRRecord extends LR {
-  id: number;
+  id: string;
   billAmount: number;
   lorryHireAmount: number;
   profitAmount: number;
@@ -142,6 +143,7 @@ const LR_STRING_FIELDS = [
 
 function toRow(values: LR) {
   const row = objectToSnakeCase(values);
+  Object.assign(row, partyIdentityColumns(values));
 
   for (const [wrongKey, dbColumn] of Object.entries(COLUMN_RENAMES)) {
     if (wrongKey in row) {
@@ -204,6 +206,9 @@ function fromRow(row: Record<string, unknown>): LRRecord {
 
   const lr = objectToCamelCase<LR>(rest);
   const normalized = lr as Record<string, unknown>;
+  for (const field of ["billingPartyId", "consignorId", "consigneeId"] as const) {
+    if (field in normalized) normalized[field] = readPartyIdentity(normalized[field]);
+  }
 
   for (const field of OPTIONAL_DATE_FIELDS) {
     if (normalized[field] == null) {
@@ -240,7 +245,7 @@ function fromRow(row: Record<string, unknown>): LRRecord {
 
   return {
     ...(normalized as LR),
-    id: id as number,
+    id: id as string,
     billAmount: asLrNumber(bill_amount),
     lorryHireAmount: asLrNumber(lorry_hire_amount),
     profitAmount: asLrNumber(profit_amount),
@@ -273,7 +278,7 @@ export async function getLRs(): Promise<LRRecord[]> {
    GET ONE LR
 ========================================================== */
 
-export async function getLR(id: number): Promise<LRRecord> {
+export async function getLR(id: string): Promise<LRRecord> {
   const { data, error } = await supabase
     .from(TABLE)
     .select("*")
@@ -348,7 +353,7 @@ export async function createLR(values: LR): Promise<LRRecord> {
 
 export type HistoricalLrBulkResult = {
   count: number;
-  ids: number[];
+  ids: string[];
   /** Echo of company_settings.lr_running_number at RPC start (must be unchanged). */
   lrRunningNumberUnchanged: number;
 };
@@ -401,7 +406,7 @@ export async function createHistoricalLrBulk(
   };
 
   const ids = Array.isArray(result.ids)
-    ? result.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+    ? result.ids.filter((id): id is string => typeof id === "string")
     : [];
 
   const count = typeof result.count === "number" ? result.count : ids.length;
@@ -451,7 +456,7 @@ export async function createNumberedLrDraft(values: LR): Promise<LRRecord> {
   return fromRow(data as Record<string, unknown>);
 }
 
-export async function updateLR(id: number, values: LR): Promise<LRRecord> {
+export async function updateLR(id: string, values: LR): Promise<LRRecord> {
   // `id`/`created_at` are server-owned and must never reach the update
   // payload. (The edit dialog seeds its state from the full DB record, so
   // the caller can't be trusted to have already excluded them.)
@@ -557,7 +562,7 @@ export async function updateLRFinancials(
    itself, not just hidden in the UI.
 ========================================================== */
 
-export async function reassignLR(id: number, assignedTo: string): Promise<LRRecord> {
+export async function reassignLR(id: string, assignedTo: string): Promise<LRRecord> {
   const { data, error } = await supabase
     .from(TABLE)
     .update({ assigned_to: assignedTo })
@@ -606,7 +611,7 @@ export async function getOwnDraftLRs(): Promise<LRRecord[]> {
    DELETE LR
 ========================================================== */
 
-export async function deleteLR(id: number): Promise<void> {
+export async function deleteLR(id: string): Promise<void> {
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
 
   if (error) throw error;

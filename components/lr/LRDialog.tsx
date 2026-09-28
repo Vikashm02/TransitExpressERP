@@ -48,6 +48,9 @@ const emptyLR: LR = {
   lrDate: "",
   bookingBranch: "",
   customer: "",
+  billingPartyId: null,
+  consignorId: null,
+  consigneeId: null,
   billingParty: "Consignor",
 
   // Consignor
@@ -155,7 +158,7 @@ export default function LRDialog({
   const [draftHint, setDraftHint] = useState<string | null>(null);
   const [checkingPo, setCheckingPo] = useState(false);
   /** Track which persisted row the form was seeded from (avoid wipe on autosave). */
-  const seededLrIdRef = useRef<number | null>(null);
+  const seededLrIdRef = useRef<LRRecord["id"] | null>(null);
   /** True when this dialog open started as Create (no lr) — number attach must not reset form. */
   const openedAsCreateRef = useRef(false);
 
@@ -387,11 +390,13 @@ export default function LRDialog({
 
     // Recheck active selection at save; preserve unchanged historical snapshots.
     const mustCheckPo = requireMaterialDescription || values.customer !== lr?.customer
+      || (values.billingPartyId ?? null) !== (lr?.billingPartyId ?? null)
+      || (values.consignorId ?? null) !== (lr?.consignorId ?? null)
       || (values.purchaseOrderId ?? null) !== (lr?.purchaseOrderId ?? null);
     setCheckingPo(true);
     try {
       if (mustCheckPo) {
-        const active = await getActiveLrPurchaseOrders(values.customer, values.consignor);
+        const active = await getActiveLrPurchaseOrders(values.customer, values.consignor, values.billingPartyId);
         if ((active.length > 0 || values.purchaseOrderId)
           && !active.some((po) => po.id === values.purchaseOrderId)) {
           toast.error("Choose an active PO for this billing party before saving.");

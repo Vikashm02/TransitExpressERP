@@ -81,7 +81,7 @@ export default function LRPrintPage() {
     (async () => {
       try {
         const load = (async () => {
-          const lrRecord = await getLR(id as unknown as number);
+          const lrRecord = await getLR(id);
           if (isStale()) return;
           setLR(lrRecord);
 

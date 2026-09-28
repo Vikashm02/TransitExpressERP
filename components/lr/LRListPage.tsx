@@ -173,7 +173,7 @@ function LRListPageContent() {
    * new-create session.
    */
   const openedAsNewCreateRef = useRef(false);
-  const sessionCreatedDraftIdRef = useRef<number | null>(null);
+  const sessionCreatedDraftIdRef = useRef<LRRecord["id"] | null>(null);
   const createSessionDiscardedRef = useRef(false);
   /** Bumped on each dialog open and on close so late autosaves are ignored. */
   const createSessionTokenRef = useRef(0);

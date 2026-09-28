@@ -71,6 +71,10 @@ export const lrSchema = z
     // The name `customer` is kept as-is to avoid an unnecessary database
     // column rename — see BILLING_PARTY_OPTIONS below for the unrelated
     // "GST Payable By" field.
+    // Optional for legacy/imported rows; populated only from explicit master selections.
+    billingPartyId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+    consignorId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+    consigneeId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
     customer: z.string().trim().min(1, "Billing party is required."),
     // "GST Payable By" on the printed LR (Consignor/Consignee) — a
     // pre-existing, unrelated concept from the new Billing Party Master.

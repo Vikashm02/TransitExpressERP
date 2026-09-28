@@ -100,7 +100,7 @@ export default function BillingBulkUploadDialog({
    */
   async function markLRsBilled(
     lrIds: string[],
-    priorStatuses: Map<number, LRRecord["status"]>
+    priorStatuses: Map<LRRecord["id"], LRRecord["status"]>
   ) {
     const lrs = await getLRs();
     const targets = lrs.filter((lr) => lrIds.includes(String(lr.id)) && lr.status !== "Billed");
@@ -134,7 +134,7 @@ export default function BillingBulkUploadDialog({
       }
 
       const createdIds: number[] = [];
-      const priorStatuses = new Map<number, LRRecord["status"]>();
+      const priorStatuses = new Map<LRRecord["id"], LRRecord["status"]>();
       let nextRunningNumber = company.invoiceRunningNumber ?? 0;
 
       try {

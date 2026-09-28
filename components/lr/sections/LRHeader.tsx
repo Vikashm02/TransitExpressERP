@@ -17,6 +17,7 @@ import {
 
 import { BILLING_PARTY_OPTIONS, BOOKING_BRANCH_OPTIONS, type LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
+import { selectBillingParty } from "../partyIdentity";
 import { isDraftLrNumber } from "@/lib/entryStatus";
 import { lrFieldHelp } from "@/lib/help";
 
@@ -144,8 +145,11 @@ export default function LRHeader({
             value={lr.customer}
             options={options}
             loading={loadingParties}
-            onSelect={(option) => update("customer", option.label)}
-            onClear={() => update("customer", "")}
+            onSelect={(option) => {
+              const party = parties.find((item) => item.id === option.id);
+              if (party) onChange(selectBillingParty(lr, party));
+            }}
+            onClear={() => onChange(selectBillingParty(lr, null))}
             placeholder="Type to find billing party..."
             emptyMessage="No matching billing party in master data."
           />

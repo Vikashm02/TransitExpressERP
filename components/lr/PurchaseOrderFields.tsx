@@ -25,7 +25,7 @@ export default function PurchaseOrderFields({
   replacementPoSaving?: boolean;
 }) {
   const [lookup, setLookup] = useState<{ key: string; options: PurchaseOrderLookup[]; failed: boolean } | null>(null);
-  const lookupKey = `${lr.customer}\u0000${lr.consignor}`;
+  const lookupKey = `${lr.billingPartyId ?? ""}\u0000${lr.consignorId ?? ""}\u0000${lr.customer}\u0000${lr.consignor}`;
   const enabled = !readOnly && Boolean(lr.customer.trim() && lr.consignor.trim());
   const currentLookup = lookup?.key === lookupKey ? lookup : null;
   const options = enabled ? currentLookup?.options ?? [] : [];
@@ -37,7 +37,7 @@ export default function PurchaseOrderFields({
   useEffect(() => {
     if (readOnly || !lr.customer.trim() || !lr.consignor.trim()) return;
     let cancelled = false;
-    getActiveLrPurchaseOrders(lr.customer, lr.consignor).then((rows) => {
+    getActiveLrPurchaseOrders(lr.customer, lr.consignor, lr.billingPartyId).then((rows) => {
       if (cancelled) return;
       setLookup({ key: lookupKey, options: rows, failed: false });
       const current = latest.current;
@@ -48,7 +48,7 @@ export default function PurchaseOrderFields({
       }
     }).catch(() => { if (!cancelled) setLookup({ key: lookupKey, options: [], failed: true }); });
     return () => { cancelled = true; };
-  }, [lr.customer, lr.consignor, lookupKey, readOnly, autoSelect]);
+  }, [lr.customer, lr.consignor, lr.billingPartyId, lookupKey, readOnly, autoSelect]);
 
   const hint = readOnly ? undefined : loading ? "Loading active POs..." : failed ? "PO lookup unavailable. Existing PO details are preserved."
     : options.length > 1 ? "Multiple active POs found. Choose the correct PO."

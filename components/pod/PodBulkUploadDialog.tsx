@@ -90,7 +90,7 @@ export default function PodBulkUploadDialog({
     const createdIds: number[] = [];
     // Only LRs whose status this upload actually changed — keyed by LR id,
     // storing the exact status present before we marked them Delivered.
-    const priorStatuses = new Map<number, LRRecord["status"]>();
+    const priorStatuses = new Map<LRRecord["id"], LRRecord["status"]>();
 
     try {
       setImporting(true);
