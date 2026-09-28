@@ -1,50 +1,67 @@
-// Meta WhatsApp webhook foundation only.
-// It verifies Meta requests, records minimal replay/rate-limit metadata, and
-// resolves an explicitly linked, approved ERP user. It never reads ERP data,
-// invokes AI, sends a WhatsApp response, or logs raw payload/message content.
+// Verified inbound text -> isolated internal/external tools; no outbound send.
+// Only replay/access metadata is persisted. Text and generated replies are
+// transient; neither is logged, returned to Meta, or written to the database.
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+
+import { LIMITS, runWhatsappAssistant } from "../_shared/whatsappAssistant.ts";
+import { createWhatsappExternalAssistantTools, trustedExternalEventId } from "../_shared/whatsappExternalAssistantTools.ts";
+import { createWhatsappAssistantTools } from "../_shared/whatsappAssistantTools.ts";
+
+type WebhookDependencies = {
+  env: (name: string) => string | undefined;
+  createAdmin: (url: string, key: string) => SupabaseClient;
+  // Trusted runtime/test seams only; none can be supplied by a webhook payload.
+  waitUntil?: (work: Promise<void>) => void;
+  assistant?: typeof runWhatsappAssistant;
+};
 
 const E164_PHONE = /^\+[1-9][0-9]{7,14}$/;
 
-type InboundMessage = { id: string; from: string; type: string; timestamp: string | undefined };
+type InboundMessage = { id: string; from: string; type: string; timestamp: string | undefined; text?: string };
 type LinkedUser = {
   app_user_id: string;
   app_users: { id: string; approval_status: string | null; is_locked: boolean | null } | null;
 };
 
-Deno.serve(async (req) => {
-  if (req.method === "GET") return handleVerification(req);
-  if (req.method !== "POST") return response(405, { ok: false, code: "method_not_allowed" });
+export function createWebhookHandler(dependencies: WebhookDependencies) {
+  return async (req: Request): Promise<Response> => {
+    if (req.method === "GET") return handleVerification(req, dependencies.env);
+    if (req.method !== "POST") return response(405, { ok: false, code: "method_not_allowed" });
 
-  const appSecret = Deno.env.get("WHATSAPP_META_APP_SECRET") ?? "";
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SUPABASE_PROJECT_URL") ?? "";
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
-  if (!appSecret || !supabaseUrl || !serviceRoleKey) {
-    console.error("[WhatsApp assistant webhook] required server configuration is missing");
-    return response(500, { ok: false, code: "server_misconfigured" });
-  }
+    const appSecret = dependencies.env("WHATSAPP_META_APP_SECRET") ?? "";
+    const supabaseUrl = dependencies.env("SUPABASE_URL") ?? dependencies.env("SUPABASE_PROJECT_URL") ?? "";
+    const serviceRoleKey = dependencies.env("SUPABASE_SERVICE_ROLE_KEY") ?? dependencies.env("SERVICE_ROLE_KEY") ?? "";
+    if (!appSecret || !supabaseUrl || !serviceRoleKey) {
+      console.error("[WhatsApp assistant webhook] required server configuration is missing");
+      return response(500, { ok: false, code: "server_misconfigured" });
+    }
 
-  const rawBody = await req.text();
-  const signature = req.headers.get("x-hub-signature-256");
-  if (!(await hasValidMetaSignature(rawBody, signature, appSecret))) {
-    console.warn("[WhatsApp assistant webhook] rejected request with invalid signature");
-    return response(401, { ok: false, code: "invalid_signature" });
-  }
+    const rawBody = await req.text();
+    const signature = req.headers.get("x-hub-signature-256");
+    if (!(await hasValidMetaSignature(rawBody, signature, appSecret))) {
+      console.warn("[WhatsApp assistant webhook] rejected request with invalid signature");
+      return response(401, { ok: false, code: "invalid_signature" });
+    }
 
-  const payload = parseObject(rawBody);
-  if (!payload) return response(400, { ok: false, code: "invalid_payload" });
+    const payload = parseObject(rawBody);
+    if (!payload) return response(400, { ok: false, code: "invalid_payload" });
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
-  for (const message of extractInboundMessages(payload)) await processInboundMessage(admin, message);
+    try {
+      const admin = dependencies.createAdmin(supabaseUrl, serviceRoleKey);
+      for (const message of extractInboundMessages(payload)) {
+        try { await processInboundMessage(admin, message, dependencies); }
+        catch { /* Fail closed for this message; never log exception details. */ }
+      }
+    } catch { /* A signed, valid envelope is safely acknowledged even on failure. */ }
+    // Internal checks finish before acknowledgement. External admission and AI
+    // run only in registered background work; neither blocks acknowledgement.
+    return response(200, { ok: true });
+  };
+}
 
-  // Meta expects a quick acknowledgement. There is intentionally no reply or
-  // downstream assistant/tool invocation in this foundation phase.
-  return response(200, { ok: true });
-});
-
-async function handleVerification(req: Request): Promise<Response> {
-  const verifyToken = Deno.env.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN") ?? "";
+async function handleVerification(req: Request, env: WebhookDependencies["env"]): Promise<Response> {
+  const verifyToken = env("WHATSAPP_WEBHOOK_VERIFY_TOKEN") ?? "";
   if (!verifyToken) {
     console.error("[WhatsApp assistant webhook] verification token is not configured");
     return response(500, { ok: false, code: "server_misconfigured" });
@@ -60,7 +77,7 @@ async function handleVerification(req: Request): Promise<Response> {
   return new Response(challenge, { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
-async function processInboundMessage(admin: SupabaseClient, message: InboundMessage): Promise<void> {
+async function processInboundMessage(admin: SupabaseClient, message: InboundMessage, dependencies: WebhookDependencies): Promise<void> {
   const senderPhone = normalizeMetaPhone(message.from);
   if (!senderPhone) {
     console.warn("[WhatsApp assistant webhook] ignored message with invalid sender metadata");
@@ -74,19 +91,113 @@ async function processInboundMessage(admin: SupabaseClient, message: InboundMess
     .maybeSingle();
   if (insertError) {
     if (insertError.code === "23505") return; // Durable replay protection.
-    console.error("[WhatsApp assistant webhook] inbound metadata persistence failed", { code: insertError.code ?? "unknown" });
+    console.error("[WhatsApp assistant webhook] inbound metadata persistence failed");
     return;
   }
   if (!inserted) return;
 
 
+  // Presence includes inactive links. Only a definite absence permits the
+  // external path; errors and malformed responses cannot become fallback.
+  const internalPresent = await hasAnyInternalMapping(admin, senderPhone);
+  if (internalPresent === null) {
+    await updateInboundStatus(admin, inserted.id, "unauthorized");
+    return;
+  }
+  if (!internalPresent) {
+    await processExternalMessage(admin, inserted.id, message, dependencies);
+    return;
+  }
   const linkedUser = await resolveLinkedApprovedUser(admin, senderPhone);
   if (!linkedUser) {
     await updateInboundStatus(admin, inserted.id, "unauthorized");
     return;
   }
-  await updateInboundStatus(admin, inserted.id, "authorized", linkedUser);
-  // Future tools receive only this resolved ERP identity, never a caller-selected user.
+  if (message.type !== "text" || typeof message.text !== "string" || !message.text.trim() || message.text.length > LIMITS.input) {
+    await updateInboundStatus(admin, inserted.id, "ignored", linkedUser);
+    return;
+  }
+  if (!(await updateInboundStatus(admin, inserted.id, "authorized", linkedUser))) return;
+  if (dependencies.env("WHATSAPP_ASSISTANT_ENABLED") !== "true" || !dependencies.waitUntil) return;
+
+  // Background only after durable admission. A rejected registration must not
+  // start an untracked assistant invocation. The resolved identity is closed
+  // over server-side; no identity is read from text, query parameters or AI.
+  const text = message.text;
+  let registered = false;
+  const work = Promise.resolve().then(async () => {
+    if (!registered) return;
+    try {
+      await (dependencies.assistant ?? runWhatsappAssistant)(text, {
+        tools: createWhatsappAssistantTools(admin, linkedUser),
+        env: dependencies.env,
+      });
+      // Intentionally discard the result. No outbound transport or persistence.
+    } catch { /* Includes unexpected assistant errors; no log or retry. */ }
+  });
+  dependencies.waitUntil(work);
+  registered = true;
+}
+
+
+async function hasAnyInternalMapping(admin: SupabaseClient, senderPhone: string): Promise<boolean | null> {
+  const { data, error } = await admin.from("whatsapp_user_links")
+    .select("id").eq("whatsapp_phone_e164", senderPhone).limit(1).maybeSingle();
+  if (error) return null;
+  if (data === null) return false;
+  return data && typeof data === "object" && data.id != null ? true : null;
+}
+
+async function processExternalMessage(admin: SupabaseClient, insertedId: unknown, message: InboundMessage, dependencies: WebhookDependencies): Promise<void> {
+  const eventId = trustedExternalEventId(insertedId);
+  if (message.type !== "text" || typeof message.text !== "string" || !message.text.trim() || message.text.length > LIMITS.input
+    || dependencies.env("WHATSAPP_ASSISTANT_ENABLED") !== "true"
+    || dependencies.env("WHATSAPP_EXTERNAL_ASSISTANT_ENABLED") !== "true" || !dependencies.waitUntil) {
+    await admin.from("whatsapp_inbound_events").update({ processing_status: "ignored" }).eq("id", eventId);
+    return;
+  }
+  const text = message.text;
+  let registered = false;
+  const work = Promise.resolve().then(async () => {
+    if (!registered) return;
+    try {
+      // M101 owns mapping/scope/rate checks and external attribution. No table
+      // lookup, name matching, alternate RPC or admission retry is permitted.
+      const admitted = await admitExternalEvent(admin, eventId);
+      if (admitted !== true) {
+        if (admitted === false) {
+          // Preserve M101's 'ignored' rate-limit status and any committed
+          // attribution. An uncertain RPC error is never rewritten/retried.
+          await admin.from("whatsapp_inbound_events").update({ processing_status: "unauthorized" })
+            .eq("id", eventId).eq("processing_status", "received");
+        }
+        return;
+      }
+      await (dependencies.assistant ?? runWhatsappAssistant)(text, {
+        tools: createWhatsappExternalAssistantTools(admin, eventId), env: dependencies.env,
+      });
+      // Transient reply is deliberately discarded; no Meta delivery or logging.
+    } catch { /* Fail closed without exposing provider/DB details or retrying. */ }
+  });
+  dependencies.waitUntil(work);
+  registered = true;
+}
+
+async function admitExternalEvent(admin: SupabaseClient, eventId: number | string): Promise<boolean | null> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const work = async (): Promise<boolean | null> => {
+      const { data, error } = await admin.rpc("whatsapp_external_admit", { p_event_id: eventId }).abortSignal(controller.signal);
+      if (controller.signal.aborted || error || typeof data !== "boolean") return null;
+      return data;
+    };
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => { controller.abort(); resolve(null); }, 5000);
+    });
+    return await Promise.race([work(), timeout]);
+  } catch { return null; }
+  finally { if (timer !== undefined) clearTimeout(timer); }
 }
 
 
@@ -98,7 +209,7 @@ async function resolveLinkedApprovedUser(admin: SupabaseClient, senderPhone: str
     .eq("is_active", true)
     .maybeSingle();
   if (error || !data) {
-    if (error) console.error("[WhatsApp assistant webhook] link lookup failed", { code: error.code ?? "unknown" });
+    if (error) console.error("[WhatsApp assistant webhook] link lookup failed");
     return null;
   }
   const link = data as unknown as LinkedUser;
@@ -112,7 +223,7 @@ async function resolveLinkedApprovedUser(admin: SupabaseClient, senderPhone: str
     .eq("is_active", true)
     .maybeSingle();
   if (exclusionError) {
-    console.error("[WhatsApp assistant webhook] exclusion lookup failed", { code: exclusionError.code ?? "unknown" });
+    console.error("[WhatsApp assistant webhook] exclusion lookup failed");
     return null; // Fail closed when an explicit-access control cannot be checked.
   }
   if (exclusion) return null;
@@ -123,13 +234,14 @@ async function resolveLinkedApprovedUser(admin: SupabaseClient, senderPhone: str
 async function updateInboundStatus(
   admin: SupabaseClient,
   eventId: number,
-  status: "authorized" | "unauthorized",
+  status: "authorized" | "unauthorized" | "ignored",
   appUserId?: string,
-): Promise<void> {
+): Promise<boolean> {
   const update: { processing_status: string; app_user_id?: string } = { processing_status: status };
   if (appUserId) update.app_user_id = appUserId;
   const { error } = await admin.from("whatsapp_inbound_events").update(update).eq("id", eventId);
-  if (error) console.error("[WhatsApp assistant webhook] inbound status update failed", { code: error.code ?? "unknown" });
+  if (error) console.error("[WhatsApp assistant webhook] inbound status update failed");
+  return !error;
 }
 
 function extractInboundMessages(payload: Record<string, unknown>): InboundMessage[] {
@@ -142,7 +254,13 @@ function extractInboundMessages(payload: Record<string, unknown>): InboundMessag
         const id = stringValue(message?.id);
         const from = stringValue(message?.from);
         const type = stringValue(message?.type);
-        if (id && from && type && id.length <= 512 && type.length <= 64) messages.push({ id, from, type, timestamp: stringValue(message?.timestamp) });
+        if (id && from && type && id.length <= 512 && type.length <= 64) {
+          // Called only after signature verification. Never truncate a query:
+          // oversized/empty/non-string bodies are ignored before core invocation.
+          const body = type === "text" ? stringValue(objectValue(message?.text)?.body) : undefined;
+          const text = body && body.length <= LIMITS.input && body.trim() ? body : undefined;
+          messages.push({ id, from, type, timestamp: stringValue(message?.timestamp), text });
+        }
       }
     }
   }
@@ -188,3 +306,18 @@ function objectValue(value: unknown): Record<string, unknown> | null { return va
 function arrayValue(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
 function stringValue(value: unknown): string | undefined { return typeof value === "string" ? value : undefined; }
 function response(status: number, body: Record<string, unknown>): Response { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8" } }); }
+
+// Lazy runtime bootstrap keeps tests offline and avoids serving during imports.
+// Missing background support fails closed: admission still works, AI is skipped.
+if ((import.meta as ImportMeta & { main?: boolean }).main) {
+  const runtime = globalThis as unknown as {
+    Deno: { env: { get(name: string): string | undefined }; serve(handler: (req: Request) => Promise<Response>): unknown };
+    EdgeRuntime?: { waitUntil(work: Promise<void>): void };
+  };
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.49.1");
+  runtime.Deno.serve(createWebhookHandler({
+    env: (name) => runtime.Deno.env.get(name),
+    createAdmin: (url, key) => createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }),
+    waitUntil: runtime.EdgeRuntime ? (work) => runtime.EdgeRuntime!.waitUntil(work) : undefined,
+  }));
+}
