@@ -34,7 +34,7 @@ export function createWhatsappAssistantTools(admin: SupabaseClient, appUserId: s
       partySearch?: string;
       material?: string;
       status?: string;
-    }): Promise<JsonObject> => invoke(admin, "whatsapp_search_lrs", {
+    }, signal?: AbortSignal): Promise<JsonObject> => invoke(admin, "whatsapp_search_lrs", {
       p_app_user_id: appUserId,
       p_lr_date_from: date(input.lrDateFrom),
       p_lr_date_to: date(input.lrDateTo),
@@ -50,14 +50,14 @@ export function createWhatsappAssistantTools(admin: SupabaseClient, appUserId: s
       p_count_only: Boolean(input.countOnly),
       p_limit: limit(input.limit),
       p_offset: offset(input.offset),
-    }),
+    }, signal),
 
-    getLrDetail: async (lrNumber: string): Promise<JsonObject> => invoke(admin, "whatsapp_get_lr_detail", {
+    getLrDetail: async (lrNumber: string, signal?: AbortSignal): Promise<JsonObject> => invoke(admin, "whatsapp_get_lr_detail", {
       p_app_user_id: appUserId,
       p_lr_number: requiredText(lrNumber, 80, "LR number"),
-    }),
+    }, signal),
 
-    searchPendingPods: async (input: SharedFilters & { minPendingDays?: number }): Promise<JsonObject> => invoke(admin, "whatsapp_search_pending_pods", {
+    searchPendingPods: async (input: SharedFilters & { minPendingDays?: number }, signal?: AbortSignal): Promise<JsonObject> => invoke(admin, "whatsapp_search_pending_pods", {
       p_app_user_id: appUserId,
       p_min_pending_days: boundedInteger(input.minPendingDays, 0, 36500, 0),
       p_lr_date_from: date(input.lrDateFrom),
@@ -70,17 +70,23 @@ export function createWhatsappAssistantTools(admin: SupabaseClient, appUserId: s
       p_count_only: Boolean(input.countOnly),
       p_limit: limit(input.limit),
       p_offset: offset(input.offset),
-    }),
+    }, signal),
 
-    getPodDetail: async (lrNumber: string): Promise<JsonObject> => invoke(admin, "whatsapp_get_pod_detail", {
+    getPodDetail: async (lrNumber: string, signal?: AbortSignal): Promise<JsonObject> => invoke(admin, "whatsapp_get_pod_detail", {
       p_app_user_id: appUserId,
       p_lr_number: requiredText(lrNumber, 80, "LR number"),
-    }),
+    }, signal),
   });
 }
 
-async function invoke(admin: SupabaseClient, rpc: string, args: JsonObject): Promise<JsonObject> {
-  const { data, error } = await admin.rpc(rpc, args);
+async function invoke(admin: SupabaseClient, rpc: string, args: JsonObject, signal?: AbortSignal): Promise<JsonObject> {
+  // supabase-js 2.49.1 pins postgrest-js 1.19.2, whose RPC builder inherits
+  // abortSignal(). It cancels the HTTP fetch, not guaranteed PostgreSQL work.
+  // Signal is trusted call metadata, never an RPC argument or model parameter.
+  signal?.throwIfAborted();
+  const query = admin.rpc(rpc, args);
+  const { data, error } = await (signal ? query.abortSignal(signal) : query);
+  signal?.throwIfAborted();
   if (error) throw new Error("WhatsApp operational query was not available.");
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Invalid WhatsApp operational query response.");
   return data as JsonObject;
