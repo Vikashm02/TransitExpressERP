@@ -33,10 +33,19 @@ export function selectCustomerParty(lr: LR, role: "consignor" | "consignee", par
   };
 }
 
-/** Same display name can represent different masters. Clearing selection also clears its PO. */
+/** First explicit Material identity on a finalized LR preserves its historical PO. */
+export function isLegacyMaterialEnrichment(previous: LR, next: LR): boolean {
+  return previous.entryStatus === "final" && next.entryStatus === "final"
+    && previous.materialId == null && next.materialId != null
+    && previous.purchaseOrderId != null && previous.purchaseOrderId === next.purchaseOrderId;
+}
+
+/** Other matching-context changes still require a fresh PO selection. */
 export function lrPoPartyChanged(previous: LR, next: LR): boolean {
   return previous.customer !== next.customer || previous.consignor !== next.consignor
-    || previous.billingPartyId !== next.billingPartyId || previous.consignorId !== next.consignorId;
+    || previous.billingPartyId !== next.billingPartyId || previous.consignorId !== next.consignorId
+    || ((previous.materialId ?? null) !== (next.materialId ?? null)
+      && !isLegacyMaterialEnrichment(previous, next));
 }
 
 /** Preserve missing vs explicit null: old callers must not erase existing relationships. */

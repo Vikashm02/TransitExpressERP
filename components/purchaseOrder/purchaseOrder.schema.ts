@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const purchaseOrderSchema = z.object({
   billingPartyId: z.number().int().positive("Select a billing party."),
+  materialId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
   consignor: z.string().trim().min(1, "Select a consignor."),
   poNumber: z.string().trim().min(1, "PO number is required.").max(100).transform((s) => s.toUpperCase()),
   issueDate: z.iso.date("Select a valid issue date."),

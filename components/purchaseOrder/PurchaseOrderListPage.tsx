@@ -17,16 +17,17 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import { getLrCustomerLookup, type LrCustomerLookupRow } from "@/components/services/customer.service";
 import { purchaseOrderUsage, purchaseOrderWarningClass } from "@/lib/purchaseOrderUsage";
 import { purchaseOrderSchema, type PurchaseOrder } from "./purchaseOrder.schema";
-import { getPurchaseOrders, getPurchaseOrderParties, savePurchaseOrder,
+import { getPurchaseOrders, getPurchaseOrderParties, getPurchaseOrderMaterials, savePurchaseOrder,
   type PurchaseOrderRecord, type PurchaseOrderParty } from "@/components/services/purchaseOrder.service";
 
-const empty: PurchaseOrder = { billingPartyId: 0, consignor: "", poNumber: "", issueDate: "", allottedWeight: 0, status: "Active" };
+const empty: PurchaseOrder = { billingPartyId: 0, materialId: null, consignor: "", poNumber: "", issueDate: "", allottedWeight: 0, status: "Active" };
 const weight = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
 export default function PurchaseOrderListPage() {
   const { hasAction } = useAuth();
   const [rows, setRows] = useState<PurchaseOrderRecord[]>([]);
   const [parties, setParties] = useState<PurchaseOrderParty[]>([]);
+  const [materials, setMaterials] = useState<{ id: number; name: string }[]>([]);
   const [consignors, setConsignors] = useState<LrCustomerLookupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -60,12 +61,13 @@ export default function PurchaseOrderListPage() {
 
   async function showForm(record: PurchaseOrderRecord | null) {
     try {
-      const [partyRows, consignorRows] = await Promise.all([getPurchaseOrderParties(), getLrCustomerLookup()]);
+      const [partyRows, consignorRows, materialRows] = await Promise.all([getPurchaseOrderParties(), getLrCustomerLookup(), getPurchaseOrderMaterials()]);
+      setMaterials(materialRows);
       setParties(partyRows);
       setConsignors(consignorRows.filter((row) => row.entryStatus !== "draft"));
       setEditing(record);
       setValues(record ? {
-        billingPartyId: record.billingPartyId, poNumber: record.poNumber,
+        billingPartyId: record.billingPartyId, materialId: record.materialId ?? null, poNumber: record.poNumber,
         consignor: record.consignor, issueDate: record.issueDate, allottedWeight: record.allottedWeight, status: record.status,
       } : { ...empty });
       setErrors({});
@@ -74,6 +76,10 @@ export default function PurchaseOrderListPage() {
   }
 
   async function save() {
+    if ((!editing || editing.materialId != null) && values.materialId == null) {
+      setErrors({ materialId: "Select Material from Material Master." });
+      return;
+    }
     const parsed = purchaseOrderSchema.safeParse(values);
     if (!parsed.success) {
       setErrors(Object.fromEntries(parsed.error.issues.map((issue) => [String(issue.path[0]), issue.message])));
@@ -93,11 +99,12 @@ export default function PurchaseOrderListPage() {
   }
 
   const filtered = rows.filter((r) => (!status || r.status === status)
-    && `${r.poNumber} ${r.billingPartyName} ${r.consignor}`.toLowerCase().includes(search.trim().toLowerCase()));
+    && `${r.poNumber} ${r.billingPartyName} ${r.consignor} ${r.materialName}`.toLowerCase().includes(search.trim().toLowerCase()));
   const columns: DataTableColumn<PurchaseOrderRecord>[] = [
     { key: "poNumber", header: "PO Number", sortable: true },
     { key: "billingPartyName", header: "Billing Party", sortable: true },
     { key: "consignor", header: "Consignor", sortable: true },
+    { key: "materialName", header: "Material", sortable: true, render: (r) => r.materialName || "Not assigned (legacy)" },
     { key: "issueDate", header: "Issue Date", sortable: true },
     { key: "allottedWeight", header: "Allotted (MT)", render: (r) => weight(r.allottedWeight), sortable: true },
     { key: "usedWeight", header: "Used (MT)", render: (r) => weight(r.usedWeight), sortable: true },
@@ -141,6 +148,15 @@ export default function PurchaseOrderListPage() {
             onSelect={(row) => setValues({ ...values, consignor: row.label })}
             onClear={() => setValues({ ...values, consignor: "" })} placeholder="Select consignor..." />
         </FormField>
+        <FormSelect label="Material" id="po-material" value={values.materialId == null ? "" : String(values.materialId)}
+          required={!editing || editing.materialId != null} error={errors.materialId}
+          placeholder="Select Material"
+          options={[
+            ...(values.materialId != null && !materials.some((m) => m.id === values.materialId)
+              ? [{ value: String(values.materialId), label: editing?.materialName || "Existing Material" }] : []),
+            ...materials.map((m) => ({ value: String(m.id), label: m.name })),
+          ]}
+          onValueChange={(id) => { if (id) setValues({ ...values, materialId: Number(id) }); }} />
         <FormField label="PO Number" htmlFor="po-number" required error={errors.poNumber}>
           <Input id="po-number" value={values.poNumber} maxLength={100}
             onChange={(e) => setValues({ ...values, poNumber: e.target.value.toUpperCase() })} />

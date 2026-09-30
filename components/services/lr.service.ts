@@ -144,6 +144,7 @@ const LR_STRING_FIELDS = [
 function toRow(values: LR) {
   const row = objectToSnakeCase(values);
   Object.assign(row, partyIdentityColumns(values));
+  if (values.materialId !== undefined) row.material_id = readPartyIdentity(values.materialId);
 
   for (const [wrongKey, dbColumn] of Object.entries(COLUMN_RENAMES)) {
     if (wrongKey in row) {
@@ -206,7 +207,7 @@ function fromRow(row: Record<string, unknown>): LRRecord {
 
   const lr = objectToCamelCase<LR>(rest);
   const normalized = lr as Record<string, unknown>;
-  for (const field of ["billingPartyId", "consignorId", "consigneeId"] as const) {
+  for (const field of ["billingPartyId", "consignorId", "consigneeId", "materialId"] as const) {
     if (field in normalized) normalized[field] = readPartyIdentity(normalized[field]);
   }
 

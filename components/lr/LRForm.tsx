@@ -91,7 +91,7 @@ export default function LRForm({
       <div data-lr-notification-focus="material" className={notificationFocus === "material" ? "rounded-xl ring-2 ring-primary/60" : undefined}><MaterialSection
         lr={lr}
         errors={errors}
-        onChange={onChange}
+        onChange={changeParty}
         requireMaterialDescription={requireMaterialDescription}
       /></div>
 

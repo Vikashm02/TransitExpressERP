@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { materialFinalizationError } from '../components/lr/materialIdentity.ts';
 import { lrPartyFinalizationError } from '../components/lr/partyIdentity.ts';
 import { isDraftLrNumber, isDraftEntry, needsLrNumberAllocation } from '../lib/entryStatus.ts';
 
-const valid = { customer: 'Billing', consignor: 'Sender', consignee: 'Receiver', billingPartyId: 1, consignorId: 2, consigneeId: 3 };
+const valid = { materialId: 10, customer: 'Billing', consignor: 'Sender', consignee: 'Receiver', billingPartyId: 1, consignorId: 2, consigneeId: 3 };
 const messages = [
   'Please reselect Billing Party from Billing Party Master.',
   'Please reselect Consignor from Customer Master.',
@@ -48,7 +49,7 @@ const handler = ts.transpileModule(findFunction('handleSubmit'), { compilerOptio
 async function submit(editingLR, values, extra = {}) {
   const calls = [];
   const context = {
-    editingLR, lrPartyFinalizationError, isDraftLrNumber, isDraftEntry, needsLrNumberAllocation,
+    editingLR, lrPartyFinalizationError, materialFinalizationError, isDraftLrNumber, isDraftEntry, needsLrNumberAllocation,
     toast: { error: message => calls.push(['error', message]), success: () => {} },
     setSaving: value => calls.push(['saving', value]),
     canStaffEditRecord: () => true, isAdmin: true, canContinueDraft: true, canEdit: true,
@@ -97,5 +98,12 @@ test('guard is absent from autosave and bulk service/import paths', () => {
   assert.doesNotMatch(findFunction('handleAutosave'), /lrPartyFinalizationError/);
   for (const path of ['../components/services/lr.service.ts', '../components/lr/lrBulkUpload.ts']) {
     assert.doesNotMatch(readFileSync(new URL(path, import.meta.url), 'utf8'), /lrPartyFinalizationError/);
+  }
+});
+
+test('interactive new/finalized LR requires explicit Material ID', async () => {
+  for (const materialId of [null, undefined]) {
+    const calls = await submit(null, { ...valid, materialId });
+    assert.deepEqual(calls, [['error', materialFinalizationError({ materialId })]]);
   }
 });

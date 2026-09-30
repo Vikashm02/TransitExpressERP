@@ -23,6 +23,7 @@ import FormSelect from "@/components/ui/FormSelect";
 import { Button } from "@/components/ui/button";
 import StatCard from "@/components/ui/StatCard";
 import LRDialog from "./LRDialog";
+import { materialFinalizationError } from "./materialIdentity";
 import { lrPartyFinalizationError } from "./partyIdentity";
 import LRBulkUploadDialog from "./LRBulkUploadDialog";
 import LRTable from "./LRTable";
@@ -578,7 +579,7 @@ function LRListPageContent() {
   async function handleSubmit(values: LR) {
     // Match the existing create/draft branches; historical final edits remain valid.
     if (!editingLR || editingLR.entryStatus === "draft" || isDraftLrNumber(editingLR.lrNumber)) {
-      const identityError = lrPartyFinalizationError(values);
+      const identityError = lrPartyFinalizationError(values) ?? materialFinalizationError(values);
       if (identityError) {
         toast.error(identityError);
         return;

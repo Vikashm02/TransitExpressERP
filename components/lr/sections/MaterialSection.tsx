@@ -11,6 +11,7 @@ import {
   getLrMaterialLookup,
   type LrMaterialLookupRow,
 } from "@/components/services/material.service";
+import { selectLrMaterial } from "../materialIdentity";
 import LRNumericInput from "../LRNumericInput";
 import type { LR } from "../lr.schema";
 import type { FieldErrors } from "@/lib/validation";
@@ -48,8 +49,8 @@ export default function MaterialSection({
   }, []);
 
   const selectedMaterial = useMemo(
-    () => materials.find((material) => material.materialName === lr.material),
-    [materials, lr.material],
+    () => materials.find((material) => lr.materialId != null ? material.id === lr.materialId : material.materialName === lr.material),
+    [materials, lr.material, lr.materialId],
   );
 
   const visibleRecommendations = useMemo(() => {
@@ -67,12 +68,7 @@ export default function MaterialSection({
   // rewrites a historical or staff-entered description.
   function handleMaterialSelect(material: MaterialLookupItem) {
     setRecommendationSearch("");
-    onChange({
-      ...lr,
-      material: material.materialName,
-      packageType: material.unit || lr.packageType,
-      materialDescription: lr.materialDescription ?? "",
-    });
+    onChange(selectLrMaterial(lr, material));
   }
 
   return (

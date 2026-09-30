@@ -14,6 +14,7 @@ import { isDraftEntry, isDraftLrNumber } from "@/lib/entryStatus";
 import { prepareLrForDraftForm } from "@/lib/draftPersistence";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { normalizeLrTextFields } from "./lrTextNormalize";
+import { isLegacyMaterialEnrichment } from "./partyIdentity";
 import { getActiveLrPurchaseOrders } from "@/components/services/purchaseOrder.service";
 import { toast } from "sonner";
 
@@ -74,6 +75,7 @@ const emptyLR: LR = {
 
   // Material
   material: "",
+  materialId: null,
   materialDescription: "",
   packageType: "",
   packages: 0,
@@ -360,6 +362,10 @@ export default function LRDialog({
   async function handleCreateReplacementPo(poNumber: string, issueDate: string) {
     if (readOnly || !lr || !isEditing || isDraftEntry(lr.entryStatus) || replacementSaving) return;
 
+    if (lr.materialId == null || values.materialId !== lr.materialId) {
+      toast.error("Select and save Material on the LR before creating a replacement PO.");
+      return;
+    }
     setReplacementSaving(true);
     try {
       const updated = await createReplacementPurchaseOrderFromLr(lr.id, poNumber, issueDate);
@@ -389,14 +395,18 @@ export default function LRDialog({
     }
 
     // Recheck active selection at save; preserve unchanged historical snapshots.
-    const mustCheckPo = requireMaterialDescription || values.customer !== lr?.customer
+    const mustCheckPo = !isEditing || isDraftEntry(lr?.entryStatus) || isDraftLrNumber(lr?.lrNumber)
+      || values.customer !== lr?.customer
       || (values.billingPartyId ?? null) !== (lr?.billingPartyId ?? null)
       || (values.consignorId ?? null) !== (lr?.consignorId ?? null)
+      || ((values.materialId ?? null) !== (lr?.materialId ?? null)
+        && !(lr && isLegacyMaterialEnrichment(lr, values)))
+      || values.consignor !== lr?.consignor
       || (values.purchaseOrderId ?? null) !== (lr?.purchaseOrderId ?? null);
     setCheckingPo(true);
     try {
       if (mustCheckPo) {
-        const active = await getActiveLrPurchaseOrders(values.customer, values.consignor, values.billingPartyId);
+        const active = await getActiveLrPurchaseOrders(values.billingPartyId, values.consignor, values.materialId);
         if ((active.length > 0 || values.purchaseOrderId)
           && !active.some((po) => po.id === values.purchaseOrderId)) {
           toast.error("Choose an active PO for this billing party before saving.");

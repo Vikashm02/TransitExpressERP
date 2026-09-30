@@ -116,6 +116,7 @@ export const lrSchema = z
     // ===========================
     // Material
     // ===========================
+    materialId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
     material: z.string().trim().min(1, "Material is required."),
     /** Staff-entered LR-specific description (not Material Master.description). */
     materialDescription: z

@@ -25,8 +25,8 @@ export default function PurchaseOrderFields({
   replacementPoSaving?: boolean;
 }) {
   const [lookup, setLookup] = useState<{ key: string; options: PurchaseOrderLookup[]; failed: boolean } | null>(null);
-  const lookupKey = `${lr.billingPartyId ?? ""}\u0000${lr.consignorId ?? ""}\u0000${lr.customer}\u0000${lr.consignor}`;
-  const enabled = !readOnly && Boolean(lr.customer.trim() && lr.consignor.trim());
+  const lookupKey = `${lr.billingPartyId ?? ""}\u0000${lr.consignorId ?? ""}\u0000${lr.customer}\u0000${lr.consignor}\u0000${lr.materialId ?? ""}`;
+  const enabled = !readOnly && Boolean(lr.billingPartyId && lr.consignor.trim() && lr.materialId);
   const currentLookup = lookup?.key === lookupKey ? lookup : null;
   const options = enabled ? currentLookup?.options ?? [] : [];
   const loading = enabled && !currentLookup;
@@ -35,9 +35,9 @@ export default function PurchaseOrderFields({
   useEffect(() => { latest.current = { lr, onChange }; }, [lr, onChange]);
 
   useEffect(() => {
-    if (readOnly || !lr.customer.trim() || !lr.consignor.trim()) return;
+    if (!enabled) return;
     let cancelled = false;
-    getActiveLrPurchaseOrders(lr.customer, lr.consignor, lr.billingPartyId).then((rows) => {
+    getActiveLrPurchaseOrders(lr.billingPartyId, lr.consignor, lr.materialId).then((rows) => {
       if (cancelled) return;
       setLookup({ key: lookupKey, options: rows, failed: false });
       const current = latest.current;
@@ -48,11 +48,11 @@ export default function PurchaseOrderFields({
       }
     }).catch(() => { if (!cancelled) setLookup({ key: lookupKey, options: [], failed: true }); });
     return () => { cancelled = true; };
-  }, [lr.customer, lr.consignor, lr.billingPartyId, lookupKey, readOnly, autoSelect]);
+  }, [lr.customer, lr.consignor, lr.billingPartyId, lr.materialId, lookupKey, enabled, autoSelect]);
 
   const hint = readOnly ? undefined : loading ? "Loading active POs..." : failed ? "PO lookup unavailable. Existing PO details are preserved."
     : options.length > 1 ? "Multiple active POs found. Choose the correct PO."
-    : !options.length && lr.customer && lr.consignor ? "No active PO found for this Billing Party and Consignor." : undefined;
+    : !options.length && lr.customer && lr.consignor ? "No active PO found for this Billing Party, Consignor and Material." : undefined;
   const selectedIsActive = options.some((p) => p.id === lr.purchaseOrderId);
   const selectedPO = options.find((p) => p.id === lr.purchaseOrderId);
   const poMasterDiffers = selectedPO && (selectedPO.poNumber !== lr.poNumber || selectedPO.issueDate !== lr.poDate);

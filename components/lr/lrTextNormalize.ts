@@ -23,7 +23,6 @@ export const LR_UPPERCASE_TEXT_FIELDS = [
   "customer",
   "consignor",
   "consignee",
-  "material",
 ] as const satisfies readonly (keyof LR)[];
 
 type LrUppercaseField = (typeof LR_UPPERCASE_TEXT_FIELDS)[number];
