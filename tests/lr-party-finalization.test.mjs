@@ -54,6 +54,7 @@ async function submit(editingLR, values, extra = {}) {
     setSaving: value => calls.push(['saving', value]),
     canStaffEditRecord: () => true, isAdmin: true, canContinueDraft: true, canEdit: true,
     allocateNextLrNumber: async () => { calls.push(['allocate']); return 'LR100'; },
+    createNumberedLrDraft: async () => { calls.push(['createNumberedLrDraft']); return { id: 'synthetic', lrNumber: 'LR100' }; },
     createLR: async () => { calls.push(['create']); return { id: 'synthetic', lrNumber: 'LR100' }; },
     updateLR: async () => { calls.push(['update']); return { id: 'synthetic', lrNumber: 'LR100' }; },
     createDraftPromiseRef: { current: null }, sessionCreatedDraftIdRef: { current: null },
@@ -79,9 +80,9 @@ for (const [name, existing] of [
 test('create session with reserved draft also rejects before writes', async () => {
   assert.deepEqual(await submit(null, missing, { sessionCreatedDraftIdRef: { current: 'synthetic' } }), [['error', messages[0]]]);
 });
-test('valid new finalization reaches create', async () => {
+test('valid new finalization reaches createNumberedLrDraft', async () => {
   const calls = await submit(null, valid);
-  assert.ok(calls.some(([kind]) => kind === 'create'));
+  assert.ok(calls.some(([kind]) => kind === 'createNumberedLrDraft'));
   assert.equal(calls.some(([kind]) => kind === 'error'), false);
 });
 test('valid draft finalization updates without reallocating', async () => {

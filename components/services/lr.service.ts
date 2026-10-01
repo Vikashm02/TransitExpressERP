@@ -457,6 +457,32 @@ export async function createNumberedLrDraft(values: LR): Promise<LRRecord> {
   return fromRow(data as Record<string, unknown>);
 }
 
+export async function finalizeLegacyLrDraft(lrId: string, values: LR): Promise<LRRecord> {
+  const draftValues = {
+    ...values,
+    entryStatus: "draft" as const,
+  };
+  const payload = toRow(draftValues);
+  delete payload.id;
+  delete payload.created_at;
+  delete payload.updated_at;
+  delete payload.created_by;
+  delete payload.updated_by;
+  delete payload.draft_created_by;
+
+  const { data, error } = await supabase.rpc("finalize_legacy_lr_draft", {
+    p_lr_id: lrId,
+    p_payload: payload,
+  });
+
+  if (error) throw error;
+  if (!data || typeof data !== "object") {
+    throw new Error("finalize_legacy_lr_draft returned no row.");
+  }
+
+  return fromRow(data as Record<string, unknown>);
+}
+
 export async function updateLR(id: string, values: LR): Promise<LRRecord> {
   // `id`/`created_at` are server-owned and must never reach the update
   // payload. (The edit dialog seeds its state from the full DB record, so

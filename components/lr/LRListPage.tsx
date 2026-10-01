@@ -38,6 +38,7 @@ import {
   createLR,
   createNumberedLrDraft,
   deleteLR,
+  finalizeLegacyLrDraft,
   getLRs,
   getOwnDraftLRs,
   reassignLR,
@@ -52,7 +53,8 @@ import {
   type PodRecord,
 } from "@/components/services/pod.service";
 import { syncVehicleMasterFromLr } from "@/components/services/vehicle.service";
-import { allocateNextLrNumber } from "@/components/services/company.service";
+
+import { supabase } from "@/lib/supabase";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
@@ -604,18 +606,78 @@ function LRListPageContent() {
 
           // Numbered drafts already hold a reserved lr_number — keep it.
           // Allocate only for legacy empty / DRAFT-* rows.
+          // Pre-flight validation BEFORE allocating the LR number to prevent
+          // permanent number consumption if validation fails.
           let lrNumber = editingLR.lrNumber;
+          let finalizedLR: LRRecord | null = null;
           if (needsLrNumberAllocation(lrNumber)) {
-            lrNumber = await allocateNextLrNumber();
+            // Pre-flight validation BEFORE allocating the LR number.
+            // These checks mirror the DB triggers that could reject the finalize.
+            if (values.materialId == null) {
+              throw new Error("Select Material before finalizing this LR.");
+            }
+            if (values.purchaseOrderId != null) {
+              const { data: po, error: poErr } = await supabase
+                .from("purchase_orders")
+                .select("material_id, status")
+                .eq("id", values.purchaseOrderId)
+                .single();
+              if (poErr) throw poErr;
+              if (!po) throw new Error("PO not found");
+              if (po.status !== "Active") {
+                throw new Error("Choose an active PO before finalizing.");
+              }
+              if (po.material_id !== values.materialId) {
+                throw new Error("Select a PO for the explicitly selected Material");
+              }
+            }
+            // Billing party must be finalized
+            if (values.billingPartyId != null) {
+              const { data: bp, error: bpErr } = await supabase
+                .from("billing_parties")
+                .select("entry_status")
+                .eq("id", values.billingPartyId)
+                .single();
+              if (bpErr) throw bpErr;
+              if (!bp || (bp.entry_status ?? "final") !== "final") {
+                throw new Error("Billing party must be finalized before finalizing this LR");
+              }
+            }
+            // Consignor must match PO if PO is selected
+            if (values.purchaseOrderId != null && values.consignor != null) {
+              const { data: po, error: poErr } = await supabase
+                .from("purchase_orders")
+                .select("consignor")
+                .eq("id", values.purchaseOrderId)
+                .single();
+              if (poErr) throw poErr;
+              if (po && po.consignor && po.consignor.trim() !== "" &&
+                  po.consignor.trim().toUpperCase() !== values.consignor.trim().toUpperCase()) {
+                throw new Error("PO does not belong to the selected Consignor");
+              }
+            }
+            // Use atomic finalize for legacy DRAFT-* rows to prevent number consumption on failure
+            const finalized = await finalizeLegacyLrDraft(editingLR.id, values);
+            lrNumber = finalized.lrNumber;
+            finalizedLR = finalized;
+          } else {
+            lrNumber = editingLR.lrNumber;
           }
 
-          await updateLR(editingLR.id, {
-            ...values,
-            lrNumber,
-            entryStatus: "final",
-          });
-          savedLrId = String(editingLR.id);
-          successMessage = `LR ${lrNumber} saved successfully.`;
+          // For legacy DRAFT-* finalization, finalizeLegacyLrDraft already finalized the LR atomically.
+          // For already-numbered drafts, we need to call updateLR to finalize.
+          if (finalizedLR) {
+            savedLrId = String(finalizedLR.id);
+            successMessage = `LR ${lrNumber} saved successfully.`;
+          } else {
+            await updateLR(editingLR.id, {
+              ...values,
+              lrNumber,
+              entryStatus: "final",
+            });
+            savedLrId = String(editingLR.id);
+            successMessage = `LR ${lrNumber} saved successfully.`;
+          }
         } else {
           if (!canStaffEditRecord(isAdmin, canEdit, editingLR)) {
             toast.error(
@@ -660,10 +722,17 @@ function LRListPageContent() {
           savedLrId = String(finalized.id);
           successMessage = `LR ${finalized.lrNumber} saved successfully.`;
         } else {
-          const lrNumber = await allocateNextLrNumber();
-          const created = await createLR({ ...values, lrNumber, entryStatus: "final" });
-          savedLrId = String(created.id);
-          successMessage = `LR ${lrNumber} created successfully.`;
+          // Atomic draft creation + finalize in two steps within same logical flow.
+          // createNumberedLrDraft allocates LR number and inserts draft atomically in one PG transaction.
+          // If finalize fails, the numbered draft remains for retry without consuming another number.
+          const draft = await createNumberedLrDraft(values);
+          const finalized = await updateLR(draft.id, {
+            ...values,
+            lrNumber: draft.lrNumber,
+            entryStatus: "final",
+          });
+          savedLrId = String(finalized.id);
+          successMessage = `LR ${finalized.lrNumber} created successfully.`;
         }
       }
 
