@@ -30,16 +30,24 @@ export function createWebhookHandler(dependencies: WebhookDependencies) {
     if (req.method !== "POST") return response(405, { ok: false, code: "method_not_allowed" });
 
     const appSecret = dependencies.env("WHATSAPP_META_APP_SECRET") ?? "";
+    const gupshupSecret = dependencies.env("GUPSHUP_WEBHOOK_SECRET") ?? "";
     const supabaseUrl = dependencies.env("SUPABASE_URL") ?? dependencies.env("SUPABASE_PROJECT_URL") ?? "";
     const serviceRoleKey = dependencies.env("SUPABASE_SERVICE_ROLE_KEY") ?? dependencies.env("SERVICE_ROLE_KEY") ?? "";
-    if (!appSecret || !supabaseUrl || !serviceRoleKey) {
+    if (!appSecret && !gupshupSecret) {
+      console.error("[WhatsApp assistant webhook] required authentication secret is not configured");
+      return response(500, { ok: false, code: "server_misconfigured" });
+    }
+    if (!supabaseUrl || !serviceRoleKey) {
       console.error("[WhatsApp assistant webhook] required server configuration is missing");
       return response(500, { ok: false, code: "server_misconfigured" });
     }
 
     const rawBody = await req.text();
     const signature = req.headers.get("x-hub-signature-256");
-    if (!(await hasValidMetaSignature(rawBody, signature, appSecret))) {
+    const gupshupHeader = req.headers.get("x-transjit-webhook-secret");
+    const metaValid = appSecret ? await hasValidMetaSignature(rawBody, signature, appSecret) : false;
+    const gupshupValid = gupshupSecret && gupshupHeader && (await constantTimeSecretEqual(gupshupHeader, gupshupSecret));
+    if (!metaValid && !gupshupValid) {
       console.warn("[WhatsApp assistant webhook] rejected request with invalid signature");
       return response(401, { ok: false, code: "invalid_signature" });
     }

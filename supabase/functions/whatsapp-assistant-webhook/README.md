@@ -6,6 +6,7 @@ Required server-side secrets (set only in the Supabase Edge Function environment
 
 - `WHATSAPP_WEBHOOK_VERIFY_TOKEN` — Meta GET webhook verification token.
 - `WHATSAPP_META_APP_SECRET` — Meta app secret used to verify the `X-Hub-Signature-256` HMAC of POST raw bodies.
+- `GUPSHUP_WEBHOOK_SECRET` — shared secret compared constant-time against the `x-transjit-webhook-secret` header. A POST must authenticate with either a valid Meta `X-Hub-Signature-256` or this Gupshup header; both checks run before any JSON parsing or database access, and each fails closed when its own value is missing or empty.
 - `SUPABASE_URL` (or `SUPABASE_PROJECT_URL`) and `SUPABASE_SERVICE_ROLE_KEY` (or `SERVICE_ROLE_KEY`) — server-only Supabase credentials.
 
 Do not put these values in source control, browser code, or a WhatsApp payload. This foundation deliberately does not invoke AI, read LR/POD data, or send WhatsApp replies.

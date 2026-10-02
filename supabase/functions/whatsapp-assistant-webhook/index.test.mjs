@@ -8,12 +8,15 @@ const ATTACKER = '22222222-2222-4222-8222-222222222222';
 const RAW = 'LR19573 ka detail batao';
 const REPLY = 'PRIVATE_SYNTHETIC_ASSISTANT_REPLY';
 const SECRET = 'SYNTHETIC_META_APP_SECRET';
+const GUPSHUP_SECRET = 'SYNTHETIC_GUPSHUP_WEBHOOK_SECRET';
 const DEFAULT_MESSAGE = { id: 'wamid.test', from: '919876543210', type: 'text', timestamp: '1790000000', text: { body: RAW } };
 const envelope = (messages) => ({ entry: [{ changes: [{ value: { messages } }] }] });
 function request(payload = envelope([DEFAULT_MESSAGE]), options = {}) {
   const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
   const signature = options.signature ?? `sha256=${createHmac('sha256', SECRET).update(body).digest('hex')}`;
-  return new Request(`https://example.invalid/webhook${options.query ?? ''}`, { method: 'POST', headers: { 'x-hub-signature-256': signature }, body });
+  const headers = { 'x-hub-signature-256': signature };
+  if (options.gupshupHeader) headers['x-transjit-webhook-secret'] = options.gupshupHeader;
+  return new Request(`https://example.invalid/webhook${options.query ?? ''}`, { method: 'POST', headers, body });
 }
 function setup(options = {}) {
   const events = new Map(), writes = [], reads = [], rpcCalls = [], assistantCalls = [], background = [];
@@ -85,7 +88,7 @@ function setup(options = {}) {
     },
   };
   const deps = {
-    env: (key) => ({ WHATSAPP_META_APP_SECRET: SECRET, WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'SYNTHETIC_VERIFY', SUPABASE_URL: 'https://db.invalid', SUPABASE_SERVICE_ROLE_KEY: 'SYNTHETIC_SERVICE_KEY', OPENAI_API_KEY: 'SYNTHETIC_OPENAI_KEY', WHATSAPP_ASSISTANT_ENABLED: 'true', WHATSAPP_EXTERNAL_ASSISTANT_ENABLED: 'true', ...options.env })[key],
+    env: (key) => ({ WHATSAPP_META_APP_SECRET: SECRET, GUPSHUP_WEBHOOK_SECRET: GUPSHUP_SECRET, WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'SYNTHETIC_VERIFY', SUPABASE_URL: 'https://db.invalid', SUPABASE_SERVICE_ROLE_KEY: 'SYNTHETIC_SERVICE_KEY', OPENAI_API_KEY: 'SYNTHETIC_OPENAI_KEY', WHATSAPP_ASSISTANT_ENABLED: 'true', WHATSAPP_EXTERNAL_ASSISTANT_ENABLED: 'true', ...options.env })[key],
     createAdmin() { clients++; return admin; },
     waitUntil(work) { if (options.schedulerThrows) throw new Error(SECRET); background.push(work); },
     assistant: async (text, dependencies) => {
@@ -150,7 +153,7 @@ test('GET verification and method handling preserve the foundation contract', as
 });
 
 test('missing server configuration fails without persistence or AI', async () => {
-  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined } });
+  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined, GUPSHUP_WEBHOOK_SECRET: undefined } });
   assert.equal((await h.handler(request())).status, 500);
   const v = setup({ env: { WHATSAPP_WEBHOOK_VERIFY_TOKEN: undefined } });
   assert.equal((await v.handler(new Request('https://example.invalid'))).status, 500);
@@ -477,4 +480,79 @@ test('real external core exposes external function only and never sends Meta tra
   await acknowledge(h);
   assert.deepEqual(urls, ['https://api.openai.com/v1/responses']);
   assert.deepEqual(h.rpcCalls.map((c) => c.name), ['whatsapp_external_admit', 'whatsapp_external_get_lr_detail']);
+});
+
+test('Gupshup: valid Meta signature -> accepted (A)', async () => {
+  const h = setup();
+  await acknowledge(h);
+});
+
+test('Gupshup: valid Gupshup secret, no Meta signature -> accepted (B)', async () => {
+  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined } });
+  const r = await h.handler(request({ signature: 'sha256=invalid' }, { gupshupHeader: GUPSHUP_SECRET }));
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true });
+  assert.equal(h.clients(), 1);
+});
+
+test('Gupshup: invalid Gupshup secret, no Meta signature -> 401 (C)', async () => {
+  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined } });
+  const r = await h.handler(request({ signature: 'sha256=invalid' }, { gupshupHeader: 'wrong-secret' }));
+  assert.equal(r.status, 401);
+  assert.deepEqual(await r.json(), { ok: false, code: 'invalid_signature' });
+  assert.equal(h.clients(), 0);
+});
+
+test('Gupshup: no authentication headers -> 401 (D)', async () => {
+  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined } });
+  const r = await h.handler(request({ signature: 'sha256=invalid' }, { gupshupHeader: undefined }));
+  assert.equal(r.status, 401);
+  assert.deepEqual(await r.json(), { ok: false, code: 'invalid_signature' });
+  assert.equal(h.clients(), 0);
+});
+
+test('Gupshup: valid Meta signature + missing/invalid Gupshup header -> accepted (E)', async () => {
+  const h = setup();
+  const r = await h.handler(request({}, { gupshupHeader: 'wrong-secret' }));
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true });
+});
+
+test('Gupshup: invalid Meta signature + valid Gupshup header -> accepted (F)', async () => {
+  const h = setup();
+  const r = await h.handler(request({ signature: 'sha256=invalid' }, { gupshupHeader: GUPSHUP_SECRET }));
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true });
+});
+
+test('Gupshup: empty/missing GUPSHUP_WEBHOOK_SECRET cannot authenticate (G)', async () => {
+  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined } });
+  const r = await h.handler(request({ signature: 'sha256=invalid' }, { gupshupHeader: '' }));
+  assert.equal(r.status, 401);
+  assert.deepEqual(await r.json(), { ok: false, code: 'invalid_signature' });
+  assert.equal(h.clients(), 0);
+
+  const h2 = setup({ env: { WHATSAPP_META_APP_SECRET: undefined } });
+  const r2 = await h2.handler(request({ signature: 'sha256=invalid' }, { gupshupHeader: undefined }));
+  assert.equal(r2.status, 401);
+  assert.deepEqual(await r2.json(), { ok: false, code: 'invalid_signature' });
+  assert.equal(h2.clients(), 0);
+});
+
+test('Gupshup: neither Meta nor Gupshup authentication secret configured -> server_misconfigured (H)', async () => {
+  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined, GUPSHUP_WEBHOOK_SECRET: undefined } });
+  const r = await h.handler(request());
+  assert.equal(r.status, 500);
+  assert.deepEqual(await r.json(), { ok: false, code: 'server_misconfigured' });
+  assert.equal(h.clients(), 0);
+});
+
+test('Gupshup: GET verification behavior still works unchanged (I)', async () => {
+  const h = setup();
+  const base = 'https://example.invalid/?hub.mode=subscribe&hub.verify_token=SYNTHETIC_VERIFY&hub.challenge=challenge123';
+  const ok = await h.handler(new Request(base));
+  assert.equal(ok.status, 200);
+  assert.equal(await ok.text(), 'challenge123');
+  assert.match(ok.headers.get('content-type'), /text\/plain/);
+  assert.equal(h.clients(), 0);
 });
