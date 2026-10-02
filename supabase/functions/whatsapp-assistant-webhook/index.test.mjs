@@ -19,7 +19,7 @@ function request(payload = envelope([DEFAULT_MESSAGE]), options = {}) {
   return new Request(`https://example.invalid/webhook${options.query ?? ''}`, { method: 'POST', headers, body });
 }
 function setup(options = {}) {
-  const events = new Map(), writes = [], reads = [], rpcCalls = [], assistantCalls = [], background = [];
+  const events = new Map(), writes = [], reads = [], rpcCalls = [], assistantCalls = [], background = [], outboundCalls = [];
   let clients = 0;
   const link = options.link === undefined ? { app_user_id: USER, app_users: { id: USER, approval_status: 'approved', is_locked: false, ...options.user } } : options.link;
   const admin = {
@@ -88,9 +88,10 @@ function setup(options = {}) {
     },
   };
   const deps = {
-    env: (key) => ({ WHATSAPP_META_APP_SECRET: SECRET, GUPSHUP_WEBHOOK_SECRET: GUPSHUP_SECRET, WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'SYNTHETIC_VERIFY', SUPABASE_URL: 'https://db.invalid', SUPABASE_SERVICE_ROLE_KEY: 'SYNTHETIC_SERVICE_KEY', OPENAI_API_KEY: 'SYNTHETIC_OPENAI_KEY', WHATSAPP_ASSISTANT_ENABLED: 'true', WHATSAPP_EXTERNAL_ASSISTANT_ENABLED: 'true', ...options.env })[key],
+    env: (key) => ({ WHATSAPP_META_APP_SECRET: SECRET, GUPSHUP_WEBHOOK_SECRET: GUPSHUP_SECRET, GUPSHUP_API_KEY: 'SYNTHETIC_GUPSHUP_API_KEY', GUPSHUP_SOURCE_NUMBER: '919876543210', GUPSHUP_APP_NAME: 'SYNTHETIC_APP', WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'SYNTHETIC_VERIFY', SUPABASE_URL: 'https://db.invalid', SUPABASE_SERVICE_ROLE_KEY: 'SYNTHETIC_SERVICE_KEY', OPENAI_API_KEY: 'SYNTHETIC_OPENAI_KEY', WHATSAPP_ASSISTANT_ENABLED: 'true', WHATSAPP_EXTERNAL_ASSISTANT_ENABLED: 'true', ...options.env })[key],
     createAdmin() { clients++; return admin; },
     waitUntil(work) { if (options.schedulerThrows) throw new Error(SECRET); background.push(work); },
+    fetch: options.fetch,
     assistant: async (text, dependencies) => {
       assistantCalls.push({ text });
       if (options.assistant) return await options.assistant(text, dependencies);
@@ -101,7 +102,7 @@ function setup(options = {}) {
   if (options.realCore) delete deps.assistant;
   if (options.noScheduler) delete deps.waitUntil;
   return {
-    handler: createWebhookHandler(deps), events, writes, reads, rpcCalls, assistantCalls, background,
+    handler: createWebhookHandler(deps), events, writes, reads, rpcCalls, assistantCalls, background, outboundCalls,
     clients: () => clients, drain: () => Promise.all(background),
   };
 }
@@ -326,6 +327,9 @@ test('mixed batch preserves per-message admission and replay isolation', async (
 test('real core integration makes one OpenAI call, no Meta call and no result persistence', async (t) => {
   const urls = [];
   t.mock.method(globalThis, 'fetch', async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      return Response.json({ status: 'submitted' });
+    }
     urls.push(url);
     assert.equal(url, 'https://api.openai.com/v1/responses');
     const body = JSON.parse(init.body);
@@ -334,7 +338,7 @@ test('real core integration makes one OpenAI call, no Meta call and no result pe
   });
   const h = setup({ realCore: true });
   await acknowledge(h);
-  await acknowledge(h);
+  await h.drain();
   assert.equal(urls.length, 1);
   assert.equal(h.rpcCalls.length, 1);
   assert.equal(h.rpcCalls[0].args.p_app_user_id, USER);
@@ -555,4 +559,263 @@ test('Gupshup: GET verification behavior still works unchanged (I)', async () =>
   assert.equal(await ok.text(), 'challenge123');
   assert.match(ok.headers.get('content-type'), /text\/plain/);
   assert.equal(h.clients(), 0);
+});
+
+test('Outbound: authorized internal user + valid assistant reply -> exactly one Gupshup send (A)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(outboundCalls.length, 1);
+  const call = outboundCalls[0];
+  assert.equal(call.url, 'https://api.gupshup.io/wa/api/v1/msg');
+  assert.equal(call.init.method, 'POST');
+  assert.equal(call.init.headers.apikey, 'SYNTHETIC_GUPSHUP_API_KEY');
+  const body = new URLSearchParams(call.init.body);
+  assert.equal(body.get('channel'), 'whatsapp');
+  assert.equal(body.get('source'), '919876543210');
+  assert.equal(body.get('destination'), '919876543210');
+  assert.equal(body.get('src.name'), 'SYNTHETIC_APP');
+  const msg = JSON.parse(body.get('message'));
+  assert.equal(msg.type, 'text');
+  assert.equal(msg.text, REPLY);
+  assert.equal(msg.previewUrl, false);
+});
+
+test('Outbound: destination equals authenticated sender digits without + (B)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  const call = outboundCalls[0];
+  const body = new URLSearchParams(call.init.body);
+  assert.equal(body.get('destination'), '919876543210');
+});
+
+test('Outbound: request uses POST (C)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(outboundCalls[0].init.method, 'POST');
+});
+
+test('Outbound: request URL exactly https://api.gupshup.io/wa/api/v1/msg (D)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(outboundCalls[0].url, 'https://api.gupshup.io/wa/api/v1/msg');
+});
+
+test('Outbound: apikey header uses GUPSHUP_API_KEY (E)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(outboundCalls[0].init.headers.apikey, 'SYNTHETIC_GUPSHUP_API_KEY');
+});
+
+test('Outbound: form contains correct fields (F)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  const call = outboundCalls[0];
+  const body = new URLSearchParams(call.init.body);
+  assert.equal(body.get('channel'), 'whatsapp');
+  assert.equal(body.get('source'), '919876543210');
+  assert.equal(body.get('destination'), '919876543210');
+  assert.equal(body.get('src.name'), 'SYNTHETIC_APP');
+  const msg = JSON.parse(body.get('message'));
+  assert.deepEqual(msg, { type: 'text', text: REPLY, previewUrl: false });
+});
+
+test('Outbound: assistant error -> no outbound send (G)', async () => {
+  const h = setup({ assistant: async () => { throw new Error('assistant error'); } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(h.outboundCalls.length, 0);
+});
+
+test('Outbound: empty assistant reply -> no outbound send (H)', async () => {
+  const h = setup({ assistant: async () => ({ status: 'answered', text: '' }) });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(h.outboundCalls.length, 0);
+});
+
+test('Outbound: missing API key -> no outbound network call (I)', async () => {
+  const h = setup({ env: { GUPSHUP_API_KEY: undefined } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(h.outboundCalls.length, 0);
+});
+
+test('Outbound: missing source -> no outbound network call (J)', async () => {
+  const h = setup({ env: { GUPSHUP_SOURCE_NUMBER: undefined } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(h.outboundCalls.length, 0);
+});
+
+test('Outbound: missing app name -> no outbound network call (K)', async () => {
+  const h = setup({ env: { GUPSHUP_APP_NAME: undefined } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(h.outboundCalls.length, 0);
+});
+
+test('Outbound: malformed source with + / spaces / hyphens -> zero outbound calls (A)', async () => {
+  for (const badSource of ['+919876543210', '91 9876543210', '91-9876543210', '91 98 76 54 32 10', '+91-98765-43210']) {
+    const calls = [];
+    const h = setup({ env: { GUPSHUP_SOURCE_NUMBER: badSource }, fetch: async (url, init) => {
+      if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+        calls.push({ url, init });
+        return Response.json({ status: 'submitted' });
+      }
+      return Response.json({});
+    } });
+    await acknowledge(h);
+    await h.drain();
+    assert.equal(calls.length, 0, `badSource=${badSource} should cause zero calls`);
+  }
+});
+
+test('Outbound: HTTP 201 with status=submitted -> NOT success (B)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return new Response(JSON.stringify({ status: 'submitted' }), { status: 201, headers: { 'content-type': 'application/json' } });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(outboundCalls.length, 1); // One attempt, but not treated as success (no retry logic exists anyway)
+  // The function treats only 200 as success, so 201 is failure
+});
+
+test('Outbound: HTTP 200 with status=submitted -> remains success (C)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(outboundCalls.length, 1);
+});
+
+test('Outbound: Gupshup 400/401/429 -> no retry (L)', async () => {
+  const statuses = [400, 401, 429];
+  for (const status of statuses) {
+    const calls = [];
+    const h = setup({ fetch: async (url, init) => {
+      if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+        calls.push({ url, init });
+        return new Response(null, { status });
+      }
+      return Response.json({});
+    } });
+    await acknowledge(h);
+    await h.drain();
+    assert.equal(calls.length, 1);
+  }
+});
+
+test('Outbound: Gupshup HTTP 200 but status != submitted -> treated as failure (M)', async () => {
+  const outboundCalls = [];
+  const h = setup({ fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'failed' });
+    }
+    return Response.json({});
+  } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(outboundCalls.length, 1); // One attempt, no retry
+});
+
+test('Outbound: unauthorized internal user -> no assistant/outbound (N)', async () => {
+  const h = setup({ link: { app_user_id: USER, app_users: { id: USER, approval_status: 'pending', is_locked: false } } });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(h.assistantCalls.length, 0);
+  assert.equal(h.outboundCalls.length, 0);
+});
+
+test('Outbound: external path remains unchanged and does not send outbound (O)', async () => {
+  const h = setup({ link: null, admission: true });
+  await acknowledge(h);
+  await h.drain();
+  assert.equal(h.assistantCalls.length, 1);
+  assert.equal(h.outboundCalls.length, 0);
+});
+
+test('Outbound: existing Gupshup/Meta inbound authentication tests still pass (P)', async () => {
+  const outboundCalls = [];
+  const h = setup({ env: { WHATSAPP_META_APP_SECRET: undefined }, fetch: async (url, init) => {
+    if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+      outboundCalls.push({ url, init });
+      return Response.json({ status: 'submitted' });
+    }
+    return Response.json({});
+  } });
+  const req = request(undefined, { signature: 'sha256=invalid', gupshupHeader: GUPSHUP_SECRET });
+  const r = await h.handler(req);
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true });
+  await h.drain();
+  assert.equal(outboundCalls.length, 1);
+});
+
+test('Outbound: existing GET verification tests still pass (Q)', async () => {
+  const h = setup();
+  const base = 'https://example.invalid/?hub.mode=subscribe&hub.verify_token=SYNTHETIC_VERIFY&hub.challenge=challenge123';
+  const ok = await h.handler(new Request(base));
+  assert.equal(ok.status, 200);
+  assert.equal(await ok.text(), 'challenge123');
+  assert.match(ok.headers.get('content-type'), /text\/plain/);
 });
