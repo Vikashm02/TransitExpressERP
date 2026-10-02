@@ -1,4 +1,4 @@
-import { toolDefinitions, validateArguments, type ObjectValue, type ToolName } from "./whatsappAssistantSchemas.ts";
+import { toolDefinitions, validateArguments, type ObjectValue, type ToolName, type SemanticOp, type SemanticDate, type NluInterpretation, nluIntentSchema, MODELS, object } from "./whatsappAssistantSchemas.ts";
 
 export type Language = "en" | "hi" | "hinglish";
 export type QueryPlan = { kind: "query"; name: ToolName; args: ObjectValue; language: Language };
@@ -75,7 +75,7 @@ export function resolveIntent(raw: string, now = new Date()): Intent {
     // Unlabelled "for ACC" is a party only when it cannot be a date phrase.
     const forPattern = new RegExp(`(?<![\\p{L}\\p{M}])for\\s+${entity}${end}`, "giu");
     source = source.replace(forPattern, (whole, value: string) => {
-      if (word(`${monthPattern}|today|yesterday|this|last`).test(value)) return whole;
+      if (word(`${monthPattern}|today|yesterday|this|last|lr\\s*[0-9]+`).test(value)) return whole;
       put("partySearch", cleanEntity(value));
       return " ";
     });
@@ -156,7 +156,7 @@ export function resolveIntent(raw: string, now = new Date()): Intent {
     }
     if (pending && (args.partySearch || args.material || args.status || args.lrNumber)) return clarify(args.partySearch ? "party_role" : "filters");
     if (hasPod && !pending && !args.lrNumber) return clarify();
-    if (args.lrNumber && !countOnly && !explicitList) {
+    if (args.lrNumber && !countOnly && (!explicitList || detail)) {
       if (Object.keys(args).length !== 1 || pending) return clarify();
       return { kind: "query", name: hasPod ? "get_pod_detail" : "get_lr_detail", args: { lrNumber: args.lrNumber }, language };
     }
@@ -189,4 +189,170 @@ export function matchesPlan(name: string, args: ObjectValue, plan: QueryPlan): b
   if (name !== plan.name) return false;
   const expected = validateArguments(plan.name, plan.args);
   return Object.keys(args).length === Object.keys(expected).length && Object.entries(expected).every(([key, value]) => args[key] === value);
+}
+
+type Env = (name: string) => string | undefined;
+
+export async function interpretIntentNLU(text: string, language: Language, now: Date, fetchImpl: typeof fetch, env: Env): Promise<NluInterpretation> {
+  const key = env("OPENAI_API_KEY");
+  const model = env("WHATSAPP_NLU_MODEL")?.trim() || "gpt-4o-mini";
+  if (!key || !MODELS.has(model)) throw new Error("nlu_unavailable");
+
+  const istNow = new Date(now.getTime() + 330 * 60000);
+  const istDate = istNow.toISOString().slice(0, 10);
+
+  const instructions = `Interpret the user's WhatsApp message into a structured LR/POD intent.
+Current IST date: ${istDate}
+Language hint: ${language}
+
+Rules:
+- Output ONLY the function call with structured intent.
+- Use semantic date kinds; NEVER calculate exact dates.
+- For bare month names (e.g., "september", "sep"), use {kind:"month", month:9}.
+- For month+year (e.g., "september 2026"), use {kind:"month_year", month:9, year:2026}.
+- Party names are raw strings from user text; do NOT normalize or match to ERP.
+- If message has multiple conflicting dates, ambiguous intent, unsupported filters, or missing required fields -> needsClarification=true with category.
+- lrNumber must include "LR" prefix (e.g., "LR19619").
+- Operations: lr_detail (single LR), lr_count (how many), lr_list (show LRs), pod_detail (single POD), pending_pod_count (pending count), pending_pod_list (pending list).`;
+
+  const resp = await fetchImpl("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model, store: false, parallel_tool_calls: false, max_output_tokens: 500,
+      instructions,
+      input: [{ role: "user", content: [{ type: "input_text", text }] }],
+      tools: [nluIntentSchema], tool_choice: { type: "function", name: "interpret_whatsapp_intent" }
+    })
+  });
+
+  if (!resp.ok || !resp.body) throw new Error("nlu_provider_error");
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0, rawText = "";
+  while (true) {
+    const part = await reader.read();
+    if (part.done) break;
+    bytes += part.value.byteLength;
+    if (bytes > 65536) throw new Error("nlu_provider_limit");
+    rawText += decoder.decode(part.value, { stream: true });
+  }
+  await reader.cancel();
+  const payload = JSON.parse(rawText + decoder.decode());
+  if (payload.status !== "completed" || !Array.isArray(payload.output) || payload.output.length === 0) throw new Error("nlu_incomplete");
+  const callItem = payload.output.find((item: unknown) => object(item).type === "function_call");
+  if (!callItem || object(callItem).name !== "interpret_whatsapp_intent") throw new Error("nlu_no_call");
+  return JSON.parse(String(object(callItem).arguments)) as NluInterpretation;
+}
+
+export function validateNluInterpretation(nlu: NluInterpretation, originalText: string): void {
+  const allowedKeys = new Set([
+    "operation", "language", "lrNumber", "date", "createdDate", "partySearch",
+    "consignor", "consignee", "vehicleNumber", "material", "status",
+    "minPendingDays", "needsClarification", "clarificationCategory", "clarificationHint",
+  ]);
+  if (Object.keys(object(nlu)).length !== allowedKeys.size || Object.keys(object(nlu)).some((key) => !allowedKeys.has(key))) {
+    throw new Error("nlu_invalid_keys");
+  }
+  const allowedOperations = new Set<SemanticOp>([
+    "lr_detail", "lr_count", "lr_list", "pod_detail", "pending_pod_count", "pending_pod_list",
+  ]);
+  if (nlu.operation !== null && !allowedOperations.has(nlu.operation)) throw new Error("nlu_invalid_operation");
+  if (nlu.needsClarification) throw new Error(`nlu_clarification:${nlu.clarificationCategory}`);
+  if (!nlu.operation) throw new Error("nlu_missing_operation");
+  if (nlu.lrNumber && !/^LR\d+$/.test(nlu.lrNumber)) throw new Error("nlu_invalid_lrNumber");
+  if (nlu.lrNumber) {
+    const digits = nlu.lrNumber.slice(2);
+    const normalizedOriginal = originalText.toLowerCase().replace(/[^0-9]/g, "");
+    if (!normalizedOriginal.includes(digits)) throw new Error("nlu_lr_not_in_source");
+  }
+  const normalize = (s: string) => s.toLowerCase().replace(/[\s\p{P}]+/gu, " ");
+  const userNorm = normalize(originalText);
+  for (const key of ["partySearch", "consignor", "consignee"] as const) {
+    const val = nlu[key];
+    if (val && !userNorm.includes(normalize(val))) throw new Error(`nlu_party_not_in_source:${key}`);
+  }
+  for (const key of ["vehicleNumber", "material"] as const) {
+    const val = nlu[key];
+    if (val && !userNorm.includes(normalize(val))) throw new Error(`nlu_literal_not_in_source:${key}`);
+  }
+  if (["lr_detail", "pod_detail"].includes(nlu.operation) && !nlu.lrNumber) throw new Error("nlu_missing_lrNumber");
+  if (nlu.lrNumber && (nlu.date || nlu.partySearch || nlu.consignor || nlu.consignee || nlu.vehicleNumber || nlu.material || nlu.status || nlu.minPendingDays != null)) throw new Error("nlu_invalid: lrNumber with extra filters");
+  if (["pending_pod_count", "pending_pod_list"].includes(nlu.operation) && nlu.status) throw new Error("nlu_invalid: pending POD cannot have status");
+}
+
+export function resolveSemanticDate(d: SemanticDate | null, istNow: Date, isCreation = false): { from: string; to: string | null } | null {
+  if (!d) return null;
+  const year = istNow.getUTCFullYear();
+  const month = istNow.getUTCMonth() + 1;
+  if (d.kind === "relative") {
+    switch (d.value) {
+      case "today": return { from: istNow.toISOString().slice(0, 10), to: null };
+      case "yesterday": {
+        const prev = new Date(istNow.getTime() - 86400000).toISOString().slice(0, 10);
+        return { from: prev, to: null };
+      }
+      case "this_month": return { from: day(year, month, 1), to: day(year, month, new Date(Date.UTC(year, month, 0)).getUTCDate()) };
+      case "last_month": {
+        const prevMonth = month === 1 ? 12 : month - 1;
+        const prevYear = month === 1 ? year - 1 : year;
+        const lastDay = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate();
+        return { from: day(prevYear, prevMonth, 1), to: day(prevYear, prevMonth, lastDay) };
+      }
+      case "this_year": return { from: day(year, 1, 1), to: day(year, 12, 31) };
+      case "last_year": return { from: day(year - 1, 1, 1), to: day(year - 1, 12, 31) };
+    }
+  } else if (d.kind === "month") {
+    const targetYear = d.month <= month ? year : year - 1;
+    return { from: day(targetYear, d.month, 1), to: day(targetYear, d.month, new Date(Date.UTC(targetYear, d.month, 0)).getUTCDate()) };
+  } else if (d.kind === "month_year") {
+    return { from: day(d.year, d.month, 1), to: day(d.year, d.month, new Date(Date.UTC(d.year, d.month, 0)).getUTCDate()) };
+  } else if (d.kind === "exact") {
+    return { from: d.from, to: d.to };
+  }
+  return null;
+}
+
+export function buildQueryPlanFromNlu(nlu: NluInterpretation, now: Date): QueryPlan {
+  const istNow = new Date(now.getTime() + 330 * 60000);
+  const args: ObjectValue = {};
+
+  if (nlu.lrNumber) args.lrNumber = nlu.lrNumber;
+  if (nlu.partySearch) args.partySearch = nlu.partySearch;
+  if (nlu.consignor) args.consignor = nlu.consignor;
+  if (nlu.consignee) args.consignee = nlu.consignee;
+  if (nlu.vehicleNumber) args.vehicleNumber = nlu.vehicleNumber;
+  if (nlu.material) args.material = nlu.material;
+  if (nlu.status) args.status = nlu.status;
+  if (nlu.minPendingDays != null) args.minPendingDays = nlu.minPendingDays;
+
+  const dateRange = resolveSemanticDate(nlu.date, istNow);
+  if (dateRange) { args.lrDateFrom = dateRange.from; if (dateRange.to) args.lrDateTo = dateRange.to; }
+
+  const createdRange = resolveSemanticDate(nlu.createdDate, istNow, true);
+  if (createdRange) {
+    args.createdAtFrom = new Date(`${createdRange.from}T00:00:00+05:30`).toISOString();
+    const inclusiveEnd = createdRange.to ?? createdRange.from;
+    args.createdAtTo = new Date(Date.parse(`${inclusiveEnd}T00:00:00+05:30`) + DAY_MS).toISOString();
+  }
+
+  const opMap: Record<SemanticOp, { name: ToolName; countOnly: boolean }> = {
+    lr_detail: { name: "get_lr_detail", countOnly: false },
+    lr_count: { name: "search_lrs", countOnly: true },
+    lr_list: { name: "search_lrs", countOnly: false },
+    pod_detail: { name: "get_pod_detail", countOnly: false },
+    pending_pod_count: { name: "search_pending_pods", countOnly: true },
+    pending_pod_list: { name: "search_pending_pods", countOnly: false },
+  };
+  const { name, countOnly } = opMap[nlu.operation!];
+  args.countOnly = countOnly;
+  args.limit = 10; args.offset = 0;
+  if (name === "search_pending_pods" && args.minPendingDays == null) args.minPendingDays = 0;
+
+  if (["get_lr_detail", "get_pod_detail"].includes(name)) {
+    if (!nlu.lrNumber) throw new Error("nlu_missing_lrNumber");
+    args.lrNumber = nlu.lrNumber;
+  }
+
+  return { kind: "query", name, args: completeArguments(name, args), language: nlu.language };
 }
