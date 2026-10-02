@@ -14,6 +14,7 @@ type WebhookDependencies = {
   // Trusted runtime/test seams only; none can be supplied by a webhook payload.
   waitUntil?: (work: Promise<void>) => void;
   assistant?: typeof runWhatsappAssistant;
+  fetch?: typeof fetch;
 };
 
 const E164_PHONE = /^\+[1-9][0-9]{7,14}$/;
@@ -132,15 +133,19 @@ async function processInboundMessage(admin: SupabaseClient, message: InboundMess
   // start an untracked assistant invocation. The resolved identity is closed
   // over server-side; no identity is read from text, query parameters or AI.
   const text = message.text;
+  const senderDigits = senderPhone.replace(/^\+/, "");
   let registered = false;
   const work = Promise.resolve().then(async () => {
     if (!registered) return;
     try {
-      await (dependencies.assistant ?? runWhatsappAssistant)(text, {
+      const result = await (dependencies.assistant ?? runWhatsappAssistant)(text, {
         tools: createWhatsappAssistantTools(admin, linkedUser),
         env: dependencies.env,
+        fetch: dependencies.fetch,
       });
-      // Intentionally discard the result. No outbound transport or persistence.
+      if ((result?.status === "answered" || result?.status === "clarification") && result.text?.trim()) {
+        await sendGupshupOutbound(senderDigits, result.text, dependencies.env, dependencies.fetch ?? fetch);
+      }
     } catch { /* Includes unexpected assistant errors; no log or retry. */ }
   });
   dependencies.waitUntil(work);
@@ -250,6 +255,53 @@ async function updateInboundStatus(
   const { error } = await admin.from("whatsapp_inbound_events").update(update).eq("id", eventId);
   if (error) console.error("[WhatsApp assistant webhook] inbound status update failed");
   return !error;
+}
+
+function validatePhoneDigits(value: string): string | null {
+  return /^[1-9][0-9]{7,14}$/.test(value) ? value : null;
+}
+
+async function sendGupshupOutbound(
+  destination: string,
+  reply: string,
+  env: WebhookDependencies["env"],
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  const apiKey = env("GUPSHUP_API_KEY") ?? "";
+  const source = env("GUPSHUP_SOURCE_NUMBER") ?? "";
+  const appName = env("GUPSHUP_APP_NAME") ?? "";
+  if (!apiKey || !source || !appName) return;
+  const destDigits = validatePhoneDigits(destination);
+  const srcDigits = validatePhoneDigits(source);
+  if (!destDigits || !srcDigits) return;
+  if (!reply.trim()) return;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const form = new URLSearchParams();
+    form.set("channel", "whatsapp");
+    form.set("source", srcDigits);
+    form.set("destination", destDigits);
+    form.set("src.name", appName);
+    form.set("message", JSON.stringify({ type: "text", text: reply, previewUrl: false }));
+    const response = await fetchImpl("https://api.gupshup.io/wa/api/v1/msg", {
+      method: "POST",
+      headers: { apikey: apiKey, "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      signal: controller.signal,
+    });
+    const providerStatus = (await response.json().catch(() => null))?.status ?? "parse_failed";
+    if (response.status === 200) {
+      if (providerStatus !== "submitted") {
+        // Failure is isolated; no retry, no logging of response body.
+      }
+    }
+    // Non-200 or non-submitted: failure isolated, no retry.
+  } catch {
+    // Timeout or network error: failure isolated, no retry.
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function extractInboundMessages(payload: Record<string, unknown>): InboundMessage[] {
