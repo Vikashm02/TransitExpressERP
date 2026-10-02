@@ -1,11 +1,9 @@
 import { externalDefinition, validateExternalArguments, sanitizeExternalResult, type WhatsappExternalAssistantTools } from "./whatsappExternalAssistantTools.ts";
 import type { WhatsappAssistantTools } from "./whatsappAssistantTools.ts";
-import { displayText, object, sanitizeResult, toolDefinitions, validateArguments, type ObjectValue } from "./whatsappAssistantSchemas.ts";
-import { detectLanguage, matchesPlan, resolveIntent, type QueryPlan } from "./whatsappAssistantIntent.ts";
+import { displayText, object, sanitizeResult, toolDefinitions, validateArguments, type ObjectValue, MODELS } from "./whatsappAssistantSchemas.ts";
+import { detectLanguage, matchesPlan, resolveIntent, type QueryPlan, interpretIntentNLU, validateNluInterpretation, buildQueryPlanFromNlu } from "./whatsappAssistantIntent.ts";
 
 export const LIMITS = Object.freeze({ input: 2000, responseBytes: 65536, outputTokens: 1200, toolExecutions: 1, deadlineMs: 30000, reply: 3500 });
-// Explicit compatibility list, not an arbitrary server-configured model route.
-const MODELS = new Set(["gpt-4o-mini", "gpt-4o-mini-2024-07-18"]);
 type Dependencies = {
   // Trusted host binds internal wrappers to the verified ERP user, or external
   // wrappers to an M101-admitted event. Model input never supplies this choice.
@@ -146,12 +144,39 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
     const clarify: AssistantResult = { status: "clarification", text: messages[language].filters };
     if (typeof text !== "string" || !text.trim() || text.length > LIMITS.input) return clarify;
     const plan = resolveIntent(text, dependencies.now?.() ?? new Date());
-    if (plan.kind !== "query") return { status: plan.kind, text: plan.kind === "out_of_scope" ? messages[plan.language].scope : messages[plan.language][plan.reason] };
-    const definition = external ? externalDefinition(plan) : toolDefinitions.find((tool) => tool.name === plan.name)!;
+
+    const nluEnabled = env("WHATSAPP_NLU_ENABLED") === "true" && !external;
+
+    let finalPlan: QueryPlan;
+
+    if (plan.kind === "query") {
+      finalPlan = plan;
+    } else if (nluEnabled && (plan.kind === "clarification" || plan.kind === "out_of_scope")) {
+      try {
+        const nlu = await interpretIntentNLU(text, language, dependencies.now?.() ?? new Date(), dependencies.fetch ?? fetch, env);
+        if (nlu.needsClarification) throw new Error(`nlu_clarification:${nlu.clarificationCategory}`);
+        validateNluInterpretation(nlu, text);
+        finalPlan = buildQueryPlanFromNlu(nlu, dependencies.now?.() ?? new Date());
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith("nlu_clarification:")) {
+          const cat = e.message.split(":")[1];
+          if (cat === "unsupported") return { status: "out_of_scope", text: messages[language].scope };
+          return { status: "clarification", text: messages[language].filters };
+        }
+        if (e instanceof Error && e.message === "nlu_unavailable") return unavailable;
+        if (e instanceof Error && (e.message === "nlu_provider_error" || e.message === "nlu_provider_limit" || e.message === "nlu_incomplete" || e.message === "nlu_no_call")) return unavailable;
+        if (plan.kind === "out_of_scope") return { status: "out_of_scope", text: messages[language].scope };
+        return { status: "clarification", text: messages[language].filters };
+      }
+    } else {
+      return { status: plan.kind, text: plan.kind === "out_of_scope" ? messages[plan.language].scope : messages[plan.language][plan.reason] };
+    }
+
+    const definition = external ? externalDefinition(finalPlan) : toolDefinitions.find((tool) => tool.name === finalPlan.name)!;
     if (!definition) return clarify;
     const wireArgs = external
-      ? Object.fromEntries(Object.keys(definition.parameters.properties).map((key) => [key, plan.args[key]]))
-      : plan.args;
+      ? Object.fromEntries(Object.keys(definition.parameters.properties).map((key) => [key, finalPlan.args[key]]))
+      : finalPlan.args;
     const model = env("WHATSAPP_ASSISTANT_MODEL")?.trim() || "gpt-4o-mini";
     const key = env("OPENAI_API_KEY");
     if (!key || !MODELS.has(model)) return unavailable;
@@ -171,22 +196,22 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       // Wire names are separate: external principals cannot select internal tools.
       if (external && call.name !== definition.name) return clarify;
       const args = external
-        ? validateExternalArguments(plan.name, JSON.parse(String(call.arguments)))
+        ? validateExternalArguments(finalPlan.name, JSON.parse(String(call.arguments)))
         : validateArguments(String(call.name), JSON.parse(String(call.arguments)));
-      if (!matchesPlan(external ? plan.name : String(call.name), args, plan)) return clarify;
+      if (!matchesPlan(external ? finalPlan.name : String(call.name), args, finalPlan)) return clarify;
       controller.signal.throwIfAborted();
       const t = dependencies.tools;
       let result: unknown;
       // The AbortSignal is a separate trusted argument; it cannot enter RPC JSON.
-      switch (plan.name) {
+      switch (finalPlan.name) {
         case "search_lrs": result = await t.searchLrs(args, controller.signal); break;
         case "search_pending_pods": result = await t.searchPendingPods(args, controller.signal); break;
         case "get_lr_detail": result = await t.getLrDetail(String(args.lrNumber), controller.signal); break;
         case "get_pod_detail": result = await t.getPodDetail(String(args.lrNumber), controller.signal); break;
       }
       controller.signal.throwIfAborted();
-      const clean = external ? sanitizeExternalResult(plan.name, result, args) : sanitizeResult(plan.name, result, args);
-      return { status: "answered", text: renderResult(plan, clean) };
+      const clean = external ? sanitizeExternalResult(finalPlan.name, result, args) : sanitizeResult(finalPlan.name, result, args);
+      return { status: "answered", text: renderResult(finalPlan, clean) };
     };
     const timeout = new Promise<AssistantResult>((resolve) => {
       timer = setTimeout(() => { controller.abort(); resolve(unavailable); }, LIMITS.deadlineMs);

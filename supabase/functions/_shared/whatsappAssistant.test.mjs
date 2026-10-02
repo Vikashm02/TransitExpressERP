@@ -35,12 +35,33 @@ function harness(options = {}) {
     return { found: true, lr: detailRow(args) };
   }]));
   const dependencies = {
-    tools, now: () => NOW,
+    tools, now: options.now ?? (() => NOW),
     env: (key) => ({ WHATSAPP_ASSISTANT_ENABLED: 'true', OPENAI_API_KEY: 'FAKE_TEST_KEY', ...options.env })[key],
     fetch: async (url, init) => {
       const request = JSON.parse(init.body);
       requests.push({ url, request, signal: init.signal });
       if (options.fetch) return await options.fetch(url, init);
+
+      // Check if this is an NLU call (interpret_whatsapp_intent function call)
+      const toolName = request.tool_choice?.name;
+      if (toolName === 'interpret_whatsapp_intent') {
+        // This is an NLU call - return the mocked NLU response
+        if (options.nluOutput) {
+          return Response.json({ status: 'completed', output: options.nluOutput });
+        }
+        // Fallback: return needsClarification
+        return Response.json({ status: 'completed', output: [{
+          type: 'function_call', call_id: 'call_1', name: 'interpret_whatsapp_intent',
+          arguments: JSON.stringify({
+            operation: null, language: 'en', lrNumber: null, date: null, createdDate: null,
+            partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+            status: null, minPendingDays: null,
+            needsClarification: true, clarificationCategory: 'filters', clarificationHint: null
+          })
+        }] });
+      }
+
+      // Regular execution call - mirror the deterministic server plan unless a test deliberately overrides it.
       const text = request.input[0].content[0].text;
       const plan = planFor(text);
       const output = options.output ?? [callItem(options.name ?? plan.name, options.args ? options.args(plan.args) : plan.args)];
@@ -48,6 +69,7 @@ function harness(options = {}) {
     },
   };
   if (options.tools) dependencies.tools = options.tools;
+  if (options.audience) dependencies.tools.audience = options.audience;
   return { requests, executions, run: (text) => runWhatsappAssistant(text, dependencies) };
 }
 
@@ -438,4 +460,610 @@ test('strict server schemas reject malformed types, missing fields and invalid b
   assert.throws(() => validateArguments(p.name, {}));
   const pending = planFor('15 din se pending POD kitne hain?');
   assert.throws(() => validateArguments(pending.name, { ...pending.args, minPendingDays: 36501 }));
+});
+
+test('show details for LR<number> resolves to get_lr_detail (regression)', () => {
+  const plan = resolveIntent('Show details for LR19619', NOW);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.name, 'get_lr_detail');
+  assert.equal(plan.args.lrNumber, 'LR19619');
+  assert.equal(Object.keys(plan.args).length, 1);
+});
+
+test('details for LR<number> still works', () => {
+  const plan = resolveIntent('Details for LR19619', NOW);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.name, 'get_lr_detail');
+  assert.equal(plan.args.lrNumber, 'LR19619');
+});
+
+test('genuine LR list query remains a list query', () => {
+  const plan = resolveIntent('show LRs for ACC in August 2026', NOW);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.name, 'search_lrs');
+  assert.equal(plan.args.partySearch, 'ACC');
+});
+
+test('count/list ambiguity behavior remains unchanged', () => {
+  // count + explicitList should clarify
+  assert.equal(resolveIntent('count LRs', NOW).args.countOnly, true);
+  // count + explicitList should clarify (line 94)
+  assert.equal(resolveIntent('count LRs show', NOW).kind, 'clarification');
+  // detail without LR/POD keyword -> out_of_scope (no domain entity)
+  assert.equal(resolveIntent('show details', NOW).kind, 'out_of_scope');
+  // detail with LR keyword but no LR number -> clarify (line 164)
+  assert.equal(resolveIntent('show details for LR', NOW).kind, 'clarification');
+});
+
+test('unknown extra qualifiers still clarify rather than being silently ignored', async () => {
+  const h = harness();
+  for (const input of [
+    'show details for LR19619 extra',  // extra word not in grammar
+    'details for LR19619 and',  // negation/and triggers clarify
+  ]) {
+    assert.notEqual((await h.run(input)).status, 'answered', input);
+    assert.equal(h.requests.length, 0, input);
+    assert.equal(h.executions.length, 0, input);
+  }
+});
+
+// --- NLU Fallback Tests (internal users, WHATSAPP_NLU_ENABLED=true) ---
+
+const NLU_HARNESS_OPTS = {
+  env: { WHATSAPP_NLU_ENABLED: 'true' },
+  fetch: async (url, init) => {
+    if (url === 'https://api.openai.com/v1/responses') {
+      return Response.json({ status: 'completed', output: [] }); // Will be overridden per test
+    }
+    return Response.json({});
+  }
+};
+function buildTestPlanFromNlu(nlu) {
+  const opMap = {
+    lr_detail: { name: 'get_lr_detail', countOnly: false },
+    lr_count: { name: 'search_lrs', countOnly: true },
+    lr_list: { name: 'search_lrs', countOnly: false },
+    pod_detail: { name: 'get_pod_detail', countOnly: false },
+    pending_pod_count: { name: 'search_pending_pods', countOnly: true },
+    pending_pod_list: { name: 'search_pending_pods', countOnly: false },
+  };
+  const { name, countOnly } = opMap[nlu.operation];
+  const args = { countOnly, limit: 10, offset: 0 };
+  if (nlu.lrNumber) args.lrNumber = nlu.lrNumber;
+  if (nlu.partySearch) args.partySearch = nlu.partySearch;
+  if (nlu.consignor) args.consignor = nlu.consignor;
+  if (nlu.consignee) args.consignee = nlu.consignee;
+  if (nlu.vehicleNumber) args.vehicleNumber = nlu.vehicleNumber;
+  if (nlu.material) args.material = nlu.material;
+  if (nlu.status) args.status = nlu.status;
+  if (nlu.minPendingDays != null) args.minPendingDays = nlu.minPendingDays;
+  // For date ranges, we'll use defaults since tests don't check exact dates
+  return { name, args };
+}
+
+function nluHarness(nluResponse, opts = {}) {
+  return harness({
+    ...NLU_HARNESS_OPTS,
+    ...opts,
+    fetch: async (_url, init) => {
+      const request = JSON.parse(init.body);
+      const toolName = request.tool_choice?.name;
+
+      if (toolName === 'interpret_whatsapp_intent') {
+        return Response.json({ status: 'completed', output: nluResponse });
+      }
+
+      const marker = 'Plan: ';
+      const instructions = String(request.instructions ?? '');
+      const markerIndex = instructions.lastIndexOf(marker);
+      if (markerIndex < 0) {
+        return Response.json({});
+      }
+
+      const plan = JSON.parse(instructions.slice(markerIndex + marker.length));
+      return Response.json({
+        status: 'completed',
+        output: [callItem(plan.name, plan.arguments)],
+      });
+    },
+  });
+}
+
+function assertNluPlan(request, expected) {
+  const marker = 'Plan: ';
+  const instructions = String(request.instructions ?? '');
+  const markerIndex = instructions.lastIndexOf(marker);
+  assert.notEqual(markerIndex, -1, 'execution request must contain trusted Plan');
+  const plan = JSON.parse(instructions.slice(markerIndex + marker.length));
+  const args = plan.arguments;
+
+  if (expected.name) assert.equal(plan.name, expected.name);
+  if (expected.lrNumber) assert.equal(args.lrNumber, expected.lrNumber);
+  if (expected.countOnly !== undefined) assert.equal(args.countOnly, expected.countOnly);
+  if (expected.dateFrom) assert.equal(args.lrDateFrom, expected.dateFrom);
+  if (expected.dateTo) assert.equal(args.lrDateTo, expected.dateTo);
+  if (expected.partySearch) assert.equal(args.partySearch, expected.partySearch);
+}
+
+test('NLU: last month kitne gaadi lage -> lr_count last_month', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('last month kitne gaadi lage');
+  assert.equal(r.status, 'answered');
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[0].request.tool_choice?.name, 'interpret_whatsapp_intent');
+  assertNluPlan(h.requests[1].request, { status: 'answered', name: 'search_lrs', countOnly: true, dateFrom: '2026-09-01', dateTo: '2026-09-30' });
+});
+
+test('NLU: last mnth kitne gadi lge -> lr_count last_month', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('last mnth kitne gadi lge');
+  assert.equal(r.status, 'answered');
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[0].request.tool_choice?.name, 'interpret_whatsapp_intent');
+  assertNluPlan(h.requests[1].request, { name: 'search_lrs', countOnly: true, dateFrom: '2026-09-01', dateTo: '2026-09-30' });
+});
+
+test('NLU: september me kitni gadi -> lr_count bare month=9', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'month', month: 9 }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('september me kitni gadi');
+  assert.equal(r.status, 'answered');
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[0].request.tool_choice?.name, 'interpret_whatsapp_intent');
+  assertNluPlan(h.requests[1].request, { name: 'search_lrs', countOnly: true, dateFrom: '2026-09-01', dateTo: '2026-09-30' });
+});
+
+test('NLU: sep me total vehicle kitna -> lr_count bare month=9', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'month', month: 9 }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('sep me total vehicle kitna');
+  assert.equal(r.status, 'answered');
+  assertNluPlan(h.requests[1].request, { name: 'search_lrs', countOnly: true, dateFrom: '2026-09-01', dateTo: '2026-09-30' });
+});
+
+test('NLU: pichle mahine kitne lr bane -> lr_count createdDate=last_month', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: null, createdDate: { kind: 'relative', value: 'last_month' },
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('pichle mahine kitne lr bane');
+  assert.equal(r.status, 'answered');
+  assertNluPlan(h.requests[1].request, { name: 'search_lrs', countOnly: true });
+});
+
+test('NLU: lr 19619 ka kya status h -> lr_detail LR19619', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_detail', language: 'hinglish', lrNumber: 'LR19619',
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('lr 19619 ka kya status h');
+  assert.equal(r.status, 'answered');
+  assertNluPlan(h.requests[1].request, { name: 'get_lr_detail', lrNumber: 'LR19619' });
+});
+
+test('NLU: 19619 ka pod aya kya -> pod_detail LR19619', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'pod_detail', language: 'hinglish', lrNumber: 'LR19619',
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('19619 ka pod aya kya');
+  assert.equal(r.status, 'answered');
+  assertNluPlan(h.requests[1].request, { name: 'get_pod_detail', lrNumber: 'LR19619' });
+});
+
+test('NLU: ACC ka september ka batao -> clarification (count vs list ambiguity)', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: null, language: 'hinglish', lrNumber: null,
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: true, clarificationCategory: 'filters', clarificationHint: 'count_vs_list'
+    })
+  }]);
+  const r = await h.run('ACC ka september ka batao');
+  assert.equal(r.status, 'clarification');
+  assert.equal(h.requests.length, 1); // NLU interpretation only, no execution
+  assert.equal(h.executions.length, 0);
+});
+
+test('NLU: last month kitne gaadi lage? september me? -> ambiguous_date', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: null, language: 'hinglish', lrNumber: null,
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: true, clarificationCategory: 'ambiguous_date', clarificationHint: 'two_date_refs'
+    })
+  }]);
+  const r = await h.run('last month kitne gaadi lage? september me?');
+  assert.equal(r.status, 'clarification');
+  assert.equal(h.requests.length, 1); // NLU interpretation only, no execution
+  assert.equal(h.executions.length, 0);
+});
+
+test('NLU: freight kitna -> out_of_scope', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: null, language: 'hinglish', lrNumber: null,
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: true, clarificationCategory: 'unsupported', clarificationHint: 'finance'
+    })
+  }]);
+  const r = await h.run('freight kitna');
+  assert.equal(r.status, 'out_of_scope');
+  assert.equal(h.requests.length, 1); // NLU interpretation only, no execution
+  assert.equal(h.executions.length, 0);
+});
+
+// Security tests
+test('NLU Security: model returns LR99999 when source contains 19619 -> reject', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_detail', language: 'hinglish', lrNumber: 'LR99999',
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('lr 19619 ka status');
+  assert.equal(r.status, 'clarification'); // rejected, falls back to deterministic
+  assert.equal(h.requests.length, 1); // NLU interpretation only, no execution
+  assert.equal(h.executions.length, 0);
+});
+
+test('NLU Security: model invents party not in source -> reject', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_list', language: 'hinglish', lrNumber: null,
+      date: { kind: 'month', month: 9 }, createdDate: null,
+      partySearch: 'INVENTED_CORP', consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('ACC ka september ka batao');
+  assert.equal(r.status, 'out_of_scope');
+  assert.equal(h.requests.length, 1); // NLU interpretation only, no execution
+  assert.equal(h.executions.length, 0);
+});
+
+test('NLU Security: model invents vehicle not in source -> reject', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_list', language: 'hinglish', lrNumber: null,
+      date: { kind: 'month', month: 9 }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: 'INVENTED123', material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('september me kitni gadi');
+  assert.equal(r.status, 'out_of_scope');
+  assert.equal(h.requests.length, 1); // NLU interpretation only, no execution
+  assert.equal(h.executions.length, 0);
+});
+
+test('NLU Security: unsupported semantic operation cannot be injected', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'delete_all_data', language: 'en', lrNumber: null,
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('delete everything');
+  assert.equal(r.status, 'out_of_scope');
+  assert.equal(h.requests.length, 1);
+});
+
+test('NLU Security: extra JSON property rejected', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'en', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null,
+      extraField: 'injected' // should be rejected by strict schema
+    })
+  }]);
+  const r = await h.run('last month count');
+  assert.equal(r.status, 'out_of_scope');
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.executions.length, 0);
+});
+
+test('NLU: cannot cause more than one ERP query', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('last month kitne gaadi lage');
+  assert.equal(r.status, 'answered');
+  assert.equal(h.requests.length, 2); // one NLU interpretation + one execution request
+  assert.equal(h.executions.length, 1); // exactly one ERP execution
+});
+
+test('NLU: malformed NLU response -> unavailable/no ERP call', async () => {
+  const h = harness({ ...NLU_HARNESS_OPTS, fetch: async (url, init) => {
+    if (url === 'https://api.openai.com/v1/responses') {
+      return new Response('not json', { status: 500 });
+    }
+    return Response.json({});
+  } });
+  const r = await h.run('last month kitne gaadi lage');
+  assert.equal(r.status, 'unavailable');
+  assert.equal(h.requests.length, 1); // interpretation attempt only
+  assert.equal(h.executions.length, 0);
+});
+
+// Gating tests
+test('NLU Gating: NLU disabled -> existing deterministic result only', async () => {
+  const h = harness(); // no WHATSAPP_NLU_ENABLED
+  const r = await h.run('last month kitne gaadi lage');
+  assert.equal(r.status, 'out_of_scope'); // deterministic result, NLU disabled
+  assert.equal(h.requests.length, 0);
+});
+
+test('NLU Gating: external user + NLU enabled -> NLU fetch NEVER called', async () => {
+  const h = harness({
+    ...NLU_HARNESS_OPTS,
+    audience: 'external',
+    env: { WHATSAPP_NLU_ENABLED: 'true', WHATSAPP_EXTERNAL_ASSISTANT_ENABLED: 'true' },
+  });
+  const r = await h.run('last month kitne gaadi lage');
+  assert.equal(r.status, 'out_of_scope'); // deterministic result only, never NLU
+  assert.equal(h.requests.length, 0); // no NLU call
+});
+
+test('NLU Gating: internal user + deterministic query -> NLU fetch NEVER called', async () => {
+  const h = nluHarness([]); // deterministic will succeed
+  const r = await h.run('LR19573 ka detail batao');
+  assert.equal(r.status, 'answered');
+  assert.equal(h.requests.length, 1); // only the execution call, no NLU
+});
+
+// Date tests
+test('NLU Date: bare September at trusted 2026-10-02 -> 2026-09-01..2026-09-30', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'month', month: 9 }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('september me kitni gadi');
+  assert.equal(r.status, 'answered');
+  assertNluPlan(h.requests[1].request, { dateFrom: '2026-09-01', dateTo: '2026-09-30' });
+});
+
+test('NLU Date: bare November at trusted 2026-10-02 -> November 2025', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'month', month: 11 }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('november me kitni gadi');
+  assert.equal(r.status, 'answered');
+  assertNluPlan(h.requests[1].request, { dateFrom: '2025-11-01', dateTo: '2025-11-30' });
+});
+
+test('NLU Date: last_month at trusted 2026-01 date -> December 2025', async () => {
+  const JAN_2026 = new Date('2026-01-15T12:00:00Z');
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }], { now: () => JAN_2026 });
+  const r = await h.run('last month kitne gaadi lage');
+  assert.equal(r.status, 'answered');
+  assertNluPlan(h.requests[1].request, { dateFrom: '2025-12-01', dateTo: '2025-12-31' });
+});
+
+test('NLU Date: createdDate UTC/exclusive-end behavior verified', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'hinglish', lrNumber: null,
+      date: null, createdDate: { kind: 'month', month: 9 },
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  const r = await h.run('september me bane lr kitne');
+  assert.equal(r.status, 'answered');
+  // createdAt should use exclusive-end UTC
+  const req = h.requests[1].request;
+  const marker = 'Plan: ';
+  const instructions = String(req.instructions ?? '');
+  const plan = JSON.parse(instructions.slice(instructions.lastIndexOf(marker) + marker.length));
+  assert.ok(plan.arguments.createdAtFrom.includes('2026-08-31T18:30:00'));
+  assert.ok(plan.arguments.createdAtTo.includes('2026-09-30T18:30:00'));
+});
+
+// OpenAI request tests
+test('NLU OpenAI: strict schema accepted structurally', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'en', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  await h.run('test');
+  const body = h.requests[0].request;
+  assert.equal(body.store, false);
+  assert.equal(body.parallel_tool_calls, false);
+  assert.ok(body.tools.length === 1);
+  assert.equal(body.tools[0].name, 'interpret_whatsapp_intent');
+  assert.equal(body.tool_choice.name, 'interpret_whatsapp_intent');
+  // no user text in instructions
+  assert.ok(!body.instructions.includes('last month'));
+  assert.ok(!body.instructions.includes('gaadi'));
+});
+
+test('NLU OpenAI: user text only in input user content', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'en', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  await h.run('last month kitne gaadi lage');
+  const body = h.requests[0].request;
+  assert.equal(body.input[0].role, 'user');
+  assert.equal(body.input[0].content[0].text, 'last month kitne gaadi lage');
+});
+
+test('NLU OpenAI: store:false, parallel_tool_calls:false, forced single NLU function', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: 'lr_count', language: 'en', lrNumber: null,
+      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: false, clarificationCategory: null, clarificationHint: null
+    })
+  }]);
+  await h.run('test');
+  const body = h.requests[0].request;
+  assert.equal(body.store, false);
+  assert.equal(body.parallel_tool_calls, false);
+  assert.ok(body.tool_choice.type === 'function');
+  assert.equal(body.tool_choice.name, 'interpret_whatsapp_intent');
+});
+
+test('NLU: unsupported -> out_of_scope', async () => {
+  const h = nluHarness([{
+    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
+    name: 'interpret_whatsapp_intent',
+    arguments: JSON.stringify({
+      operation: null, language: 'hinglish', lrNumber: null,
+      date: null, createdDate: null,
+      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
+      status: null, minPendingDays: null,
+      needsClarification: true, clarificationCategory: 'unsupported', clarificationHint: 'finance'
+    })
+  }]);
+  const r = await h.run('freight kitna');
+  assert.equal(r.status, 'out_of_scope');
+  assert.equal(h.requests.length, 1);
 });

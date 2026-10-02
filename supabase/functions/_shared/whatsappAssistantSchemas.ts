@@ -1,6 +1,79 @@
 // Model-facing contracts contain no identity, SQL, RPC selector, or credentials.
 export type ObjectValue = Record<string, unknown>;
 export type ToolName = "search_lrs" | "get_lr_detail" | "search_pending_pods" | "get_pod_detail";
+export const MODELS = new Set(["gpt-4o-mini", "gpt-4o-mini-2024-07-18"]);
+
+export type SemanticOp =
+  | "lr_detail"
+  | "lr_count"
+  | "lr_list"
+  | "pod_detail"
+  | "pending_pod_count"
+  | "pending_pod_list";
+
+export type SemanticDate =
+  | { kind: "relative"; value: "today" | "yesterday" | "this_month" | "last_month" | "this_year" | "last_year" }
+  | { kind: "month"; month: number }
+  | { kind: "month_year"; month: number; year: number }
+  | { kind: "exact"; from: string; to: string | null };
+
+export type NluInterpretation = {
+  operation: SemanticOp | null;
+  language: "en" | "hi" | "hinglish";
+  lrNumber: string | null;
+  date: SemanticDate | null;
+  createdDate: SemanticDate | null;
+  partySearch: string | null;
+  consignor: string | null;
+  consignee: string | null;
+  vehicleNumber: string | null;
+  material: string | null;
+  status: "Open" | "In Transit" | "Delivered" | "Billed" | "Cancelled" | null;
+  minPendingDays: number | null;
+  needsClarification: boolean;
+  clarificationCategory: "year" | "filters" | "party_role" | "ambiguous_date" | "unsupported" | "missing_lr" | "missing_year" | null;
+  clarificationHint: string | null;
+};
+
+const semanticDateSchema = {
+  type: ["object", "null"],
+  additionalProperties: false,
+  anyOf: [
+    { type: "object", additionalProperties: false, required: ["kind", "value"], properties: { kind: { type: "string", enum: ["relative"] }, value: { type: "string", enum: ["today", "yesterday", "this_month", "last_month", "this_year", "last_year"] } } },
+    { type: "object", additionalProperties: false, required: ["kind", "month"], properties: { kind: { type: "string", enum: ["month"] }, month: { type: "integer", minimum: 1, maximum: 12 } } },
+    { type: "object", additionalProperties: false, required: ["kind", "month", "year"], properties: { kind: { type: "string", enum: ["month_year"] }, month: { type: "integer", minimum: 1, maximum: 12 }, year: { type: "integer", minimum: 2000, maximum: 2199 } } },
+    { type: "object", additionalProperties: false, required: ["kind", "from", "to"], properties: { kind: { type: "string", enum: ["exact"] }, from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, to: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" } } }
+  ]
+} as const;
+
+export const nluIntentSchema = {
+  type: "function",
+  name: "interpret_whatsapp_intent",
+  description: "Interpret the user's WhatsApp message into a structured LR/POD intent. Return needsClarification=true if ANY ambiguity.",
+  strict: true,
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["operation", "language", "lrNumber", "date", "createdDate", "partySearch", "consignor", "consignee", "vehicleNumber", "material", "status", "minPendingDays", "needsClarification", "clarificationCategory", "clarificationHint"],
+    properties: {
+      operation: { type: ["string", "null"], enum: ["lr_detail", "lr_count", "lr_list", "pod_detail", "pending_pod_count", "pending_pod_list"] },
+      language: { type: "string", enum: ["en", "hi", "hinglish"] },
+      lrNumber: { type: ["string", "null"], minLength: 3, maxLength: 80, pattern: "^LR\\d+$" },
+      date: semanticDateSchema,
+      createdDate: semanticDateSchema,
+      partySearch: { type: ["string", "null"], maxLength: 200 },
+      consignor: { type: ["string", "null"], maxLength: 200 },
+      consignee: { type: ["string", "null"], maxLength: 200 },
+      vehicleNumber: { type: ["string", "null"], maxLength: 80 },
+      material: { type: ["string", "null"], maxLength: 200 },
+      status: { type: ["string", "null"], enum: [null, "Open", "In Transit", "Delivered", "Billed", "Cancelled"] },
+      minPendingDays: { type: ["integer", "null"], minimum: 0, maximum: 36500 },
+      needsClarification: { type: "boolean" },
+      clarificationCategory: { type: ["string", "null"], enum: ["year", "filters", "party_role", "ambiguous_date", "unsupported", "missing_lr", "missing_year"] },
+      clarificationHint: { type: ["string", "null"], maxLength: 120 }
+    }
+  }
+} as const;
 const text = (maxLength: number) => ({ type: ["string", "null"], minLength: 1, maxLength });
 const date = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" };
 const timestamp = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" };
