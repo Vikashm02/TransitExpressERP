@@ -16,6 +16,7 @@ import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { normalizeLrTextFields } from "./lrTextNormalize";
 import { isLegacyMaterialEnrichment } from "./partyIdentity";
 import { getActiveLrPurchaseOrders } from "@/components/services/purchaseOrder.service";
+import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
 import { toast } from "sonner";
 
 interface LRDialogProps {
@@ -405,14 +406,45 @@ export default function LRDialog({
       || (values.purchaseOrderId ?? null) !== (lr?.purchaseOrderId ?? null);
     setCheckingPo(true);
     try {
-      if (mustCheckPo) {
+      const poChanged = isEditing && (values.purchaseOrderId ?? null) !== (lr?.purchaseOrderId ?? null);
+      if (!isEditing) {
+        // Create LR — pre-feature behavior exactly, no legacy resolution
         const active = await getActiveLrPurchaseOrders(values.billingPartyId, values.consignor, values.materialId);
-        if ((active.length > 0 || values.purchaseOrderId)
-          && !active.some((po) => po.id === values.purchaseOrderId)) {
+        if ((active.length > 0 || values.purchaseOrderId) && !active.some((po) => po.id === values.purchaseOrderId)) {
           toast.error("Choose an active PO for this billing party before saving.");
           return;
         }
-      }
+      } else if (poChanged) {
+        // Existing LR where PO actually changed — legacy-aware Billing Party resolution
+        let billingIdForLookup: number | null | undefined = values.billingPartyId;
+        if (billingIdForLookup == null && values.customer && values.customer.trim() && values.materialId != null && values.consignor && values.consignor.trim()) {
+          try {
+            const parties = await getLrBillingPartyLookup();
+            const norm = values.customer.trim().toUpperCase();
+            const matches = parties.filter((p) => p.entryStatus === "final" && p.name.trim().toUpperCase() === norm);
+            if (matches.length === 1) billingIdForLookup = matches[0].id;
+          } catch {
+            // lookup failure -> fall back to null
+          }
+        }
+        let active: Awaited<ReturnType<typeof getActiveLrPurchaseOrders>> | null = null;
+        try {
+          active = billingIdForLookup == null ? [] : await getActiveLrPurchaseOrders(billingIdForLookup, values.consignor, values.materialId);
+        } catch {
+          active = null;
+        }
+        if (active !== null && values.purchaseOrderId != null && !active.some((po) => po.id === values.purchaseOrderId)) {
+          toast.error("Choose an active PO for this billing party before saving.");
+          return;
+        }
+      } else if (mustCheckPo) {
+        // Existing LR, PO did NOT change — preserve pre-feature behavior
+        const active = await getActiveLrPurchaseOrders(values.billingPartyId, values.consignor, values.materialId);
+        if ((active.length > 0 || values.purchaseOrderId) && !active.some((po) => po.id === values.purchaseOrderId)) {
+            toast.error("Choose an active PO for this billing party before saving.");
+            return;
+          }
+        }
       setErrors({});
       await onSubmit({ ...values, entryStatus: "final" });
     } catch {
