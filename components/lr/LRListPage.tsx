@@ -46,7 +46,6 @@ import {
   type LRRecord,
 } from "@/components/services/lr.service";
 import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
-import { getLrCustomerLookup } from "@/components/services/customer.service";
 import {
   createPod,
   getPod,
@@ -691,46 +690,32 @@ function LRListPageContent() {
             return;
           }
           // Legacy enrichment ONLY for actual Change PO (PO actually changed to non-null).
-          // Unrelated edits must not silently write billingPartyId/consignorId/consigneeId.
-          // Consignee is NOT part of PO identity — never enrich/fail on consignee for Change PO.
+          // Only billingPartyId is required for PO validation; consignorId must remain NULL for legacy
+          // (enriching it with trailing-space mismatch caused "Selected LR party identity does not match its snapshot").
+          // Preserve consignor text exactly, do not trim/rewrite, do not touch consigneeId.
           let enrichedValues: LR = values;
           const isPoChangeForLegacy = (values.purchaseOrderId ?? null) !== (editingLR.purchaseOrderId ?? null) && values.purchaseOrderId != null;
-          if (
-            isPoChangeForLegacy &&
-            (
-              (editingLR.billingPartyId == null && enrichedValues.billingPartyId == null && enrichedValues.customer.trim()) ||
-              (editingLR.consignorId == null && enrichedValues.consignorId == null && enrichedValues.consignor.trim())
-            )
-          ) {
+          if (isPoChangeForLegacy && editingLR.billingPartyId == null && enrichedValues.billingPartyId == null && enrichedValues.customer.trim()) {
             try {
-              const [billingParties, customers] = await Promise.all([
-                editingLR.billingPartyId == null && enrichedValues.billingPartyId == null && enrichedValues.customer.trim()
-                  ? getLrBillingPartyLookup()
-                  : Promise.resolve([] as Awaited<ReturnType<typeof getLrBillingPartyLookup>>),
-                editingLR.consignorId == null && enrichedValues.consignorId == null && enrichedValues.consignor.trim()
-                  ? getLrCustomerLookup()
-                  : Promise.resolve([] as Awaited<ReturnType<typeof getLrCustomerLookup>>),
-              ]);
-              if (editingLR.billingPartyId == null && enrichedValues.billingPartyId == null && enrichedValues.customer.trim()) {
-                const norm = enrichedValues.customer.trim().toUpperCase();
-                const matches = billingParties.filter((p) => p.entryStatus === "final" && p.name.trim().toUpperCase() === norm);
-                if (matches.length === 1) enrichedValues = { ...enrichedValues, billingPartyId: matches[0].id };
-                else {
-                  toast.error(matches.length === 0 ? "Billing party not found for LR customer" : "Billing party must resolve to exactly one finalized master record");
+              const billingParties = await getLrBillingPartyLookup();
+              const norm = enrichedValues.customer.trim().toUpperCase();
+              const matches = billingParties.filter((p) => p.entryStatus === "final" && p.name.trim().toUpperCase() === norm);
+              if (matches.length === 1) {
+                const matched = matches[0];
+                const billingSnapshotMatches =
+                  enrichedValues.customer === matched.name ||
+                  enrichedValues.customer === matched.name.toUpperCase();
+                if (!billingSnapshotMatches) {
+                  toast.error("Billing party snapshot does not exactly match master record. Please contact support to correct the LR snapshot.");
                   return;
                 }
-              }
-              if (editingLR.consignorId == null && enrichedValues.consignorId == null && enrichedValues.consignor.trim()) {
-                const norm = enrichedValues.consignor.trim().toUpperCase();
-                const matches = customers.filter((c) => c.entryStatus === "final" && c.name.trim().toUpperCase() === norm);
-                if (matches.length === 1) enrichedValues = { ...enrichedValues, consignorId: matches[0].id };
-                else {
-                  toast.error(matches.length === 0 ? "Consignor not found for LR" : "Consignor must resolve to exactly one finalized master record");
-                  return;
-                }
+                enrichedValues = { ...enrichedValues, billingPartyId: matched.id };
+              } else {
+                toast.error(matches.length === 0 ? "Billing party not found for LR customer" : "Billing party must resolve to exactly one finalized master record");
+                return;
               }
             } catch {
-              toast.error("Unable to resolve legacy party identities. Please try again.");
+              toast.error("Unable to resolve legacy billing party. Please try again.");
               return;
             }
           }

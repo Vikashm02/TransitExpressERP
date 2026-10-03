@@ -53,9 +53,10 @@ test('Save path for Change PO is normal updateLR, not separate RPC', () => {
 
 test('LR19612 legacy IDs resolved before updateLR', () => {
   assert.match(lrListPage, /Legacy enrichment|getLrBillingPartyLookup/);
-  assert.match(lrListPage, /getLrCustomerLookup/);
+  // Only billingPartyId is enriched for Change PO; consignorId must remain null (trailing-space safe)
+  assert.doesNotMatch(lrListPage, /getLrCustomerLookup/);
   assert.match(lrListPage, /billingPartyId == null[\s\S]*?customer/);
-  assert.match(lrListPage, /consignorId[\s\S]*?consignor/);
+  assert.doesNotMatch(lrListPage, /consignorId[\s\S]*?getLrCustomerLookup/);
 });
 
 test('Existing DB triggers remain authoritative for PO validation', () => {
@@ -442,12 +443,12 @@ test('Ordinary Edit LR with no PO change does NOT populate billingPartyId/consig
   // Enrichment is gated by isPoChangeForLegacy
   assert.match(lrListPage, /isPoChangeForLegacy/);
   assert.match(lrListPage, /if \(\s*isPoChangeForLegacy &&/);
-  // For Change PO, only billing and consignor are enriched, not consignee
+  // For Change PO, only billingPartyId is enriched (consignorId preserved as NULL, consigneeId untouched)
   const changeBlockStart = lrListPage.indexOf('isPoChangeForLegacy &&');
   const changeBlockEnd = lrListPage.indexOf('} catch {', changeBlockStart);
   const changeBlock = lrListPage.slice(changeBlockStart, changeBlockEnd);
   assert.match(changeBlock, /billingPartyId/);
-  assert.match(changeBlock, /consignorId/);
+  assert.doesNotMatch(changeBlock, /consignorId/);
   assert.doesNotMatch(changeBlock, /consigneeId/);
 });
 
@@ -457,9 +458,11 @@ test('Actual PO change on legacy LR resolves exactly-one Billing Party', () => {
   assert.match(lrListPage, /Billing party must resolve to exactly one finalized master record/);
 });
 
-test('Actual PO change on legacy LR resolves exactly-one Consignor', () => {
-  assert.match(lrListPage, /consignorId == null && enrichedValues\.consignorId == null && enrichedValues\.consignor\.trim\(\)/);
-  assert.match(lrListPage, /Consignor must resolve to exactly one finalized master record/);
+test('Actual PO change on legacy LR does NOT populate consignorId (preserve trailing-space snapshot)', () => {
+  // Must not enrich consignorId for Change PO; consignor text is used for PO matching, not ID
+  const changeBlock = lrListPage.slice(lrListPage.indexOf('isPoChangeForLegacy &&'), lrListPage.indexOf('} catch {', lrListPage.indexOf('isPoChangeForLegacy &&')));
+  assert.doesNotMatch(changeBlock, /consignorId/);
+  assert.doesNotMatch(changeBlock, /getLrCustomerLookup/);
 });
 
 test('Actual PO change does NOT resolve/write Consignee', () => {
@@ -475,32 +478,79 @@ test('ambiguous/missing Billing Party fails Change PO', () => {
   assert.match(lrListPage, /Billing party must resolve to exactly one finalized master record/);
 });
 
-test('ambiguous/missing Consignor fails Change PO', () => {
-  assert.match(lrListPage, /Consignor not found for LR/);
-  assert.match(lrListPage, /Consignor must resolve to exactly one finalized master record/);
+test('ambiguous/missing Consignor does NOT fail Change PO (consignorId not enriched)', () => {
+  // Consignee/consignor enrichment removed; consignor text is used as-is for PO matching
+  const changeBlock = lrListPage.slice(lrListPage.indexOf('isPoChangeForLegacy &&'), lrListPage.indexOf('} catch {', lrListPage.indexOf('isPoChangeForLegacy &&')));
+  assert.doesNotMatch(changeBlock, /Consignor not found/);
+  assert.doesNotMatch(changeBlock, /Consignor must resolve/);
 });
 
-test('LR19612 can change PO8 -> PO21 with correct IDs via normal update', async () => {
-  // Reuse earlier payload test but verify via LRListPage enrichment path
+test('LR19612 can change PO8 -> PO21 with correct IDs via normal update (preserve consignor snapshot)', async () => {
   const billingParties = [{ id: 18, name: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD', entryStatus: 'final' }];
-  const customers = [{ id: 19, name: 'M/S SUSBDE LOC NAGPUR PVT LTD', entryStatus: 'final' }];
-  const editingLR = { billingPartyId: null, consignorId: null, customer: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD', consignor: 'M/S SUSBDE LOC NAGPUR PVT LTD', materialId: 246, purchaseOrderId: 8 };
-  const values = { billingPartyId: null, consignorId: null, customer: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD', consignor: 'M/S SUSBDE LOC NAGPUR PVT LTD', materialId: 246, purchaseOrderId: 21 };
+  const editingLR = {
+    billingPartyId: null,
+    consignorId: null,
+    customer: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD',
+    consignor: 'M/S SUSBDE LOC NAGPUR PVT LTD ', // legacy trailing space
+    materialId: 246,
+    purchaseOrderId: 8,
+  };
+  const values = {
+    billingPartyId: null,
+    consignorId: null,
+    customer: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD',
+    consignor: 'M/S SUSBDE LOC NAGPUR PVT LTD ', // preserve exactly
+    materialId: 246,
+    purchaseOrderId: 21,
+  };
   let enriched = { ...values };
   const normB = enriched.customer.trim().toUpperCase();
   const mB = billingParties.filter(p => p.name.trim().toUpperCase()===normB && p.entryStatus==='final');
-  if (mB.length===1) enriched.billingPartyId = mB[0].id;
-  const normC = enriched.consignor.trim().toUpperCase();
-  const mC = customers.filter(c => c.name.trim().toUpperCase()===normC && c.entryStatus==='final');
-  if (mC.length===1) enriched.consignorId = mC[0].id;
+  if (mB.length===1) {
+    const matched = mB[0];
+    const billingSnapshotMatches = enriched.customer === matched.name || enriched.customer === matched.name.toUpperCase();
+    assert.equal(billingSnapshotMatches, true, 'LR19612 billing snapshot must match exact or upper');
+    enriched.billingPartyId = matched.id;
+  }
+  // ConsignorId must remain null, consignor text preserved exactly
   assert.equal(enriched.billingPartyId, 18);
-  assert.equal(enriched.consignorId, 19);
+  assert.equal(enriched.consignorId, null);
+  assert.equal(enriched.consignor, 'M/S SUSBDE LOC NAGPUR PVT LTD ', 'trailing space preserved');
   assert.equal(enriched.materialId, 246);
   assert.equal(enriched.purchaseOrderId, 21);
-  // po_number/date come from selected PO master
   const po21 = { po_number: 'KU/KUE/8424000211', issue_date: '2026-08-29' };
   assert.equal(po21.po_number, 'KU/KUE/8424000211');
   assert.equal(po21.issue_date, '2026-08-29');
+  // Verify PO compatibility uses text (upper trim) so trailing space still matches
+  assert.equal(enriched.consignor.trim().toUpperCase(), 'M/S SUSBDE LOC NAGPUR PVT LTD');
+  assert.equal(po21.po_number, 'KU/KUE/8424000211');
+});
+
+test('exact Billing Party snapshot is accepted/enriched', () => {
+  const billingParties = [{ id: 18, name: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD', entryStatus: 'final' }];
+  const enriched = { customer: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD' };
+  const matched = billingParties[0];
+  const billingSnapshotMatches = enriched.customer === matched.name || enriched.customer === matched.name.toUpperCase();
+  assert.equal(billingSnapshotMatches, true);
+});
+
+test('uppercase(master.name) snapshot is accepted/enriched', () => {
+  const billingParties = [{ id: 18, name: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD', entryStatus: 'final' }];
+  const enriched = { customer: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD'.toUpperCase() };
+  const matched = billingParties[0];
+  const billingSnapshotMatches = enriched.customer === matched.name || enriched.customer === matched.name.toUpperCase();
+  assert.equal(billingSnapshotMatches, true);
+});
+
+test('whitespace-different snapshot found by normalized lookup is rejected rather than rewritten', () => {
+  const billingParties = [{ id: 18, name: 'M/S: RE SUSTAINABILITY SERVICE PVT LTD', entryStatus: 'final' }];
+  const enriched = { customer: '  M/S: RE SUSTAINABILITY SERVICE PVT LTD  ' };
+  const norm = enriched.customer.trim().toUpperCase();
+  const matches = billingParties.filter(p => p.name.trim().toUpperCase()===norm && p.entryStatus==='final');
+  assert.equal(matches.length, 1, 'normalized lookup finds master');
+  const matched = matches[0];
+  const billingSnapshotMatches = enriched.customer === matched.name || enriched.customer === matched.name.toUpperCase();
+  assert.equal(billingSnapshotMatches, false, 'whitespace-different must be rejected, not rewritten');
 });
 
 test('normal LR create/numbering service calls are unchanged by this diff', () => {
