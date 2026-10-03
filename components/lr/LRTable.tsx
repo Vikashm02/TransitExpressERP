@@ -22,6 +22,7 @@ import {
 } from "@/lib/entryStatus";
 import { cn } from "@/lib/utils";
 import { canStaffEditRecord } from "@/lib/editWindow";
+import { canContinueDraftRecord } from "./lrDraftRecovery";
 
 interface LRTableProps {
   lrs: LRRecord[];
@@ -41,6 +42,8 @@ interface LRTableProps {
   canEdit?: boolean;
   /** Create or Edit — required to open/continue a draft row. */
   canContinueDraft?: boolean;
+  /** Authenticated Supabase user id — used only for the temporary LR recovery exception. */
+  currentUserId?: string | null;
   canDelete?: boolean;
   canPrint?: boolean;
   canShare?: boolean;
@@ -113,6 +116,7 @@ export default function LRTable({
   resolveAssignedName,
   canEdit = true,
   canContinueDraft = true,
+  currentUserId = null,
   canDelete = true,
   canPrint = true,
   canShare = true,
@@ -270,7 +274,7 @@ export default function LRTable({
           onClick: onContinueDraft,
           hidden: (row) =>
             !isDraftEntry(row.entryStatus) ||
-            !canStaffEditRecord(isAdmin, canContinueDraft, row),
+            !canContinueDraftRecord(canContinueDraft, canStaffEditRecord(isAdmin, canContinueDraft, row), row, currentUserId),
         },
         {
           label: "Edit",

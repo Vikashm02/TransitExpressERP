@@ -64,6 +64,7 @@ import {
   needsLrNumberAllocation,
 } from "@/lib/entryStatus";
 import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
+import { canContinueDraftRecord } from "./lrDraftRecovery";
 import { normalizeLrForDraftPersist } from "@/lib/draftPersistence";
 import LrSeriesStatus from "./LrSeriesStatus";
 import PendingDraftLrsDialog from "./PendingDraftLrsDialog";
@@ -89,7 +90,7 @@ function LRListPageContent() {
   const notificationViewId = searchParams.get("view");
   const notificationFocusParam = searchParams.get("focus");
   const router = useRouter();
-  const { isAdmin, isCreator, hasPermission, hasAction } = useAuth();
+  const { isAdmin, isCreator, hasPermission, hasAction, user } = useAuth();
   const canCreate = hasPermission("lr", "create_view");
   const canEdit = hasPermission("lr", "edit") || hasAction("lr", "edit");
   const canContinueDraft = canContinueDraftEntry({ canCreate, canEdit });
@@ -419,7 +420,7 @@ function LRListPageContent() {
 
   function handleContinueDraft(lr: LRRecord) {
     if (!isDraftEntry(lr.entryStatus)) return;
-    if (!canStaffEditRecord(isAdmin, canContinueDraft, lr)) {
+    if (!canContinueDraftRecord(canContinueDraft, canStaffEditRecord(isAdmin, canContinueDraft, lr), lr, user?.id)) {
       toast.error(
         canContinueDraft
           ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
@@ -595,7 +596,7 @@ function LRListPageContent() {
 
       if (editingLR) {
         if (editingLR.entryStatus === "draft" || isDraftLrNumber(editingLR.lrNumber)) {
-          if (!canStaffEditRecord(isAdmin, canContinueDraft, editingLR)) {
+          if (!canContinueDraftRecord(canContinueDraft, canStaffEditRecord(isAdmin, canContinueDraft, editingLR), editingLR, user?.id)) {
             toast.error(
               canContinueDraft
                 ? STAFF_EDIT_WINDOW_EXPIRED_MESSAGE
@@ -1131,6 +1132,7 @@ function LRListPageContent() {
         resolveAssignedName={resolveAssignedName}
         canEdit={canEdit}
         canContinueDraft={canContinueDraft}
+        currentUserId={user?.id ?? null}
         canDelete={canDelete}
         canPrint={canPrint}
         canShare={canShare}
@@ -1204,7 +1206,7 @@ function LRListPageContent() {
           dialogMode === "view" &&
           editingLR &&
           isDraftEntry(editingLR.entryStatus) &&
-          canStaffEditRecord(isAdmin, canContinueDraft, editingLR)
+          canContinueDraftRecord(canContinueDraft, canStaffEditRecord(isAdmin, canContinueDraft, editingLR), editingLR, user?.id)
             ? () => handleContinueDraft(editingLR)
             : undefined
         }
