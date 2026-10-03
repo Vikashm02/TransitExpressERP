@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import FormSection from "@/components/ui/FormSection";
@@ -36,7 +37,7 @@ export default function MaterialDescriptionsEditor({ materialId }: { materialId:
       await load();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to add the recommended description.");
+      toast.error(getUserFacingError(error, "Unable to add the recommended description."));
     }
   }
 
@@ -52,7 +53,7 @@ export default function MaterialDescriptionsEditor({ materialId }: { materialId:
       await load();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update the recommended description.");
+      toast.error(getUserFacingError(error, "Unable to update the recommended description."));
     }
   }
 
@@ -68,7 +69,7 @@ export default function MaterialDescriptionsEditor({ materialId }: { materialId:
       await load();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to reorder recommended descriptions.");
+      toast.error(getUserFacingError(error, "Unable to reorder recommended descriptions."));
     }
   }
 

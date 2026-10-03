@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, IndianRupee, Upload, Wallet } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -263,7 +264,7 @@ export default function LorryExpenseListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete Financials entry.");
+      toast.error(getUserFacingError(error, "Unable to delete Financials entry."));
     } finally {
       setDeleting(false);
     }
@@ -377,7 +378,7 @@ export default function LorryExpenseListPage() {
       } else if (isFinancialsPermissionError(error)) {
         toast.error("You do not have permission to edit Financials for this LR.");
       } else {
-        toast.error("Unable to save Financials.");
+        toast.error(getUserFacingError(error, "Unable to save Financials."));
       }
     } finally {
       setSaving(false);

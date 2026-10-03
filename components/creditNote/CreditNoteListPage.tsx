@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, FileMinus2, IndianRupee, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -130,7 +131,7 @@ export default function CreditNoteListPage() {
       await loadCreditNotes();
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to save credit note.");
+      toast.error(getUserFacingError(error, "Unable to save credit note."));
     } finally {
       setSaving(false);
     }

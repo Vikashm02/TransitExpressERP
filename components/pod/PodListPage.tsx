@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -220,13 +221,9 @@ export default function PodListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      const detail =
-        error instanceof Error && error.message
-          ? error.message
-          : editingPod
-            ? "Unable to update POD."
-            : "Unable to create POD.";
-      toast.error(detail);
+      toast.error(
+        getUserFacingError(error, editingPod ? "Unable to update POD." : "Unable to create POD.")
+      );
     } finally {
       setSaving(false);
     }
@@ -243,7 +240,7 @@ export default function PodListPage() {
       setPods((prev) => prev.filter((p) => p.id !== deleteTarget.id));
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete POD. Admin authorization is required.");
+      toast.error(getUserFacingError(error, "Unable to delete POD. Admin authorization is required."));
     } finally {
       setDeleting(false);
     }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -81,7 +82,7 @@ export default function NotificationBell() {
       toast.success("Device alerts are enabled.");
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to enable device alerts.");
+      toast.error(getUserFacingError(error, "Unable to enable device alerts."));
     }
   }
 

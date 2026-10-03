@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import PageHeader from "@/components/ui/PageHeader";
 import FormSection from "@/components/ui/FormSection";
@@ -236,7 +237,7 @@ export default function CompanyForm() {
       toast.success("Company details saved successfully.");
     } catch (error) {
       console.error(error);
-      toast.error("Unable to save company details.");
+      toast.error(getUserFacingError(error, "Unable to save company details."));
     } finally {
       setSaving(false);
     }

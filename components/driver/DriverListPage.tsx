@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
@@ -102,11 +103,7 @@ export default function DriverListPage() {
       await loadDrivers();
     } catch (error) {
       console.error(error);
-      toast.error(
-        editingDriver
-          ? "Unable to update driver."
-          : "Unable to create driver."
-      );
+      toast.error(getUserFacingError(error, editingDriver ? "Unable to update driver." : "Unable to create driver."));
     } finally {
       setSaving(false);
     }
@@ -123,7 +120,7 @@ export default function DriverListPage() {
       await loadDrivers();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete driver.");
+      toast.error(getUserFacingError(error, "Unable to delete driver."));
     } finally {
       setDeleting(false);
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { ArrowLeft, MessageSquareText, Search } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -172,7 +173,7 @@ export default function ConsigneeRelationshipPage() {
       void loadSummary();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to save this remark. Please try again.");
+      toast.error(getUserFacingError(error, "Unable to save this remark. Please try again."));
       // Keep draft text so the employee does not lose what they typed.
     } finally {
       setSending(false);

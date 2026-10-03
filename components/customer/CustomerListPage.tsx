@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -135,11 +136,7 @@ export default function CustomerListPage() {
       await loadCustomers();
     } catch (error) {
       console.error(error);
-      toast.error(
-        editingCustomer
-          ? "Unable to update customer."
-          : "Unable to create customer."
-      );
+      toast.error(getUserFacingError(error, editingCustomer ? "Unable to update customer." : "Unable to create customer."));
     } finally {
       setSaving(false);
     }
@@ -168,7 +165,7 @@ export default function CustomerListPage() {
       await loadCustomers();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete customer.");
+      toast.error(getUserFacingError(error, "Unable to delete customer."));
     } finally {
       setDeleting(false);
     }

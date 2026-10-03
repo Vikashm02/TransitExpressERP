@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
@@ -102,11 +103,7 @@ export default function TransporterListPage() {
       await loadTransporters();
     } catch (error) {
       console.error(error);
-      toast.error(
-        editingTransporter
-          ? "Unable to update transporter."
-          : "Unable to create transporter."
-      );
+      toast.error(getUserFacingError(error, editingTransporter ? "Unable to update transporter." : "Unable to create transporter."));
     } finally {
       setSaving(false);
     }
@@ -123,7 +120,7 @@ export default function TransporterListPage() {
       await loadTransporters();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete transporter.");
+      toast.error(getUserFacingError(error, "Unable to delete transporter."));
     } finally {
       setDeleting(false);
     }

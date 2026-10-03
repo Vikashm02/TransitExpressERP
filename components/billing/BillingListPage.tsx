@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, FileText, Receipt, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -132,7 +133,7 @@ export default function BillingListPage() {
       await loadBills();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete bill.");
+      toast.error(getUserFacingError(error, "Unable to delete bill."));
     } finally {
       setDeleting(false);
     }
@@ -192,7 +193,7 @@ export default function BillingListPage() {
       await loadBills();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to create bill.");
+      toast.error(getUserFacingError(error, "Unable to create bill."));
     } finally {
       setSaving(false);
     }

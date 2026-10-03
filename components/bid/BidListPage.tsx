@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
@@ -237,8 +238,7 @@ function BidListPageInner() {
       window.dispatchEvent(new Event(LIVE_BID_COUNT_REFRESH_EVENT));
     } catch (error) {
       console.error(error);
-      const message = error instanceof Error ? error.message : "";
-      toast.error(message || (editingBid ? "Unable to update bid." : "Unable to create bid."));
+      toast.error(getUserFacingError(error, editingBid ? "Unable to update bid." : "Unable to create bid."));
     } finally {
       setSaving(false);
     }

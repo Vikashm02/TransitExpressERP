@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { ShieldAlert, UserCog } from "lucide-react";
 
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
@@ -102,7 +103,7 @@ export default function StaffListPage() {
       await loadStaff();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update role.");
+      toast.error(getUserFacingError(error, "Unable to update role."));
     } finally {
       setUpdatingId(null);
     }
@@ -124,7 +125,7 @@ export default function StaffListPage() {
       await loadStaff();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update approval status.");
+      toast.error(getUserFacingError(error, "Unable to update approval status."));
     } finally {
       setUpdatingId(null);
     }
@@ -147,7 +148,7 @@ export default function StaffListPage() {
       await loadStaff();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update lock status.");
+      toast.error(getUserFacingError(error, "Unable to update lock status."));
     } finally {
       setUpdatingId(null);
     }
@@ -181,7 +182,7 @@ export default function StaffListPage() {
       await loadStaff();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update manager assignment.");
+      toast.error(getUserFacingError(error, "Unable to update manager assignment."));
     } finally {
       setUpdatingId(null);
     }

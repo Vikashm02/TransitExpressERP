@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import FormField from "@/components/ui/FormField";
 import { Button } from "@/components/ui/button";
@@ -99,7 +100,7 @@ export default function NotificationCenterPanel() {
       toast.success("Report settings saved.");
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to save settings.");
+      toast.error(getUserFacingError(error, "Unable to save settings."));
     } finally {
       setBusy(null);
     }
@@ -125,7 +126,7 @@ export default function NotificationCenterPanel() {
       }
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Test failed.");
+      toast.error(getUserFacingError(error, "Test failed."));
     } finally {
       setBusy(null);
     }
@@ -140,7 +141,7 @@ export default function NotificationCenterPanel() {
       toast.success("August 2026 report generated from database.");
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to generate report.");
+      toast.error(getUserFacingError(error, "Unable to generate report."));
     } finally {
       setBusy(null);
     }
@@ -161,7 +162,7 @@ export default function NotificationCenterPanel() {
       setDeliveries(d);
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Report email failed.");
+      toast.error(getUserFacingError(error, "Report email failed."));
     } finally {
       setBusy(null);
     }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import FormDialog from "@/components/ui/FormDialog";
 import FormField from "@/components/ui/FormField";
@@ -225,7 +226,7 @@ export default function AsnDialog({
       toast.success("File uploaded.");
     } catch (err) {
       console.error(err);
-      toast.error("Unable to upload file.");
+      toast.error(getUserFacingError(err, "Unable to upload file."));
     } finally {
       setUploadingKind(null);
     }

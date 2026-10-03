@@ -56,6 +56,7 @@ import {
 import { syncVehicleMasterFromLr } from "@/components/services/vehicle.service";
 
 import { supabase } from "@/lib/supabase";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
@@ -294,7 +295,7 @@ function LRListPageContent() {
       await loadLRs();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to reassign LR.");
+      toast.error(getUserFacingError(error, "Unable to reassign LR."));
     } finally {
       setReassigning(false);
     }
@@ -547,13 +548,9 @@ function LRListPageContent() {
       await loadLRs();
     } catch (error) {
       console.error(error);
-      const detail =
-        error instanceof Error && error.message
-          ? error.message
-          : podDialogRecord
-            ? "Unable to update POD."
-            : "Unable to create POD.";
-      toast.error(detail);
+      toast.error(
+        getUserFacingError(error, podDialogRecord ? "Unable to update POD." : "Unable to create POD.")
+      );
     } finally {
       setPodSaving(false);
     }
@@ -806,9 +803,10 @@ function LRListPageContent() {
     } catch (error) {
       console.error(error);
       toast.error(
-        editingLR
-          ? "Unable to update LR."
-          : "Unable to create LR."
+        getUserFacingError(
+          error,
+          editingLR ? "Unable to update LR." : "Unable to create LR."
+        )
       );
     } finally {
       setSaving(false);
@@ -948,7 +946,7 @@ function LRListPageContent() {
       await loadLRs();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete LR.");
+      toast.error(getUserFacingError(error, "Unable to delete LR."));
     } finally {
       setDeleting(false);
     }

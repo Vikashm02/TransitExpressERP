@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -136,11 +137,7 @@ export default function BillingPartyListPage() {
       await loadBillingParties();
     } catch (error) {
       console.error(error);
-      toast.error(
-        editingBillingParty
-          ? "Unable to update billing party."
-          : "Unable to create billing party."
-      );
+      toast.error(getUserFacingError(error, editingBillingParty ? "Unable to update billing party." : "Unable to create billing party."));
     } finally {
       setSaving(false);
     }
@@ -169,7 +166,7 @@ export default function BillingPartyListPage() {
       await loadBillingParties();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete billing party.");
+      toast.error(getUserFacingError(error, "Unable to delete billing party."));
     } finally {
       setDeleting(false);
     }

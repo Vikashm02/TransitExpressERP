@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { UploadCloud } from "lucide-react";
 
 import FormDialog from "@/components/ui/FormDialog";
@@ -185,7 +186,7 @@ export default function BillingBulkUploadDialog({
       await onImported();
     } catch (error) {
       console.error(error);
-      toast.error("Import failed partway through and was rolled back. No bills were added. Please try again.");
+      toast.error(getUserFacingError(error, "Import failed partway through and was rolled back. No bills were added. Please try again."));
     } finally {
       setImporting(false);
     }

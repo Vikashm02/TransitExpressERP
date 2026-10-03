@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
@@ -94,7 +95,7 @@ export default function PurchaseOrderListPage() {
     } catch (error) {
       const code = (error as { code?: string }).code;
       toast.error(code === "23505" ? "This billing party already has that PO number."
-        : "Unable to save PO. Check your permissions; the party and number of a linked PO cannot be changed.");
+        : getUserFacingError(error, "Unable to save PO. Check your permissions; the party and number of a linked PO cannot be changed."));
     } finally { setSaving(false); }
   }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { Megaphone, BellRing, RadioTower } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -91,7 +92,7 @@ export default function SettingsPageClient() {
       setRules((prev) => prev.map((row) => (row.id === rule.id ? { ...row, enabled } : row)));
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update notification rule.");
+      toast.error(getUserFacingError(error, "Unable to update notification rule."));
     }
   }
 
@@ -103,7 +104,7 @@ export default function SettingsPageClient() {
       );
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update delivery mode.");
+      toast.error(getUserFacingError(error, "Unable to update delivery mode."));
     }
   }
 
@@ -115,7 +116,7 @@ export default function SettingsPageClient() {
       );
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update scheduled time.");
+      toast.error(getUserFacingError(error, "Unable to update scheduled time."));
     }
   }
 
@@ -136,7 +137,7 @@ export default function SettingsPageClient() {
       setRules((prev) => prev.map((row) => (row.id === rule.id ? { ...row, ...patch } : row)));
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update quiet hours settings.");
+      toast.error(getUserFacingError(error, "Unable to update quiet hours settings."));
     }
   }
 
@@ -166,7 +167,7 @@ export default function SettingsPageClient() {
       await loadAll();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to save announcement.");
+      toast.error(getUserFacingError(error, "Unable to save announcement."));
     } finally {
       setSaving(false);
     }
@@ -180,7 +181,7 @@ export default function SettingsPageClient() {
       toast.success("Image uploaded.");
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Image upload failed.");
+      toast.error(getUserFacingError(error, "Image upload failed."));
     }
   }
 
@@ -460,7 +461,7 @@ export default function SettingsPageClient() {
                             await loadAll();
                           } catch (error) {
                             console.error(error);
-                            toast.error("Unable to archive.");
+                            toast.error(getUserFacingError(error, "Unable to archive."));
                           }
                         }}
                       >

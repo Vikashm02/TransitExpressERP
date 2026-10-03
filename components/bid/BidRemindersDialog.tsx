@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { BellPlus, Pencil, X } from "lucide-react";
 
 import FormDialog from "@/components/ui/FormDialog";
@@ -114,11 +115,11 @@ export default function BidRemindersDialog({ open, onOpenChange, bid, onChanged 
       await refresh();
     } catch (error) {
       console.error(error);
-      const message = error instanceof Error ? error.message : "";
+      const message = getUserFacingError(error, "Unable to set reminder.");
       toast.error(
         message.includes("duplicate") || message.includes("23505")
           ? "An active reminder already exists at that time."
-          : "Unable to set reminder."
+          : message
       );
     } finally {
       setSaving(false);
@@ -140,7 +141,7 @@ export default function BidRemindersDialog({ open, onOpenChange, bid, onChanged 
       await refresh();
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to reschedule reminder.");
+      toast.error(getUserFacingError(error, "Unable to reschedule reminder."));
     } finally {
       setSaving(false);
     }
@@ -158,7 +159,7 @@ export default function BidRemindersDialog({ open, onOpenChange, bid, onChanged 
       await refresh();
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Unable to cancel reminder.");
+      toast.error(getUserFacingError(error, "Unable to cancel reminder."));
     } finally {
       setSaving(false);
     }

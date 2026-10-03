@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { useTheme } from "next-themes";
 import { format, parseISO } from "date-fns";
 import { Monitor, Smartphone, Tablet } from "lucide-react";
@@ -132,9 +133,7 @@ export default function ProfilePageClient() {
       toast.success("Password updated successfully.");
     } catch (error) {
       console.error(error);
-      setPasswordError(
-        error instanceof Error ? error.message : "Unable to update password.",
-      );
+      setPasswordError(getUserFacingError(error, "Unable to update password."));
     } finally {
       setPasswordBusy(false);
     }
@@ -148,11 +147,7 @@ export default function ProfilePageClient() {
       toast.success("Signed out of other sessions.");
     } catch (error) {
       console.error(error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to sign out other sessions.",
-      );
+      toast.error(getUserFacingError(error, "Unable to sign out other sessions."));
     } finally {
       setSessionsBusy(false);
     }

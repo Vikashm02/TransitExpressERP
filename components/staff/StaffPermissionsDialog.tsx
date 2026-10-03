@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { ShieldCheck } from "lucide-react";
 
 import {
@@ -111,7 +112,7 @@ export default function StaffPermissionsDialog({
       onOpenChange(false);
     } catch (error) {
       console.error(error);
-      toast.error("Unable to save permissions.");
+      toast.error(getUserFacingError(error, "Unable to save permissions."));
     } finally {
       setSaving(false);
     }

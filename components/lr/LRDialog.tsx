@@ -18,6 +18,7 @@ import { isLegacyMaterialEnrichment } from "./partyIdentity";
 import { getActiveLrPurchaseOrders } from "@/components/services/purchaseOrder.service";
 import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 interface LRDialogProps {
   open: boolean;
@@ -237,7 +238,7 @@ export default function LRDialog({
       onOpenChange(false);
     } catch (error) {
       console.error(error);
-      toast.error("Draft could not be saved. Please try again.");
+      toast.error(getUserFacingError(error, "Draft could not be saved. Please try again."));
     } finally {
       setDraftSaving(false);
     }
@@ -262,7 +263,7 @@ export default function LRDialog({
         await onAutosave({ ...values, entryStatus: "draft" }, { waitForDrain: true });
       } catch (error) {
         console.error(error);
-        toast.error("Draft could not be saved. Please try again.");
+        toast.error(getUserFacingError(error, "Draft could not be saved. Please try again."));
         setDraftSaving(false);
         return;
       }
@@ -376,11 +377,7 @@ export default function LRDialog({
       toast.success("Replacement PO created and linked to this LR.");
     } catch (error) {
       console.error(error);
-      const message =
-        typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
-          ? error.message
-          : "Unable to create a replacement PO. Please try again.";
-      toast.error(message);
+      toast.error(getUserFacingError(error, "Unable to create a replacement PO. Please try again."));
     } finally {
       setReplacementSaving(false);
     }
@@ -447,8 +444,8 @@ export default function LRDialog({
         }
       setErrors({});
       await onSubmit({ ...values, entryStatus: "final" });
-    } catch {
-      toast.error("Unable to verify or save the PO selection. Please retry.");
+    } catch (error) {
+      toast.error(getUserFacingError(error, "Unable to verify or save the PO selection. Please retry."));
     } finally { setCheckingPo(false); }
   }
 

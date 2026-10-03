@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -107,11 +108,7 @@ export default function MaterialListPage() {
       await loadMaterials();
     } catch (error) {
       console.error(error);
-      toast.error(
-        editingMaterial
-          ? "Unable to update material."
-          : "Unable to create material."
-      );
+      toast.error(getUserFacingError(error, editingMaterial ? "Unable to update material." : "Unable to create material."));
     } finally {
       setSaving(false);
     }
@@ -128,7 +125,7 @@ export default function MaterialListPage() {
       await loadMaterials();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete material.");
+      toast.error(getUserFacingError(error, "Unable to delete material."));
     } finally {
       setDeleting(false);
     }

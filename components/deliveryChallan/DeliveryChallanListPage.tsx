@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
@@ -236,9 +237,7 @@ export default function DeliveryChallanListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      toast.error(
-        editing ? "Unable to update Delivery Challan." : "Unable to create Delivery Challan."
-      );
+      toast.error(getUserFacingError(error, editing ? "Unable to update Delivery Challan." : "Unable to create Delivery Challan."));
     } finally {
       setSaving(false);
     }

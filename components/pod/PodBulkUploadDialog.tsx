@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { UploadCloud } from "lucide-react";
 
 import FormDialog from "@/components/ui/FormDialog";
@@ -134,7 +135,7 @@ export default function PodBulkUploadDialog({
         })
       );
 
-      toast.error("Import failed partway through and was rolled back. No PODs were added. Please try again.");
+      toast.error(getUserFacingError(error, "Import failed partway through and was rolled back. No PODs were added. Please try again."));
     } finally {
       setImporting(false);
     }

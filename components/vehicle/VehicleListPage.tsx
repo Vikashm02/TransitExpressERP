@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
 
 import PageHeader from "@/components/ui/PageHeader";
@@ -112,11 +113,7 @@ export default function VehicleListPage() {
       await loadVehicles();
     } catch (error) {
       console.error(error);
-      toast.error(
-        editingVehicle
-          ? "Unable to update vehicle."
-          : "Unable to create vehicle."
-      );
+      toast.error(getUserFacingError(error, editingVehicle ? "Unable to update vehicle." : "Unable to create vehicle."));
     } finally {
       setSaving(false);
     }
@@ -133,7 +130,7 @@ export default function VehicleListPage() {
       await loadVehicles();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete vehicle.");
+      toast.error(getUserFacingError(error, "Unable to delete vehicle."));
     } finally {
       setDeleting(false);
     }

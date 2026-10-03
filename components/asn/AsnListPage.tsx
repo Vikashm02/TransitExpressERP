@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import PageHeader from "@/components/ui/PageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -124,7 +125,7 @@ export default function AsnListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      toast.error(editing ? "Unable to update ASN." : "Unable to create ASN.");
+      toast.error(getUserFacingError(error, editing ? "Unable to update ASN." : "Unable to create ASN."));
     } finally {
       setSaving(false);
     }
@@ -141,7 +142,7 @@ export default function AsnListPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to delete ASN.");
+      toast.error(getUserFacingError(error, "Unable to delete ASN."));
     } finally {
       setDeleting(false);
     }

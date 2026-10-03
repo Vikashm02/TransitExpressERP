@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
 import FormDialog from "@/components/ui/FormDialog";
 import FormField from "@/components/ui/FormField";
@@ -92,7 +93,7 @@ export default function EditBillDialog({ open, onOpenChange, bill, onSaved }: Ed
       await onSaved();
     } catch (error) {
       console.error(error);
-      toast.error("Unable to update bill.");
+      toast.error(getUserFacingError(error, "Unable to update bill."));
     } finally {
       setSaving(false);
     }
