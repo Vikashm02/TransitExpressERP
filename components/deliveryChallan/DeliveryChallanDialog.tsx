@@ -51,8 +51,10 @@ function toEditable(record: DeliveryChallanRecord): DeliveryChallan {
 }
 
 /** Snapshot LR → Delivery Challan auto fields. QTY ← Loading Weight;
- * PO Number ← LR PO Number. Manual fields (By / PO Date / HSN) are left
- * untouched so independent DC edits are never wiped. */
+ * PO Number ← LR PO Number; PO Date ← LR PO Date when the LR has one
+ * (never invented — if the LR has no PO date, the DC keeps its current
+ * value). Manual fields (By / HSN) are left untouched so independent
+ * DC edits are never wiped. */
 function applyLrSnapshot(current: DeliveryChallan, lr: LRRecord): DeliveryChallan {
   return {
     ...current,
@@ -68,6 +70,7 @@ function applyLrSnapshot(current: DeliveryChallan, lr: LRRecord): DeliveryChalla
     qty: lr.loadingWeight,
     vehicleNumber: lr.vehicleNumber,
     poNumber: lr.poNumber,
+    poDate: lr.poDate && lr.poDate.trim() !== "" ? lr.poDate : current.poDate,
   };
 }
 

@@ -4,7 +4,6 @@ import { emitNotificationEvent } from "@/components/services/notification.servic
 import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
 import type { LR } from "@/components/lr/lr.schema";
-import { syncDeliveryChallanFromLr } from "@/components/services/deliveryChallan.service";
 
 /** A persisted LR row. `billAmount`/`lorryHireAmount`/`profitAmount` are
  * intentionally NOT part of the editable `LR` schema — they are always
@@ -504,11 +503,11 @@ export async function updateLR(id: string, values: LR): Promise<LRRecord> {
     return record;
   }
 
-  // Keep linked Delivery Challans (matched by `lr_number`) in sync for
-  // LR-derived snapshot fields only: qty ← loadingWeight, po_number ←
-  // poNumber. po_date / by_name / hsn and other DC fields stay untouched.
-  await syncDeliveryChallanFromLr(record.lrNumber, record.loadingWeight, record.poNumber);
-
+  // LR -> Delivery Challan snapshot synchronization is now a server-side
+  // consequence of the LR UPDATE itself (migration 106 trigger
+  // trg_lrs_sync_delivery_challans). It is atomic with the LR write and
+  // does not depend on delivery_challans.edit permission, so no
+  // post-commit client-side sync runs here.
   return record;
 }
 
@@ -535,10 +534,8 @@ export async function createReplacementPurchaseOrderFromLr(
 
   const record = fromRow(data as Record<string, unknown>);
 
-  // Reuse the established exact-LR DC snapshot synchronization path. This
-  // never searches or updates LRs by the old PO.
-  await syncDeliveryChallanFromLr(record.lrNumber, record.loadingWeight, record.poNumber);
-
+  // No client-side DC sync: migration 106 trigger synchronizes linked
+  // Delivery Challans inside the same DB transaction as the LR update.
   return record;
 }
 
