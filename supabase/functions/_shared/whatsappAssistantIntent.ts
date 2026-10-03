@@ -161,6 +161,9 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Words that can change semantics are deliberately NOT in this filler set.
     take(word("lrs?|pods?|एलआर|एल आर|पीओडी|पी ओ डी|please|kripya|कृपया|batao|bataye|बताओ|बताएं|बताएँ|hai|hain|tha|the|है|हैं|थे|था|ke|ka|ki|के|का|की|mein|में|se|से|tak|तक|in|on|from|to|through|for|of|the|me|mujhe|मुझे|vehicle|गाड़ी|वाहन|number|no|नंबर|status|स्टेटस|date|तारीख|total|कुल|all|sab|सभी"), () => {});
+    if (internal && countOnly && hasLr) {
+      take(word("(?:are\\s+there|is\\s+there)"), () => {});
+    }
     if (source.replace(/[\s?,.:]/g, "")) return clarify();
     for (const [marker, key] of [["vehicle|गाड़ी|वाहन", "vehicleNumber"], ["status|स्टेटस", "status"], ["material|सामग्री", "material"], ["consignor|sender|प्रेषक", "consignor"], ["consignee|receiver|प्राप्तकर्ता", "consignee"]]) {
       if (word(marker).test(raw) && !args[key]) return clarify();

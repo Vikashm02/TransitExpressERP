@@ -1789,6 +1789,38 @@ for(const [source,patch] of naturalOperationalCases) test(`internal composed lan
   assert.doesNotThrow(()=>validateNluInterpretation(operationalNlu(patch),source,NOW,true));
 });
 
+test('How many draft LRs are there? -> draft count', () => {
+  const plan = resolveIntent("How many draft LRs are there?", NOW, true);
+  assert.equal(plan.kind, "query");
+  assert.equal(plan.name, "search_lrs");
+  assert.equal(plan.operational, true);
+  assert.equal(plan.args.countOnly, true);
+  assert.equal(plan.args.entryStatus, "draft");
+});
+
+test('How many final LRs are there? -> final count', () => {
+  const plan = resolveIntent("How many final LRs are there?", NOW, true);
+  assert.equal(plan.kind, "query");
+  assert.equal(plan.name, "search_lrs");
+  assert.equal(plan.operational, true);
+  assert.equal(plan.args.countOnly, true);
+  assert.equal(plan.args.entryStatus, "final");
+});
+
+test('Count draft LRs -> draft count', () => {
+  const plan = resolveIntent("Count draft LRs", NOW, true);
+  assert.equal(plan.kind, "query");
+  assert.equal(plan.name, "search_lrs");
+  assert.equal(plan.operational, true);
+  assert.equal(plan.args.countOnly, true);
+  assert.equal(plan.args.entryStatus, "draft");
+});
+
+test('How many draft LRs are there banana? -> clarification (fail-closed)', () => {
+  const plan = resolveIntent("How many draft LRs are there banana?", NOW, true);
+  assert.equal(plan.kind, "clarification");
+});
+
 for (const [source, patch] of [...operationalCases, ...naturalOperationalCases]) test(`internal runtime at most one interpretation/query: ${source}`, async () => {
   const h = nluHarness([callItem('interpret_whatsapp_intent', operationalNlu(patch))]);
   const result = await h.run(source);
