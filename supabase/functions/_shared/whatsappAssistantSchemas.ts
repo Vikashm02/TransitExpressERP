@@ -29,6 +29,15 @@ export type NluInterpretation = {
   vehicleNumber: string | null;
   material: string | null;
   status: "Open" | "In Transit" | "Delivered" | "Billed" | "Cancelled" | null;
+  entryStatus: "draft" | "final" | null;
+  bookingBranch: string | null;
+  fromStation: string | null;
+  toStation: string | null;
+  entitySearch: string | null;
+  originSearch: string | null;
+  destinationSearch: string | null;
+  transporter: string | null;
+  podState: "present" | "pending" | null;
   minPendingDays: number | null;
   needsClarification: boolean;
   clarificationCategory: "year" | "filters" | "party_role" | "ambiguous_date" | "unsupported" | "missing_lr" | "missing_year" | null;
@@ -36,9 +45,8 @@ export type NluInterpretation = {
 };
 
 const semanticDateSchema = {
-  type: ["object", "null"],
-  additionalProperties: false,
   anyOf: [
+    { type: "null" },
     { type: "object", additionalProperties: false, required: ["kind", "value"], properties: { kind: { type: "string", enum: ["relative"] }, value: { type: "string", enum: ["today", "yesterday", "this_month", "last_month", "this_year", "last_year"] } } },
     { type: "object", additionalProperties: false, required: ["kind", "month"], properties: { kind: { type: "string", enum: ["month"] }, month: { type: "integer", minimum: 1, maximum: 12 } } },
     { type: "object", additionalProperties: false, required: ["kind", "month", "year"], properties: { kind: { type: "string", enum: ["month_year"] }, month: { type: "integer", minimum: 1, maximum: 12 }, year: { type: "integer", minimum: 2000, maximum: 2199 } } },
@@ -54,9 +62,17 @@ export const nluIntentSchema = {
   parameters: {
     type: "object",
     additionalProperties: false,
-    required: ["operation", "language", "lrNumber", "date", "createdDate", "partySearch", "consignor", "consignee", "vehicleNumber", "material", "status", "minPendingDays", "needsClarification", "clarificationCategory", "clarificationHint"],
+    required: ["bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "transporter", "podState", "operation", "language", "lrNumber", "date", "createdDate", "partySearch", "consignor", "consignee", "vehicleNumber", "material", "status", "entryStatus", "minPendingDays", "needsClarification", "clarificationCategory", "clarificationHint"],
     properties: {
-      operation: { type: ["string", "null"], enum: ["lr_detail", "lr_count", "lr_list", "pod_detail", "pending_pod_count", "pending_pod_list"] },
+      bookingBranch: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+      fromStation: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+      toStation: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+      entitySearch: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+      originSearch: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+      destinationSearch: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+      transporter: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+      podState: { type: ["string", "null"], enum: [null, "present", "pending"] },
+      operation: { type: ["string", "null"], enum: [null, "lr_detail", "lr_count", "lr_list", "pod_detail", "pending_pod_count", "pending_pod_list"] },
       language: { type: "string", enum: ["en", "hi", "hinglish"] },
       lrNumber: { type: ["string", "null"], minLength: 3, maxLength: 80, pattern: "^LR\\d+$" },
       date: semanticDateSchema,
@@ -67,9 +83,10 @@ export const nluIntentSchema = {
       vehicleNumber: { type: ["string", "null"], maxLength: 80 },
       material: { type: ["string", "null"], maxLength: 200 },
       status: { type: ["string", "null"], enum: [null, "Open", "In Transit", "Delivered", "Billed", "Cancelled"] },
+      entryStatus: { type: ["string", "null"], enum: [null, "draft", "final"] },
       minPendingDays: { type: ["integer", "null"], minimum: 0, maximum: 36500 },
       needsClarification: { type: "boolean" },
-      clarificationCategory: { type: ["string", "null"], enum: ["year", "filters", "party_role", "ambiguous_date", "unsupported", "missing_lr", "missing_year"] },
+      clarificationCategory: { type: ["string", "null"], enum: [null, "year", "filters", "party_role", "ambiguous_date", "unsupported", "missing_lr", "missing_year"] },
       clarificationHint: { type: ["string", "null"], maxLength: 120 }
     }
   }
@@ -92,6 +109,7 @@ export const toolDefinitions = [
   define("search_lrs", "Count/list final LRs by LR date (inclusive). Creation time only if explicitly requested (exclusive end). Cancelled excluded unless requested. partySearch matches either party by substring; consignor/consignee/vehicle/lrNumber are exact. One page only.", {
     ...common, lrNumber: text(80), partySearch: text(200), material: text(200),
     status: { type: ["string", "null"], enum: [null, "Open", "In Transit", "Delivered", "Billed", "Cancelled"] },
+    entryStatus: { type: ["string", "null"], enum: [null, "final"] },
   }),
   define("get_lr_detail", "Operational details for one exact LR number, including POD presence.", exact),
   define("search_pending_pods", "Final non-cancelled LRs without a POD. Inclusive minimum pending days uses existing IST age from creation time. Normal date filters use LR date. Party and vehicle filters are exact; no either-party substring filter. One page only.", {
@@ -99,12 +117,37 @@ export const toolDefinitions = [
   }),
   define("get_pod_detail", "POD presence and operational details for one exact LR; no document URLs.", exact),
 ];
+// Separate internal contract. The legacy definitions above remain the external
+// wire contract and cannot gain internal-only filters or draft access.
+export const operationalProperties = {
+  ...common, lrNumber: text(80), partySearch: text(200), material: text(200),
+  bookingBranch: text(200), fromStation: text(200), toStation: text(200),
+  entitySearch: text(200), originSearch: text(200), destinationSearch: text(200), transporter: text(200),
+  status: { type: ["string", "null"], enum: [null, "Open", "In Transit", "Delivered", "Billed", "Cancelled"] },
+  entryStatus: { type: ["string", "null"], enum: [null, "draft", "final"] },
+  podState: { type: ["string", "null"], enum: [null, "present", "pending"] },
+  minPendingDays: { type: ["integer", "null"], minimum: 0, maximum: 36500 },
+};
+export const internalToolDefinitions = toolDefinitions.map(d => define(d.name,
+  "Internal operational LR/POD query. Null entryStatus means final. Only source-validated filters; unresolved entities require unique authorized server resolution.", operationalProperties));
+export function validateOperationalArguments(name: string, value: unknown): ObjectValue {
+  const args = validateArguments(name, value, true);
+  for (const key of ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "transporter", "vehicleNumber"]) {
+    if (typeof args[key] === "string" && /[%_\\\p{Cc}\p{Cf}]/u.test(String(args[key]))) throw new Error("invalid_filter");
+  }
+  if (args.lrDateFrom && args.createdAtFrom) throw new Error("ambiguous_date_basis");
+  if (name.includes("detail") && (!args.lrNumber || args.countOnly || args.offset !== 0)) throw new Error("invalid_detail");
+  if (name === "search_pending_pods" && args.podState !== "pending") throw new Error("invalid_pod_state");
+  if (args.minPendingDays !== undefined && args.podState !== "pending") throw new Error("invalid_age");
+  if (args.podState === "pending" && args.status === "Cancelled") throw new Error("invalid_pending_status");
+  return args;
+}
 export function object(value: unknown): ObjectValue {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_object");
   return value as ObjectValue;
 }
-export function validateArguments(name: string, value: unknown): ObjectValue {
-  const definition = toolDefinitions.find((tool) => tool.name === name);
+export function validateArguments(name: string, value: unknown, internal = false): ObjectValue {
+  const definition = (internal ? internalToolDefinitions : toolDefinitions).find((tool) => tool.name === name);
   if (!definition) throw new Error("unknown_tool");
   const args = object(value);
   const props = definition.parameters.properties;
@@ -205,4 +248,50 @@ export function sanitizeResult(name: ToolName, value: unknown, args: ObjectValue
     pod.proof_present = raw.proof_present;
   }
   return { found: true, lr, pod_present: source.pod_present, pod: source.pod_present ? pod : null };
+}
+
+
+const RESOLUTION_ROLES = new Set(["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "vehicleNumber", "transporter"]);
+function operationalWeight(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) throw new Error("invalid_weight");
+  return value;
+}
+export function sanitizeOperationalResult(name: ToolName, value: unknown, args: ObjectValue): ObjectValue {
+  const envelope = object(value);
+  if (envelope.status === "clarification") {
+    if (!Array.isArray(envelope.options) || envelope.options.length > 5) throw new Error("invalid_options");
+    const options = envelope.options.map(v => {
+      const option = object(v);
+      if (!RESOLUTION_ROLES.has(String(option.role)) || typeof option.label !== "string" || !option.label.trim()) throw new Error("invalid_option");
+      return { role: option.role, label: option.role === "vehicleNumber" ? identifier(option.label) : displayText(option.label, 120) };
+    });
+    return { clarification: true, options };
+  }
+  if (envelope.status !== "ok") throw new Error("invalid_operational_status");
+  const source = object(envelope.result);
+  const podUnknown = name === "get_lr_detail" && source.found === true && object(source.lr).pod_present === undefined;
+  const result = sanitizeResult(name, podUnknown ? { ...source, lr: { ...object(source.lr), pod_present: false } } : source, args);
+  if (podUnknown) delete object(result.lr).pod_present; // Never render a fabricated POD absence.
+  if (source.total_loading_weight !== undefined) {
+    result.total_loading_weight = operationalWeight(source.total_loading_weight);
+    if (!Number.isSafeInteger(source.loading_weight_records) || Number(source.loading_weight_records) < 0 || Number(source.loading_weight_records) > Number(source.total_count)) throw new Error("invalid_weight_count");
+    result.loading_weight_records = source.loading_weight_records;
+  }
+  if (result.found && name.includes("detail")) {
+    const raw = object(source.lr), lr = object(result.lr);
+    if (raw.loading_weight !== undefined) lr.loading_weight = operationalWeight(raw.loading_weight);
+    if (raw.booking_branch !== undefined) {
+      if (typeof raw.booking_branch !== "string") throw new Error("invalid_branch");
+      lr.booking_branch = displayText(raw.booking_branch);
+    }
+    if (raw.entry_status !== undefined) {
+      if (!["draft", "final"].includes(String(raw.entry_status))) throw new Error("invalid_entry_status");
+      lr.entry_status = raw.entry_status;
+    }
+    if (name === "get_pod_detail" && result.pod_present) {
+      object(result.pod).unloading_weight = operationalWeight(object(source.pod).unloading_weight);
+    }
+  }
+  return result;
 }

@@ -4,10 +4,13 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
+import { validateOperationalArguments, type ToolName, type ObjectValue } from "./whatsappAssistantSchemas.ts";
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const LR_STATUS = new Set(["Open", "In Transit", "Delivered", "Billed", "Cancelled"]);
+const LR_ENTRY_STATUS = new Set(["final"]);
 
 type JsonObject = Record<string, unknown>;
 type SharedFilters = {
@@ -29,11 +32,20 @@ export function createWhatsappAssistantTools(admin: SupabaseClient, appUserId: s
   if (!UUID.test(appUserId)) throw new Error("Invalid resolved WhatsApp ERP identity.");
 
   return Object.freeze({
+    // One fixed INTERNAL RPC includes permission checks, entity resolution and
+    // the answer query. No resolver retry, fallback or model-controlled identity.
+    operationalQuery: async (name: ToolName, input: ObjectValue, signal?: AbortSignal): Promise<JsonObject> => {
+      const args = validateOperationalArguments(name, input);
+      return invoke(admin, "whatsapp_internal_operational_query", {
+        p_app_user_id: appUserId, p_operation: name, p_filters: args,
+      }, signal);
+    },
     searchLrs: async (input: SharedFilters & {
       lrNumber?: string;
       partySearch?: string;
       material?: string;
       status?: string;
+      entryStatus?: string;
     }, signal?: AbortSignal): Promise<JsonObject> => invoke(admin, "whatsapp_search_lrs", {
       p_app_user_id: appUserId,
       p_lr_date_from: date(input.lrDateFrom),
@@ -47,6 +59,7 @@ export function createWhatsappAssistantTools(admin: SupabaseClient, appUserId: s
       p_vehicle_number: text(input.vehicleNumber, 80),
       p_material: text(input.material, 200),
       p_status: status(input.status),
+      p_entry_status: entryStatus(input.entryStatus),
       p_count_only: Boolean(input.countOnly),
       p_limit: limit(input.limit),
       p_offset: offset(input.offset),
@@ -115,6 +128,12 @@ function timestamp(value: unknown): string | null {
 function status(value: unknown): string | null {
   if (value == null || value === "") return null;
   if (typeof value !== "string" || !LR_STATUS.has(value)) throw new Error("Invalid LR status.");
+  return value;
+}
+
+function entryStatus(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || !LR_ENTRY_STATUS.has(value)) throw new Error("Invalid LR entry status.");
   return value;
 }
 function boundedInteger(value: unknown, minimum: number, maximum: number, fallback: number): number {

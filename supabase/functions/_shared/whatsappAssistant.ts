@@ -1,7 +1,7 @@
 import { externalDefinition, validateExternalArguments, sanitizeExternalResult, type WhatsappExternalAssistantTools } from "./whatsappExternalAssistantTools.ts";
 import type { WhatsappAssistantTools } from "./whatsappAssistantTools.ts";
-import { displayText, object, sanitizeResult, toolDefinitions, validateArguments, type ObjectValue, MODELS } from "./whatsappAssistantSchemas.ts";
-import { detectLanguage, matchesPlan, resolveIntent, type QueryPlan, interpretIntentNLU, validateNluInterpretation, buildQueryPlanFromNlu } from "./whatsappAssistantIntent.ts";
+import { displayText, object, sanitizeResult, sanitizeOperationalResult, internalToolDefinitions, validateOperationalArguments, toolDefinitions, validateArguments, type ObjectValue, MODELS } from "./whatsappAssistantSchemas.ts";
+import { detectLanguage, matchesPlan, matchesOperationalPlan, resolveIntent, type QueryPlan, interpretIntentNLU, validateNluInterpretation, buildQueryPlanFromNlu } from "./whatsappAssistantIntent.ts";
 
 export const LIMITS = Object.freeze({ input: 2000, responseBytes: 65536, outputTokens: 1200, toolExecutions: 1, deadlineMs: 30000, reply: 3500 });
 type Dependencies = {
@@ -41,6 +41,7 @@ const messages = {
   },
 };
 const labels: Record<string, string> = {
+  bookingBranch: "Booking branch", entitySearch: "Reference", originSearch: "Loading reference", destinationSearch: "Delivery reference", fromStation: "From", toStation: "To", entryStatus: "LR type", podState: "POD", loading_weight: "Loading weight (MT)", unloading_weight: "Unloading weight (MT)",
   lrNumber: "LR", lrDateFrom: "LR date from", lrDateTo: "LR date to",
   createdAtFrom: "Created from (UTC)", createdAtTo: "Created before (UTC)",
   consignor: "Consignor", consignee: "Consignee", partySearch: "Either party contains",
@@ -54,18 +55,23 @@ function field(key: string, value: unknown): string {
 /** Only sanitized evidence is rendered. Rows and identifiers are never sliced. */
 export function renderResult(plan: QueryPlan, data: ObjectValue): string {
   const m = messages[plan.language];
+  const formatField = plan.operational
+    ? (key: string, value: unknown) => `${labels[key] ?? key}: ${value == null ? "not recorded" : value}`
+    : field;
   const filters = Object.entries(plan.args).filter(([key, value]) => value !== null && !["countOnly", "limit", "offset"].includes(key));
   const title = plan.name.includes("pod") ? "POD" : "LR";
-  const scope = filters.map(([key, value]) => field(key, typeof value === "string" ? displayText(value, 200) : value)).join("; ");
+  const scope = filters.map(([key, value]) => formatField(key, typeof value === "string" ? displayText(value, 200) : value)).join("; ");
   const header = `${title}${scope ? ` — ${scope}` : ""}`;
   if ("total_count" in data) {
-    const lines = [header, `${m.total}: ${data.total_count}`];
+    const lines = [header, `${m.total}: ${data.total_count}${plan.operational ? (plan.language === "en" ? " LR / vehicle movements" : " LR / gaadi") : ""}`];
+    if (data.total_loading_weight !== undefined) lines.push(`Recorded loading weight: ${data.total_loading_weight === null ? "not recorded" : data.total_loading_weight + " MT"}`);
+    if (data.loading_weight_records !== undefined && Number(data.loading_weight_records) < Number(data.total_count)) lines.push(`Loading weight not recorded: ${Number(data.total_count) - Number(data.loading_weight_records)} LR(s)`);
     const rows = data.rows as ObjectValue[];
     const footerBudget = m.shortened.length + m.truncated.length + 4;
     let displayed = 0;
     for (const r of rows) {
       const line = ["lr_number", "lr_date", "vehicle_number", "consignor", "consignee", "pending_days"]
-        .filter((key) => r[key] !== undefined).map((key) => field(key, r[key])).join(" | ");
+        .filter((key) => r[key] !== undefined).map((key) => formatField(key, r[key])).join(" | ");
       if (lines.join("\n").length + line.length + 1 + footerBudget > LIMITS.reply) break;
       lines.push(line); displayed++;
     }
@@ -74,9 +80,9 @@ export function renderResult(plan: QueryPlan, data: ObjectValue): string {
     return lines.join("\n");
   }
   if (!data.found) return `${header}\n${m.missing}`;
-  const lines = [header, ...Object.entries(data.lr as ObjectValue).map(([key, value]) => field(key, value))];
-  if (data.pod_present !== undefined) lines.push(field("pod_present", data.pod_present));
-  if (data.pod) lines.push(...Object.entries(data.pod as ObjectValue).map(([key, value]) => field(key, value)));
+  const lines = [header, ...Object.entries(data.lr as ObjectValue).map(([key, value]) => formatField(key, value))];
+  if (data.pod_present !== undefined) lines.push(formatField("pod_present", data.pod_present));
+  if (data.pod) lines.push(...Object.entries(data.pod as ObjectValue).map(([key, value]) => formatField(key, value)));
   if (lines.some((line) => line.includes("…"))) lines.push(m.truncated);
   // Sanitizer bounds each field and the plan has one LR only; no truncation of
   // identifiers or partial detail lines is needed to fit this fixed field set.
@@ -143,21 +149,64 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
     const language = typeof text === "string" ? detectLanguage(text) : "en";
     const clarify: AssistantResult = { status: "clarification", text: messages[language].filters };
     if (typeof text !== "string" || !text.trim() || text.length > LIMITS.input) return clarify;
-    const plan = resolveIntent(text, dependencies.now?.() ?? new Date());
+    const now = dependencies.now?.() ?? new Date();
+    let plan = resolveIntent(text, now);
+    if (!external) {
+      const operational = resolveIntent(text, now, true);
+      // Keep established deterministic behavior for requests needing no expanded
+      // capability. Any source entity must use the authorized resolver path.
+      if (operational.kind === "query" && (plan.kind !== "query" ||
+          ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "transporter", "podState", "vehicleNumber"].some(k => operational.args[k] != null) || operational.args.entryStatus === "draft")) plan = operational;
+      // An old party-substring parser must never bypass unresolved-role checks.
+      else if (plan.kind === "query" && ["partySearch", "consignor", "consignee", "material"].some(k => plan.args[k] != null)) plan = operational;
+    }
 
     const nluEnabled = env("WHATSAPP_NLU_ENABLED") === "true" && !external;
 
     let finalPlan: QueryPlan;
+    let nluValidatedPlan = false;
 
     if (plan.kind === "query") {
       finalPlan = plan;
     } else if (nluEnabled && (plan.kind === "clarification" || plan.kind === "out_of_scope")) {
       try {
-        const nlu = await interpretIntentNLU(text, language, dependencies.now?.() ?? new Date(), dependencies.fetch ?? fetch, env);
+        const nlu = await interpretIntentNLU(text, language, now, dependencies.fetch ?? fetch, env);
         if (nlu.needsClarification) throw new Error(`nlu_clarification:${nlu.clarificationCategory}`);
-        validateNluInterpretation(nlu, text);
-        finalPlan = buildQueryPlanFromNlu(nlu, dependencies.now?.() ?? new Date());
+        validateNluInterpretation(nlu, text, now, true);
+        finalPlan = buildQueryPlanFromNlu(nlu, now, true);
+        nluValidatedPlan = true;
       } catch (e) {
+        const nluError = e instanceof Error ? e.message : "non_error";
+        const safeNluErrors = new Set([
+          "nlu_unavailable",
+          "nlu_provider_error",
+          "nlu_provider_limit",
+          "nlu_incomplete",
+          "nlu_no_call",
+          "nlu_date",
+          "nlu_date_provenance",
+          "nlu_entity",
+          "nlu_entity_provenance",
+          "nlu_incompatible",
+          "nlu_inconsistent",
+          "nlu_missing_lrNumber",
+          "nlu_multiple_dates",
+          "nlu_multiple_requests",
+          "nlu_shape",
+          "nlu_source_mismatch",
+          "nlu_source_unsupported",
+          "nlu_unconsumed_date",
+          "nlu_unsupported",
+        ]);
+        if (safeNluErrors.has(nluError)) {
+          console.info(`[WhatsApp NLU] failure category=${nluError}`);
+        } else if (nluError.startsWith("nlu_clarification:")) {
+          const clarificationCategory = nluError.split(":")[1] || "missing";
+          console.info(`[WhatsApp NLU] clarification category=${clarificationCategory}`);
+        } else {
+          console.info("[WhatsApp NLU] failure category=other");
+        }
+
         if (e instanceof Error && e.message.startsWith("nlu_clarification:")) {
           const cat = e.message.split(":")[1];
           if (cat === "unsupported") return { status: "out_of_scope", text: messages[language].scope };
@@ -172,16 +221,47 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       return { status: plan.kind, text: plan.kind === "out_of_scope" ? messages[plan.language].scope : messages[plan.language][plan.reason] };
     }
 
-    const definition = external ? externalDefinition(finalPlan) : toolDefinitions.find((tool) => tool.name === finalPlan.name)!;
+    const definition = external ? externalDefinition(finalPlan) : (finalPlan.operational ? internalToolDefinitions : toolDefinitions).find((tool) => tool.name === finalPlan.name)!;
     if (!definition) return clarify;
     const wireArgs = external
       ? Object.fromEntries(Object.keys(definition.parameters.properties).map((key) => [key, finalPlan.args[key]]))
       : finalPlan.args;
     const model = env("WHATSAPP_ASSISTANT_MODEL")?.trim() || "gpt-4o-mini";
     const key = env("OPENAI_API_KEY");
-    if (!key || !MODELS.has(model)) return unavailable;
+    if (!nluValidatedPlan && (!key || !MODELS.has(model))) return unavailable;
+    const executeOperational = async (): Promise<AssistantResult> => {
+      if (external || !("operationalQuery" in dependencies.tools)) throw new Error("internal_only");
+      const args = validateOperationalArguments(finalPlan.name, finalPlan.args);
+      controller.signal.throwIfAborted();
+      const result = await dependencies.tools.operationalQuery(finalPlan.name, finalPlan.args, controller.signal);
+      controller.signal.throwIfAborted();
+      const clean = sanitizeOperationalResult(finalPlan.name, result, args);
+      if (clean.clarification) {
+        const options = clean.options as { role: string; label: string }[];
+        return { status: "clarification", text: (language === "en" ? "I could not resolve one safe match. Please repeat the question with an explicit role and full name." : "Ek clear match nahi mila. Role aur poore naam ke saath sawal dobara bhejein.") + (options.length ? "\n" + options.map((o,i) => `${i+1}. ${labels[o.role] ?? o.role}: ${o.label}`).join("\n") : "") };
+      }
+      return { status: "answered", text: renderResult(finalPlan, clean) };
+    };
     const work = async (): Promise<AssistantResult> => {
       controller.signal.throwIfAborted();
+
+      if (nluValidatedPlan && finalPlan.operational) return await executeOperational();
+      if (nluValidatedPlan) {
+        const args = validateArguments(finalPlan.name, finalPlan.args);
+        const t = dependencies.tools;
+        let result: unknown;
+        // The AbortSignal is a separate trusted argument; it cannot enter RPC JSON.
+        switch (finalPlan.name) {
+          case "search_lrs": result = await t.searchLrs(args, controller.signal); break;
+          case "search_pending_pods": result = await t.searchPendingPods(args, controller.signal); break;
+          case "get_lr_detail": result = await t.getLrDetail(String(args.lrNumber), controller.signal); break;
+          case "get_pod_detail": result = await t.getPodDetail(String(args.lrNumber), controller.signal); break;
+        }
+        controller.signal.throwIfAborted();
+        const clean = sanitizeResult(finalPlan.name, result, args);
+        return { status: "answered", text: renderResult(finalPlan, clean) };
+      }
+
       const payload = await readBounded(await (dependencies.fetch ?? fetch)("https://api.openai.com/v1/responses", {
         method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, signal: controller.signal,
         body: JSON.stringify({
@@ -197,9 +277,39 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       if (external && call.name !== definition.name) return clarify;
       const args = external
         ? validateExternalArguments(finalPlan.name, JSON.parse(String(call.arguments)))
-        : validateArguments(String(call.name), JSON.parse(String(call.arguments)));
-      if (!matchesPlan(external ? finalPlan.name : String(call.name), args, finalPlan)) return clarify;
+        : finalPlan.operational ? validateOperationalArguments(String(call.name), JSON.parse(String(call.arguments))) : validateArguments(String(call.name), JSON.parse(String(call.arguments)));
+      if (!(finalPlan.operational && !external ? matchesOperationalPlan(String(call.name), args, finalPlan) : matchesPlan(external ? finalPlan.name : String(call.name), args, finalPlan))) {
+        console.info("[WhatsApp assistant] outcome=clarification path=execution_plan_mismatch");
+        try {
+          const expected = validateArguments(finalPlan.name, finalPlan.args);
+          const keys = [...new Set(toolDefinitions.flatMap(
+            tool => Object.keys(tool.parameters.properties),
+          ))].sort();
+
+          console.info("[WhatsApp assistant] execution_plan_mismatch", JSON.stringify({
+            toolNameMatched:
+              (external ? finalPlan.name : String(call.name)) === finalPlan.name,
+            actualKeyCount: Object.keys(args).length,
+            expectedKeyCount: Object.keys(expected).length,
+            missingKeys: keys.filter(
+              key => Object.hasOwn(expected, key) && !Object.hasOwn(args, key),
+            ),
+            extraKeys: keys.filter(
+              key => Object.hasOwn(args, key) && !Object.hasOwn(expected, key),
+            ),
+            differingKeys: keys.filter(
+              key => Object.hasOwn(args, key) &&
+                Object.hasOwn(expected, key) &&
+                args[key] !== expected[key],
+            ),
+          }));
+        } catch {
+          // Diagnostic failure must not change the existing clarification response.
+        }
+        return clarify;
+      }
       controller.signal.throwIfAborted();
+      if (finalPlan.operational) return await executeOperational();
       const t = dependencies.tools;
       let result: unknown;
       // The AbortSignal is a separate trusted argument; it cannot enter RPC JSON.
