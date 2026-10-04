@@ -894,7 +894,7 @@ test('NLU: cannot cause more than one ERP query', async () => {
       needsClarification: false, clarificationCategory: null, clarificationHint: null
     })
   }]);
-  const r = await h.run('last month kitne gaadi lage');
+  const r = await h.run('last mnth kitne gadi lge');
   assert.equal(r.status, 'answered');
   assert.equal(h.requests.length, 1); // NLU interpretation only; no second provider execution call
   assert.equal(h.executions.length, 1); // exactly one ERP execution
@@ -907,7 +907,7 @@ test('NLU: malformed NLU response -> unavailable/no ERP call', async () => {
     }
     return Response.json({});
   } });
-  const r = await h.run('last month kitne gaadi lage');
+  const r = await h.run('last mnth kitne gadi lge');
   assert.equal(r.status, 'unavailable');
   assert.equal(h.requests.length, 1); // interpretation attempt only
   assert.equal(h.executions.length, 0);
@@ -996,7 +996,7 @@ test('NLU Date: last_month at trusted 2026-01 date -> December 2025', async () =
       needsClarification: false, clarificationCategory: null, clarificationHint: null
     })
   }], { now: () => JAN_2026 });
-  const r = await h.run('last month kitne gaadi lage');
+  const r = await h.run('last mnth kitne gadi lge');
   assert.equal(r.status, 'answered');
   assert.equal(h.requests.length, 1);
   assert.equal(h.executions.length, 1);
@@ -1062,10 +1062,10 @@ test('NLU OpenAI: user text only in input user content', async () => {
       needsClarification: false, clarificationCategory: null, clarificationHint: null
     })
   }]);
-  await h.run('last month kitne gaadi lage');
+  await h.run('last mnth kitne gadi lge');
   const body = h.requests[0].request;
   assert.equal(body.input[0].role, 'user');
-  assert.equal(body.input[0].content[0].text, 'last month kitne gaadi lage');
+  assert.equal(body.input[0].content[0].text, 'last mnth kitne gadi lge');
 });
 
 test('NLU OpenAI: store:false, parallel_tool_calls:false, forced single NLU function', async () => {
@@ -1701,7 +1701,7 @@ for (const [label, now, month, from, to] of [
   const h = nluHarness([callItem('interpret_whatsapp_intent', hardenedNlu({ date: { kind: 'month', month } }))], {
     now: () => { clockReads++; return now; },
   });
-  assert.equal((await h.run('Last month kitne gaadi lage?')).status, 'answered');
+  assert.equal((await h.run('Last mnth kitne gadi lge?')).status, 'answered');
   assert.equal(clockReads, 1);
   assert.equal(h.requests.length, 1);
   assert.equal(h.executions.length, 1);
@@ -1847,6 +1847,41 @@ test('internal Hinglish vehicle count consumes pichle month and fails closed on 
   assert.equal(resolveIntent('nagpur se wadi kitna gaadi laga tha last month banana', NOW, true).kind, 'clarification');
 });
 
+test('deterministic internal operational plans bypass OpenAI execution and use the operational RPC', async () => {
+  const cases = [
+    ['acc wadi k liye kitna gaadi load hua last month', { consignee: 'acc wadi' }],
+    ['nagpur se wadi kitna gaadi laga tha last month?', { fromStation: 'nagpur', toStation: 'wadi' }],
+  ];
+  for (const [source, expected] of cases) {
+    const calls = [];
+    const h = nluHarness([], { operationalRpc: (name, args) => {
+      calls.push({ name, args });
+      return { status: 'ok', result: listResult(args, [], 0) };
+    }});
+    const result = await h.run(source);
+    assert.equal(result.status, 'answered');
+    assert.equal(h.requests.length, 0, 'trusted deterministic plan must not enter OpenAI execution');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].name, 'search_lrs');
+    assert.equal(calls[0].args.countOnly, true);
+    assert.equal(calls[0].args.lrDateFrom, '2026-09-01');
+    assert.equal(calls[0].args.lrDateTo, '2026-09-30');
+    for (const [key, value] of Object.entries(expected)) assert.equal(calls[0].args[key], value);
+  }
+});
+
+test('deterministic internal operational plans preserve party/draft behavior and fail closed leftovers', async () => {
+  for (const source of ['3M Pune se ACC Wadi last month kitni gaadi lagi?', 'How many draft LRs are there?']) {
+    const h = nluHarness([], { operationalRpc: (_name, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
+    assert.equal((await h.run(source)).status, 'answered');
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.executions.length, 1);
+  }
+  const h = nluHarness([], { operationalRpc: () => { throw new Error('must not execute'); } });
+  assert.notEqual((await h.run('nagpur se wadi kitna gaadi laga tha last month banana')).status, 'answered');
+  assert.equal(h.executions.length, 0);
+});
+
 test('How many draft LRs are there banana? -> clarification (fail-closed)', () => {
   const plan = resolveIntent("How many draft LRs are there banana?", NOW, true);
   assert.equal(plan.kind, "clarification");
@@ -1884,7 +1919,7 @@ test('internal resolution ambiguous/missing returns safe real options and never 
     });
     const result=await h.run('ACC Wadi mein kitni gaadi lagi last month?');
     assert.equal(result.status,'clarification');
-    assert.equal(h.requests.length,1);
+    assert.equal(h.requests.length,0);
     assert.equal(h.executions.length,1);
     for (const option of options) assert.ok(result.text.includes(option.label));
   }
@@ -1995,5 +2030,5 @@ test('expanded operational RPC is cancelled and late completion cannot answer or
   finish({status:'ok',result:{}});
   await Promise.resolve();
   assert.equal(h.executions.length,1);
-  assert.equal(h.requests.length,1);
+  assert.equal(h.requests.length,0);
 });

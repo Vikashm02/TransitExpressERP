@@ -245,7 +245,10 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
     const work = async (): Promise<AssistantResult> => {
       controller.signal.throwIfAborted();
 
-      if (nluValidatedPlan && finalPlan.operational) return await executeOperational();
+      // Internal operational plans are either deterministically parsed from
+      // trusted source grammar or built after NLU provenance validation. Both
+      // already have a server-owned plan, so never ask the model to echo it.
+      if (finalPlan.operational) return await executeOperational();
       if (nluValidatedPlan) {
         const args = validateArguments(finalPlan.name, finalPlan.args);
         const t = dependencies.tools;
