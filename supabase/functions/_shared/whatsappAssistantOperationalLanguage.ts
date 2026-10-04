@@ -13,7 +13,7 @@ const labels: Record<string, string> = {
   "to station|destination city|destination": "toStation",
   "transporter|vendor": "transporter",
 };
-const stops = `ke|ka|ki|mein|me|se|to|for|in|on|from|के|का|की|में|से|तक|lrs?|pods?|gaadi|gadi|truck|vehicle|kitne|kitni|kitna|how|count|show|list|dikhao|batao|pending|present|drafts?|final|status|created|creation|last|this|today|yesterday|consignor|consignee|material|party|branch|booking|source|destination|transporter|vendor|कितने|कितनी|गाड़ी`;
+const stops = `k|ke|ka|ki|liye|mein|me|se|to|for|in|on|from|के|का|की|में|से|तक|lrs?|pods?|gaadi|gadi|truck|vehicle|kitne|kitni|kitna|how|count|show|list|dikhao|batao|pending|present|drafts?|final|status|created|creation|last|this|today|yesterday|consignor|consignee|material|party|branch|booking|source|destination|transporter|vendor|कितने|कितनी|गाड़ी`;
 const entity = `("[^"\\r\\n]+"|'[^'\\r\\n]+'|[\\p{L}\\p{M}\\p{N}][\\p{L}\\p{M}\\p{N} .&/-]*?)`;
 const end = `(?=\\s+(?:${stops})(?!${boundary})|$|[,?!])`;
 function clean(raw: string): string {
@@ -38,9 +38,16 @@ export function extractInternalEntities(input: string): { source: string; fields
   }
   source = source.replace(token("[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}"), value => { put("vehicleNumber", value.toUpperCase()); return " ".repeat(value.length); });
   source = source.replace(/\b(?:vehicle\s+(\d{4})|(\d{4})\s+(?:gaadi|gadi|vehicle))\b/giu, (whole,a,b) => { put("vehicleNumber",a ?? b); return " ".repeat(whole.length); });
+  // A route immediately followed by vehicle-count language is the concise
+  // station-style grammar. This runs against the original source (before date
+  // masking), so a party route with an intervening date stays unresolved.
+  const station = `([\\p{L}\\p{M}][\\p{L}\\p{M}\\p{N}&/-]*)`;
+  source = source.replace(new RegExp(`(?:^|(?<=\\s))${station}\\s+(?:se|से)\\s+${station}(?=\\s+(?:(?:kitna|kitne|kitni)\\s+(?:gaadi|gadi)|कितनी\\s+गाड़ी))`, "giu"), (whole, a, b) => {
+    put("fromStation", a); put("toStation", b); return " ".repeat(whole.length);
+  });
   // Mask date phrases only in the scan, retaining them verbatim in the source.
   // This allows '<date> <entity> ke ...' without consuming the date as a name.
-  let scan = source.replace(token("today|yesterday|aaj|आज|beete kal|बीता कल|(?:this|last) (?:month|mnth|year)|(?:is|pichle|pichhle) (?:mahine|saal)|(?:इस|पिछले) (?:महीने|साल)|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}"), s => " ".repeat(s.length));
+  let scan = source.replace(token("today|yesterday|aaj|आज|beete kal|बीता कल|(?:this|last) (?:month|mnth|year)|(?:is|pichle|pichhle) (?:month|mahine|saal)|(?:इस|पिछले) (?:महीने|साल)|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}"), s => " ".repeat(s.length));
   const consume = (pattern: RegExp, callback: (...values: string[]) => void | false) => {
     const matches = [...scan.matchAll(pattern)];
     for (const m of matches) {
@@ -56,6 +63,9 @@ export function extractInternalEntities(input: string): { source: string; fields
   // A suffix branch label is as explicit as a prefix label.
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:booking\\s+)?branch(?!${boundary})(?:\\s+(?:se|से))?`, "giu"), v => put("bookingBranch", v));
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:transporter|vendor)(?!${boundary})`, "giu"), v => put("transporter", v));
+  // "X k/ke liye" is destination-party grammar, not an unlabelled party
+  // search. Keep the postposition out of the value sent to the resolver.
+  consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:k|ke)\\s+liye${end}`, "giu"), v => put("consignee", v));
   // Directional references are unresolved party/location/branch references.
   // Only explicitly labelled source/destination cities request aggregation.
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:se|से|to)\\s+${entity}${end}`, "giu"), (a,b) => { if (new RegExp(`^(?:${stops})(?!${boundary})`, "iu").test(b)) return false; put("originSearch",a); put("destinationSearch",b); });

@@ -592,22 +592,16 @@ function assertNluPlan(request, expected) {
   if (expected.partySearch) assert.equal(args.partySearch, expected.partySearch);
 }
 
-test('NLU: Last month kitne gaadi lage? -> lr_count last_month', async () => {
-  const h = nluHarness([{
-    type: 'function_call', id: 'fc_1', status: 'completed', call_id: 'call_1',
-    name: 'interpret_whatsapp_intent',
-    arguments: JSON.stringify({
-      operation: 'lr_count', language: 'hinglish', lrNumber: null, bookingBranch: null, fromStation: null, toStation: null, entitySearch: null, originSearch: null, destinationSearch: null, transporter: null, podState: null, entryStatus: null,
-      date: { kind: 'relative', value: 'last_month' }, createdDate: null,
-      partySearch: null, consignor: null, consignee: null, vehicleNumber: null, material: null,
-      status: null, minPendingDays: null,
-      needsClarification: false, clarificationCategory: null, clarificationHint: null
-    })
-  }]);
+function assertNluInterpretationAttempt(h) {
+  const nluRequests = h.requests.filter(({ request }) => request.tool_choice?.name === 'interpret_whatsapp_intent');
+  assert.equal(nluRequests.length, 1, 'security fixture must reach the NLU provider');
+}
+
+test('deterministic: Last month kitne gaadi lage? -> lr_count last_month', async () => {
+  const h = nluHarness([]);
   const r = await h.run('Last month kitne gaadi lage?');
   assert.equal(r.status, 'answered');
-  assert.equal(h.requests.length, 1); // NLU interpretation only; no second provider execution call
-  assert.equal(h.requests[0].request.tool_choice?.name, 'interpret_whatsapp_intent');
+  assert.equal(h.requests.filter(({ request }) => request.tool_choice?.name === 'interpret_whatsapp_intent').length, 0);
   assert.equal(h.executions.length, 1);
   assert.equal(h.executions[0].name, 'searchLrs');
   assert.equal(h.executions[0].args.countOnly, true);
@@ -923,8 +917,11 @@ test('NLU: malformed NLU response -> unavailable/no ERP call', async () => {
 test('NLU Gating: NLU disabled -> existing deterministic result only', async () => {
   const h = harness(); // no WHATSAPP_NLU_ENABLED
   const r = await h.run('last month kitne gaadi lage');
-  assert.equal(r.status, 'out_of_scope'); // deterministic result, NLU disabled
-  assert.equal(h.requests.length, 0);
+  assert.equal(r.status, 'answered'); // deterministic supported result, NLU disabled
+  assert.equal(h.requests.filter(({ request }) => request.tool_choice?.name === 'interpret_whatsapp_intent').length, 0);
+  assert.equal(h.executions.length, 1);
+  assert.equal(h.executions[0].name, 'searchLrs');
+  assert.equal(h.executions[0].args.countOnly, true);
 });
 
 test('NLU Gating: external user + NLU enabled -> NLU fetch NEVER called', async () => {
@@ -1219,34 +1216,34 @@ const hardenedNlu = (patch = {}) => ({
   ...patch,
 });
 const adversarialNluCases = [
-  ['invented year', 'last month kitne gaadi lage', { date: { kind: 'month_year', month: 9, year: 2025 } }],
-  ['invented period', 'last month kitne gaadi lage', { date: { kind: 'relative', value: 'this_month' } }],
-  ['invented exact date', 'last month kitne gaadi lage', { date: { kind: 'exact', from: '2026-09-01', to: '2026-09-30' } }],
-  ['omitted date', 'last month kitne gaadi lage', { date: null }],
-  ['wrong creation basis', 'last month kitne gaadi lage', { date: null, createdDate: { kind: 'relative', value: 'last_month' } }],
+  ['invented year', 'last mnth kitne gadi lge', { date: { kind: 'month_year', month: 9, year: 2025 } }],
+  ['invented period', 'last mnth kitne gadi lge', { date: { kind: 'relative', value: 'this_month' } }],
+  ['invented exact date', 'last mnth kitne gadi lge', { date: { kind: 'exact', from: '2026-09-01', to: '2026-09-30' } }],
+  ['omitted date', 'last mnth kitne gadi lge', { date: null }],
+  ['wrong creation basis', 'last mnth kitne gadi lge', { date: null, createdDate: { kind: 'relative', value: 'last_month' } }],
   ['omitted creation basis', 'last month kitne lr bane', {}],
-  ['invented status', 'last month kitne gaadi lage', { status: 'Cancelled' }],
-  ['omitted status', 'last month delivered kitne gaadi lage', {}],
-  ['substituted status', 'last month delivered kitne gaadi lage', { status: 'Open' }],
-  ['wrong age', '15 din se pending POD kitni', { operation: 'pending_pod_count', date: null, minPendingDays: 16 }],
-  ['omitted age', '15 din se pending POD kitni', { operation: 'pending_pod_count', date: null }],
-  ['invented age', 'pending POD kitni', { operation: 'pending_pod_count', date: null, minPendingDays: 15 }],
+  ['invented status', 'last mnth kitne gadi lge', { status: 'Cancelled' }],
+  ['omitted status', 'last mnth delivered kitne gadi lge', {}],
+  ['substituted status', 'last mnth delivered kitne gadi lge', { status: 'Open' }],
+  ['wrong age', '15 din se pending POD kitni lge', { operation: 'pending_pod_count', date: null, minPendingDays: 16 }],
+  ['omitted age', '15 din se pending POD kitni lge', { operation: 'pending_pod_count', date: null }],
+  ['invented age', 'pending POD kitni lge', { operation: 'pending_pod_count', date: null, minPendingDays: 15 }],
   ['wrong comparator', 'less than 15 days pending POD count', { operation: 'pending_pod_count', date: null, minPendingDays: 15 }],
-  ['count to list', 'last month kitne gaadi lage', { operation: 'lr_list' }],
+  ['count to list', 'last mnth kitne gadi lge', { operation: 'lr_list' }],
   ['list to count', 'last month gaadi dikhao', {}],
   ['LR to POD', 'lr 19619 ka kya status h', { operation: 'pod_detail', lrNumber: 'LR19619', date: null }],
   ['POD to LR', '19619 ka pod aya kya', { operation: 'lr_detail', lrNumber: 'LR19619', date: null }],
-  ['pending to general', 'pending POD kitni', { date: null }],
-  ['general to pending', 'last month kitne gaadi lage', { operation: 'pending_pod_count' }],
+  ['pending to general', 'pending POD kitni lge', { date: null }],
+  ['general to pending', 'last mnth kitne gadi lge', { operation: 'pending_pod_count' }],
   ['distinct vehicles', 'last month unique gaadi kitne', {}],
-  ['role swap', 'last month consignor ACC ke kitne gaadi lage', { consignee: 'ACC' }],
+  ['role swap', 'last mnth consignor ACC ke kitne gadi lge', { consignee: 'ACC' }],
   ['digit concatenation', '19 619 ka pod aya kya', { operation: 'pod_detail', lrNumber: 'LR19619', date: null }],
   ['digit substring', '119619 ka pod aya kya', { operation: 'pod_detail', lrNumber: 'LR19619', date: null }],
   ['wildcard', 'party ACC% last month kitne gaadi lage', { partySearch: 'ACC%' }],
-  ['pending party lost', 'party ACC pending POD count', { operation: 'pending_pod_count', date: null, partySearch: 'ACC' }],
-  ['pending material lost', 'material RDF pending POD count', { operation: 'pending_pod_count', date: null, material: 'RDF' }],
-  ['LR age lost', 'last month kitne gaadi lage', { minPendingDays: 15 }],
-  ['detail creation lost', 'LR19619 created last month detail', { operation: 'lr_detail', lrNumber: 'LR19619', date: null, createdDate: { kind: 'relative', value: 'last_month' } }],
+  ['pending party lost', 'party ACC pending POD count lge', { operation: 'pending_pod_count', date: null, partySearch: 'ACC' }],
+  ['pending material lost', 'material RDF pending POD count lge', { operation: 'pending_pod_count', date: null, material: 'RDF' }],
+  ['LR age lost', 'last mnth kitne gadi lge', { minPendingDays: 15 }],
+  ['detail creation lost', 'LR19619 created last mnth detail', { operation: 'lr_detail', lrNumber: 'LR19619', date: null, createdDate: { kind: 'relative', value: 'last_month' } }],
   ['finance', 'freight kitna', { date: null }],
   ['rates', 'rate kitna', { date: null }],
   ['negation', 'last month cancelled nahi gaadi count', { status: 'Cancelled' }],
@@ -1259,8 +1256,8 @@ const adversarialNluCases = [
 for (const field of ['partySearch', 'consignor', 'consignee', 'vehicleNumber', 'material']) {
   const label = { partySearch: 'party', vehicleNumber: 'vehicle' }[field] ?? field;
   const value = field === 'vehicleNumber' ? 'CG04NX6315' : 'ACC';
-  adversarialNluCases.push([`invented ${field}`, 'last month kitne gaadi lage', { [field]: value }]);
-  adversarialNluCases.push([`omitted ${field}`, `last month ${label} ${value} ke kitne gaadi lage`, {}]);
+  adversarialNluCases.push([`invented ${field}`, 'last mnth kitne gadi lge', { [field]: value }]);
+  adversarialNluCases.push([`omitted ${field}`, `last mnth ${label} ${value} ke kitne gadi lge`, {}]);
 }
 for (const [label, source, patch] of adversarialNluCases) {
   test(`NLU hardening ${["pending party lost", "pending material lost", "detail creation lost"].includes(label) ? "preserves newly supported internal filters" : "rejects"}: ${label}`, async () => {
@@ -1278,7 +1275,7 @@ for (const [label, source, patch] of adversarialNluCases) {
       assert.notEqual(result.status, 'answered');
       assert.equal(h.executions.length, 0);
     }
-    assert.ok(h.requests.length <= 1);
+    assertNluInterpretationAttempt(h);
   });
 }
 test('NLU provenance accepts model month for source last_month only when it is the trusted previous month', () => {
@@ -1346,9 +1343,9 @@ test('NLU hardening rejects malformed runtime shapes independently of provider',
 test('NLU hardening rejects multiple provider calls before execution', async () => {
   const call = callItem('interpret_whatsapp_intent', hardenedNlu());
   const h = nluHarness([call, call]);
-  assert.equal((await h.run('last month kitne gaadi lage')).status, 'unavailable');
+  assert.equal((await h.run('last mnth kitne gadi lge')).status, 'unavailable');
   assert.equal(h.executions.length, 0);
-  assert.equal(h.requests.length, 1);
+  assertNluInterpretationAttempt(h);
 });
 
 for (const [field, label, value] of [
@@ -1356,7 +1353,7 @@ for (const [field, label, value] of [
   ['consignee', 'consignee', 'ACC'], ['material', 'material', 'RDF'],
   ['vehicleNumber', 'vehicle', 'CG04NX6315'],
 ]) test(`NLU hardening preserves explicit ${field} and rejects substitution`, () => {
-  const source = `last month ${label} ${value} ke kitne gaadi lage`;
+  const source = `last mnth ${label} ${value} ke kitne gadi lge`;
   assert.doesNotThrow(() => validateNluInterpretation(hardenedNlu({ [field]: value }), source));
   assert.throws(() => validateNluInterpretation(hardenedNlu({ [field]: 'OTHER' }), source));
 });
@@ -1713,17 +1710,17 @@ for (const [label, now, month, from, to] of [
   assert.equal(h.executions[0].args.lrDateTo, to);
 });
 for (const [label, source, patch, now] of [
-  ['wrong month', 'Last month kitne gaadi lage?', { date: { kind: 'month', month: 8 } }, NOW],
-  ['wrong rollover', 'Last month kitne gaadi lage?', { date: { kind: 'month', month: 11 } }, new Date('2026-01-01T00:00:00Z')],
-  ['exact date equivalence forbidden', 'Last month kitne gaadi lage?', { date: { kind: 'exact', from: '2026-09-01', to: '2026-09-30' } }, NOW],
-  ['month-year equivalence forbidden', 'Last month kitne gaadi lage?', { date: { kind: 'month_year', month: 9, year: 2026 } }, NOW],
-  ['other relative period', 'this month kitne gaadi lage?', { date: { kind: 'month', month: 10 } }, NOW],
-  ['wrong creation basis', 'Last month kitne gaadi lage?', { date: null, createdDate: { kind: 'month', month: 9 } }, NOW],
+  ['wrong month', 'Last mnth kitne gadi lge?', { date: { kind: 'month', month: 8 } }, NOW],
+  ['wrong rollover', 'Last mnth kitne gadi lge?', { date: { kind: 'month', month: 11 } }, new Date('2026-01-01T00:00:00Z')],
+  ['exact date equivalence forbidden', 'Last mnth kitne gadi lge?', { date: { kind: 'exact', from: '2026-09-01', to: '2026-09-30' } }, NOW],
+  ['month-year equivalence forbidden', 'Last mnth kitne gadi lge?', { date: { kind: 'month_year', month: 9, year: 2026 } }, NOW],
+  ['other relative period', 'this mnth kitne gadi lge?', { date: { kind: 'month', month: 10 } }, NOW],
+  ['wrong creation basis', 'Last mnth kitne gadi lge?', { date: null, createdDate: { kind: 'month', month: 9 } }, NOW],
   ['wrong LR basis', 'last month kitne lr bane?', { date: { kind: 'month', month: 9 } }, NOW],
 ]) test(`recovery: narrow date exception rejects ${label}`, async () => {
   const h = nluHarness([callItem('interpret_whatsapp_intent', hardenedNlu(patch))], { now: () => now });
   assert.notEqual((await h.run(source)).status, 'answered');
-  assert.equal(h.requests.length, 1);
+  assertNluInterpretationAttempt(h);
   assert.equal(h.executions.length, 0);
 });
 
@@ -1814,6 +1811,40 @@ test('Count draft LRs -> draft count', () => {
   assert.equal(plan.operational, true);
   assert.equal(plan.args.countOnly, true);
   assert.equal(plan.args.entryStatus, "draft");
+});
+
+test('internal Hinglish consignee vehicle count uses the precise consignee filter', () => {
+  for (const source of ['acc wadi k liye kitna gaadi load hua last month', 'acc wadi ke liye kitne gaadi load hue last month']) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'query');
+    assert.equal(plan.name, 'search_lrs');
+    assert.equal(plan.args.consignee, 'acc wadi');
+    assert.equal(plan.args.countOnly, true);
+    assert.equal(plan.args.lrDateFrom, '2026-09-01');
+    assert.equal(plan.args.lrDateTo, '2026-09-30');
+  }
+});
+
+test('internal Hinglish station route vehicle count uses precise station filters', () => {
+  const plan = resolveIntent('nagpur se wadi kitna gaadi laga tha last month?', NOW, true);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.name, 'search_lrs');
+  assert.equal(plan.args.fromStation, 'nagpur');
+  assert.equal(plan.args.toStation, 'wadi');
+  assert.equal(plan.args.originSearch, null);
+  assert.equal(plan.args.destinationSearch, null);
+  assert.equal(plan.args.countOnly, true);
+  assert.equal(plan.args.lrDateFrom, '2026-09-01');
+  assert.equal(plan.args.lrDateTo, '2026-09-30');
+});
+
+test('internal Hinglish vehicle count consumes pichle month and fails closed on leftovers', () => {
+  const plan = resolveIntent('ACC Wadi mein kitni gaadi lagi pichle month', NOW, true);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.args.entitySearch, 'ACC Wadi');
+  assert.equal(plan.args.countOnly, true);
+  assert.equal(plan.args.lrDateFrom, '2026-09-01');
+  assert.equal(resolveIntent('nagpur se wadi kitna gaadi laga tha last month banana', NOW, true).kind, 'clarification');
 });
 
 test('How many draft LRs are there banana? -> clarification (fail-closed)', () => {

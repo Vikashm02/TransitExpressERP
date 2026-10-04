@@ -49,7 +49,11 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
     try { const extracted = extractInternalEntities(source); source = extracted.source; internalFields = extracted.fields; }
     catch { return clarify(); }
   }
-  const hasLr = (internal && word("drafts?|final").test(source)) || word("lrs?|एलआर|एल आर|lr[0-9]+").test(source);
+  // Vehicle words establish an LR movement only in this bounded internal
+  // count grammar. A bare vehicle/gaadi remains out of scope.
+  const vehicleCountLanguage = "(?:(?:kitna|kitne|kitni)\\s+(?:gaadi|gadi)|कितनी\\s+गाड़ी|how\\s+many\\s+vehicles?)";
+  const hasVehicleCount = internal && word(vehicleCountLanguage).test(source);
+  const hasLr = (internal && word("drafts?|final").test(source)) || hasVehicleCount || word("lrs?|एलआर|एल आर|lr[0-9]+").test(source);
   const hasPod = word("pods?|पीओडी|पी ओ डी").test(source);
   if (!hasLr && !hasPod) return { kind: "out_of_scope", language, reason: "filters" };
   const args: ObjectValue = { ...internalFields };
@@ -97,7 +101,9 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     }
     take(word("(?:created(?:\\s+(?:at|on|time))?|creation(?:\\s+(?:date|time))?|create\\s+(?:hua|hue)|बनाए गए|बनाया गया|बने हुए)"), () => { if (created) throw new Error("duplicate_basis"); created = true; });
-    take(word("(?:how\\s+many|count|number\\s+of|kitne|kitna|कितने|कितनी|संख्या)"), () => { if (countOnly) throw new Error("duplicate_count"); countOnly = true; });
+    // Reuse the vehicle-count grammar above, while retaining existing LR
+    // count forms such as "how many draft LRs" and "count LRs".
+    take(word(`(?:${vehicleCountLanguage}|how\\s+many|count|number\\s+of|kitne|kitna|kitni|कितने|कितनी|संख्या)`), () => { if (countOnly) throw new Error("duplicate_count"); countOnly = true; });
     take(word("(?:show|list|dikhao|दिखाओ|दिखाएं|दिखाएँ|सूची)"), () => { if (explicitList) throw new Error("duplicate_list"); explicitList = true; });
     take(word("(?:details?|detail\\s+batao|विवरण|जानकारी)"), () => { detail = true; });
     if (countOnly && (explicitList || detail)) return clarify();
@@ -117,7 +123,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Relative dates depend only on the trusted server clock, in IST.
     const istToday = new Date(now.getTime() + 330 * 60000).toISOString().slice(0, 10);
-    take(word("today|aaj|आज|yesterday|beete kal|बीता कल|this month|is mahine|इस महीने|last month|pichhle mahine|पिछले महीने|this year|is saal|इस साल|last year|pichhle saal|पिछले साल"), (m) => {
+    take(word("today|aaj|आज|yesterday|beete kal|बीता कल|this month|is mahine|इस महीने|last month|pichle month|pichhle month|pichhle mahine|पिछले महीने|this year|is saal|इस साल|last year|pichhle saal|पिछले साल"), (m) => {
       const token = m[0].toLowerCase();
       const today = new Date(istToday);
       const year = today.getUTCFullYear(), month = today.getUTCMonth() + 1;
@@ -125,7 +131,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
       else if (["yesterday", "beete kal", "बीता कल"].includes(token)) {
         const previous = new Date(today.getTime() - DAY_MS).toISOString().slice(0, 10); setRange([previous, previous]);
       } else if (["this month", "is mahine", "इस महीने"].includes(token)) setRange(monthRange(year, month));
-      else if (["last month", "pichhle mahine", "पिछले महीने"].includes(token)) setRange(monthRange(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1));
+      else if (["last month", "pichle month", "pichhle month", "pichhle mahine", "पिछले महीने"].includes(token)) setRange(monthRange(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1));
       else { const y = ["this year", "is saal", "इस साल"].includes(token) ? year : year - 1; setRange([day(y, 1, 1), day(y, 12, 31)]); }
     });
     const dates: { value: string; index: number }[] = [];
@@ -159,6 +165,9 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
       } else { args.lrDateFrom = range[0]; args.lrDateTo = range[1]; }
     }
 
+    // Movement wording is consumed only after the internal LR vehicle-count
+    // grammar has established scope. It is never a generic filler word.
+    if (internal && countOnly && hasLr) take(word("load\\s+hua|load\\s+hue|laga\\s+tha|lagi\\s+thi|lage|lagi|laga"), () => {});
     // Words that can change semantics are deliberately NOT in this filler set.
     take(word("lrs?|pods?|एलआर|एल आर|पीओडी|पी ओ डी|please|kripya|कृपया|batao|bataye|बताओ|बताएं|बताएँ|hai|hain|tha|the|है|हैं|थे|था|ke|ka|ki|के|का|की|mein|में|se|से|tak|तक|in|on|from|to|through|for|of|the|me|mujhe|मुझे|vehicle|गाड़ी|वाहन|number|no|नंबर|status|स्टेटस|date|तारीख|total|कुल|all|sab|सभी"), () => {});
     if (internal && countOnly && hasLr) {
