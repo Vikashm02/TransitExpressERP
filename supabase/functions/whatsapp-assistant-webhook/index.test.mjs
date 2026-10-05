@@ -588,6 +588,62 @@ test('Outbound: authorized internal user + valid assistant reply -> exactly one 
   assert.equal(msg.previewUrl, false);
 });
 
+test('Outbound: never-settling fetch that ignores abort is hard-bounded without retry', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const logs = [];
+  t.mock.method(console, 'info', (...args) => logs.push(args));
+  let signal, finish;
+  const calls = [];
+  const h = setup({ fetch: (url, init) => {
+    assert.equal(url, 'https://api.gupshup.io/wa/api/v1/msg');
+    calls.push({ url, init });
+    signal = init.signal;
+    // Deliberately ignore abort and settle only when the test releases it.
+    return new Promise((resolve) => { finish = resolve; });
+  } });
+  const response = await h.handler(request());
+  assert.equal(response.status, 200);
+  for (let i = 0; i < 20 && !signal; i++) await Promise.resolve();
+  assert.ok(signal);
+  assert.equal(signal.aborted, false);
+  t.mock.timers.tick(10000);
+  await h.drain();
+  assert.equal(signal.aborted, true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(logs, [
+    ['[WhatsApp assistant webhook] outbound started'],
+    ['[WhatsApp assistant webhook] outbound timeout'],
+  ]);
+  finish(Response.json({ status: 'submitted', sensitive: `${RAW} ${REPLY} ${SECRET}` }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+  assert.equal(logs.length, 2);
+  assert.ok(!JSON.stringify(logs).includes(RAW));
+  assert.ok(!JSON.stringify(logs).includes(REPLY));
+  assert.ok(!JSON.stringify(logs).includes(SECRET));
+  assert.ok(!JSON.stringify(logs).includes(USER));
+  assert.ok(!JSON.stringify(logs).includes(DEFAULT_MESSAGE.from));
+});
+
+test('Outbound: successful submission keeps one send and emits safe lifecycle logs', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'info', (...args) => logs.push(args));
+  const calls = [];
+  const h = setup({ fetch: async (url, init) => {
+    calls.push({ url, init });
+    return Response.json({ status: 'submitted' });
+  } });
+  await acknowledge(h);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(logs, [
+    ['[WhatsApp assistant webhook] outbound started'],
+    ['[WhatsApp assistant webhook] outbound submitted'],
+  ]);
+  assert.ok(!JSON.stringify(logs).includes(RAW));
+  assert.ok(!JSON.stringify(logs).includes(REPLY));
+  assert.ok(!JSON.stringify(logs).includes(SECRET));
+});
+
 test('Outbound: destination equals authenticated sender digits without + (B)', async () => {
   const outboundCalls = [];
   const h = setup({ fetch: async (url, init) => {

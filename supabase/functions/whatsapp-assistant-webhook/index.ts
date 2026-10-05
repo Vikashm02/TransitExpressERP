@@ -148,6 +148,8 @@ async function processInboundMessage(admin: SupabaseClient, message: InboundMess
       });
       if ((result?.status === "answered" || result?.status === "clarification") && result.text?.trim()) {
         await sendGupshupOutbound(senderDigits, result.text, dependencies.env, dependencies.fetch ?? fetch);
+      } else if (result?.status === "unavailable") {
+        console.info("[WhatsApp assistant webhook] assistant unavailable");
       }
     } catch { /* Includes unexpected assistant errors; no log or retry. */ }
   });
@@ -285,31 +287,50 @@ async function sendGupshupOutbound(
   if (!destDigits || !srcDigits) return;
   if (!reply.trim()) return;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      resolve(null);
+    }, 10000);
+  });
   try {
+    console.info("[WhatsApp assistant webhook] outbound started");
     const form = new URLSearchParams();
     form.set("channel", "whatsapp");
     form.set("source", srcDigits);
     form.set("destination", destDigits);
     form.set("src.name", appName);
     form.set("message", JSON.stringify({ type: "text", text: reply, previewUrl: false }));
-    const response = await fetchImpl("https://api.gupshup.io/wa/api/v1/msg", {
-      method: "POST",
-      headers: { apikey: apiKey, "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-      signal: controller.signal,
-    });
-    const providerStatus = (await response.json().catch(() => null))?.status ?? "parse_failed";
-    if (response.status === 200) {
-      if (providerStatus !== "submitted") {
-        // Failure is isolated; no retry, no logging of response body.
-      }
+    const request = (async () => {
+      const response = await fetchImpl("https://api.gupshup.io/wa/api/v1/msg", {
+        method: "POST",
+        headers: { apikey: apiKey, "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+        signal: controller.signal,
+      });
+      const providerStatus = (await response.json().catch(() => null))?.status ?? "parse_failed";
+      return { httpStatus: response.status, providerStatus };
+    })();
+    const outcome = await Promise.race([request, timeout]);
+    if (outcome === null) {
+      console.info("[WhatsApp assistant webhook] outbound timeout");
+      return;
     }
-    // Non-200 or non-submitted: failure isolated, no retry.
+    if (outcome.httpStatus === 200 && outcome.providerStatus === "submitted") {
+      console.info("[WhatsApp assistant webhook] outbound submitted");
+    } else {
+      const category = outcome.httpStatus === 200 ? "provider_status" : "http_status";
+      console.info(`[WhatsApp assistant webhook] outbound failed category=${category}`);
+    }
   } catch {
-    // Timeout or network error: failure isolated, no retry.
+    console.info(timedOut
+      ? "[WhatsApp assistant webhook] outbound timeout"
+      : "[WhatsApp assistant webhook] outbound failed category=network");
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

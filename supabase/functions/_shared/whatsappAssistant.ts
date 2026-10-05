@@ -160,7 +160,8 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
   const unavailable: AssistantResult = { status: "unavailable", text: "LR/POD assistant unavailable. Please try again. / Kripya dobara koshish karein." };
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
+  const work = async (): Promise<AssistantResult> => {
+    try {
     const env = dependencies.env ?? envDefault;
     if (env("WHATSAPP_ASSISTANT_ENABLED") !== "true") return { status: "disabled", text: "" };
     const external = "audience" in dependencies.tools && dependencies.tools.audience === "external";
@@ -184,6 +185,8 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
     // is not itself a complete query. Bare replies never invent local context.
     if (!external && plan.kind !== "query" && "continuePending" in dependencies.tools) {
       const pending = await dependencies.tools.continuePending(text, controller.signal);
+      controller.signal.throwIfAborted();
+      console.info("[WhatsApp assistant] continuation completed");
       if (pending.status === "cancelled") return { status: "clarification", text: language === "en" ? "Pending company choice cancelled." : "Pending company choice cancel ho gayi." };
       if (pending.status !== "no_pending") {
         if (pending.status === "clarification") {
@@ -281,7 +284,7 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       }
       return { status: "answered", text: renderResult(finalPlan, clean) };
     };
-    const work = async (): Promise<AssistantResult> => {
+    const executePlan = async (): Promise<AssistantResult> => {
       controller.signal.throwIfAborted();
 
       // Internal operational plans are either deterministically parsed from
@@ -365,10 +368,19 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       const clean = external ? sanitizeExternalResult(finalPlan.name, result, args) : sanitizeResult(finalPlan.name, result, args);
       return { status: "answered", text: renderResult(finalPlan, clean) };
     };
-    const timeout = new Promise<AssistantResult>((resolve) => {
-      timer = setTimeout(() => { controller.abort(); resolve(unavailable); }, LIMITS.deadlineMs);
-    });
-    return await Promise.race([work(), timeout]);
-  } catch { return unavailable; } // Never log request text, credentials or bodies.
+    return await executePlan();
+    } catch {
+      if (!controller.signal.aborted) console.info("[WhatsApp assistant] outcome=unavailable category=internal");
+      return unavailable;
+    } // Never log request text, credentials or bodies.
+  };
+  const timeout = new Promise<AssistantResult>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      console.info("[WhatsApp assistant] outcome=unavailable category=deadline");
+      resolve(unavailable);
+    }, LIMITS.deadlineMs);
+  });
+  try { return await Promise.race([work(), timeout]); }
   finally { if (timer !== undefined) clearTimeout(timer); }
 }

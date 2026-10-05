@@ -394,8 +394,52 @@ test('number and full displayed name can continue only a server-owned pending pl
     const h = harness({ tools });
     const result = await h.run(selection);
     assert.equal(result.status, 'answered');
+    assert.match(result.text, /Total: 0/);
     assert.deepEqual(selections, [selection]);
+    assert.equal(h.requests.length, 0);
   }
+});
+
+test('bare selection continuation is bounded by the absolute assistant deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const logs = [];
+  t.mock.method(console, 'info', (...args) => logs.push(args));
+  let finish, continuationSignal, continuationCalls = 0, operationalCalls = 0;
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const tools = {
+    continuePending: (_selection, signal) => {
+      continuationCalls++;
+      continuationSignal = signal;
+      markStarted();
+      return new Promise((lateResolve) => { finish = lateResolve; });
+    },
+    operationalQuery: async () => { operationalCalls++; throw new Error('must not execute'); },
+  };
+  const h = harness({ tools, env: { WHATSAPP_NLU_ENABLED: 'true' } });
+  const pending = h.run('1');
+  await started;
+  assert.equal(continuationSignal.aborted, false);
+  t.mock.timers.tick(LIMITS.deadlineMs);
+  const result = await pending;
+  assert.equal(result.status, 'unavailable');
+  assert.equal(continuationSignal.aborted, true);
+  assert.equal(continuationCalls, 1);
+  assert.equal(operationalCalls, 0);
+  assert.equal(h.requests.length, 0);
+  finish({ status: 'ok', continued: true, operation: 'search_lrs', filters: {
+    lrDateFrom: null, lrDateTo: null, createdAtFrom: null, createdAtTo: null,
+    consignor: null, consignee: null, partySearch: null, vehicleNumber: null,
+    material: null, bookingBranch: null, fromStation: null, toStation: null,
+    entitySearch: null, originSearch: null, destinationSearch: null,
+    originCity: null, destinationCity: null, transporter: null, status: null,
+    entryStatus: 'final', podState: null, minPendingDays: null,
+    lrNumber: null, countOnly: true, limit: 20, offset: 0,
+  }, result: listResult({ countOnly: true, limit: 20, offset: 0 }, [], 0) });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(operationalCalls, 0);
+  assert.equal(h.requests.length, 0);
+  assert.deepEqual(logs, [['[WhatsApp assistant] outcome=unavailable category=deadline']]);
 });
 
 test('invalid, expired, replayed or absent pending replies execute no operational query', async () => {
@@ -470,7 +514,9 @@ test('wrapper errors do not log secrets, user text, provider bodies or tool data
   const result = await h.run('LR19573');
   assert.equal(result.status, 'unavailable');
   assert.ok(!result.text.includes('SECRET'));
-  assert.deepEqual(logs, []);
+  assert.deepEqual(logs, [['[WhatsApp assistant] outcome=unavailable category=internal']]);
+  assert.ok(!JSON.stringify(logs).includes('SECRET'));
+  assert.ok(!JSON.stringify(logs).includes('LR19573'));
 });
 
 test('entity words cannot be stripped and reinterpreted as date/status filters', () => {
