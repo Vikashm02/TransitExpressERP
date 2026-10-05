@@ -14,14 +14,16 @@ const ast=ts.createSourceFile('service.ts',source,ts.ScriptTarget.Latest,true);
 const lookupNode=ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='getActiveLrPurchaseOrders');
 const lookupJs=ts.transpileModule(lookupNode.getText(ast).replace('export ',''),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
 function lookupMock(){const calls=[];const supabase={rpc:async(name,args)=>{calls.push({name,args});return {error:null,data:[
- {id:1,billing_party_id:9,material_id:10,po_number:'A',issue_date:'2026-01-01'},
- {id:2,billing_party_id:9,material_id:10,po_number:'A2',issue_date:'2026-01-01'},
- {id:3,billing_party_id:9,material_id:11,po_number:'B',issue_date:'2026-01-01'},
- {id:4,billing_party_id:9,material_id:null,po_number:'LEGACY',issue_date:'2026-01-01'},
+ {id:1,billing_party_id:9,consignee_id:5,material_id:10,po_number:'A',issue_date:'2026-01-01'},
+ {id:2,billing_party_id:9,consignee_id:5,material_id:10,po_number:'A2',issue_date:'2026-01-01'},
+ {id:3,billing_party_id:9,consignee_id:5,material_id:11,po_number:'B',issue_date:'2026-01-01'},
+ {id:4,billing_party_id:9,consignee_id:null,material_id:null,po_number:'LEGACY',issue_date:'2026-01-01'},
+ {id:5,billing_party_id:9,consignee_id:6,material_id:10,po_number:'SAME-NAME-DIFFERENT-ID',issue_date:'2026-01-01'},
 ]}}};return {calls,run:new Function('supabase','readPartyIdentity',lookupJs+';return getActiveLrPurchaseOrders')(supabase,readPartyIdentity)};}
-test('Material A retains both eligible POs, without a multiplicity restriction',async()=>{const h=lookupMock();assert.deepEqual((await h.run(9,'Sender',10)).map(x=>x.id),[1,2]);assert.deepEqual(h.calls,[{name:'get_lr_purchase_orders_by_party_material_id',args:{p_billing_party_id:9,p_consignor:'Sender',p_material_id:10}}]);});
-test('Material B excludes A and legacy NULL',async()=>{const h=lookupMock();assert.deepEqual((await h.run(9,'Sender',11)).map(x=>x.id),[3]);});
-test('no lookup before all three identities/context are supplied',async()=>{const h=lookupMock();for(const args of [[null,'Sender',10],[9,'Sender',null],[9,'',10]])assert.deepEqual(await h.run(...args),[]);assert.equal(h.calls.length,0);});
+test('Material A retains both eligible POs, without a multiplicity restriction',async()=>{const h=lookupMock();assert.deepEqual((await h.run(9,'Sender',5,10)).map(x=>x.id),[1,2]);assert.deepEqual(h.calls,[{name:'get_lr_purchase_orders_by_party_consignee_material_id',args:{p_billing_party_id:9,p_consignor:'Sender',p_consignee_id:5,p_material_id:10}}]);});
+test('Material B excludes A and legacy NULL',async()=>{const h=lookupMock();assert.deepEqual((await h.run(9,'Sender',5,11)).map(x=>x.id),[3]);});
+test('Consignee ID excludes same-display-name candidates with another stable ID',async()=>{const h=lookupMock();assert.deepEqual((await h.run(9,'Sender',5,10)).map(x=>x.id),[1,2]);});
+test('no lookup before all four identities/context are supplied',async()=>{const h=lookupMock();for(const args of [[null,'Sender',5,10],[9,'Sender',null,10],[9,'Sender',5,null],[9,'',5,10]])assert.deepEqual(await h.run(...args),[]);assert.equal(h.calls.length,0);});
 test('explicit selection stores ID and exact name, not description',()=>{const r=selectLrMaterial({materialDescription:'SHREDDED RDF',packageType:'MT',billingPartyId:9},{id:10,materialName:'Untreated RDF',unit:'TON'});assert.equal(r.materialId,10);assert.equal(r.material,'Untreated RDF');assert.equal(r.materialDescription,'SHREDDED RDF');assert.equal(r.billingPartyId,9);});
 test('description-only changes never change PO context',()=>{const r={materialId:10,purchaseOrderId:1,materialDescription:'A'};assert.equal(lrPoPartyChanged(r,{...r,materialDescription:'B'}),false);});
 test('different material IDs change PO context even for identical names',()=>{assert.equal(lrPoPartyChanged({materialId:10,material:'RDF'},{materialId:11,material:'RDF'}),true);});
@@ -81,7 +83,7 @@ test('PO service persists explicit IDs, rejects new NULL, and allows legacy NULL
       update: row => { calls.push([table, 'update', row]); return query; },
     }) },
   });
-  const values = { billingPartyId: 9, consignor: 'Sender', poNumber: 'A', issueDate: '2026-01-01', allottedWeight: 1, status: 'Active' };
+  const values = { billingPartyId: 9, consignor: 'Sender', consigneeId: 5, poNumber: 'A', issueDate: '2026-01-01', allottedWeight: 1, status: 'Active' };
   await assert.rejects(save(null, { ...values, materialId: null }), /Select Material/);
   assert.equal(calls.length, 0);
   await save(null, { ...values, materialId: 10 });

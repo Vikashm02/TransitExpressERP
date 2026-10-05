@@ -218,12 +218,11 @@ test('Preserve current inactive PO if no PO change', async () => {
   assert.equal(poChanged, false, 'keeping same inactive PO must not trigger active check');
 });
 
-test('Consignee change does not require PO reselection', () => {
+test('Consignee change requires PO reselection', () => {
   const prev = { consignee: 'A', purchaseOrderId: 21, materialId: 246, billingPartyId: 18, consignor: 'SUSBDE' };
   const next = { consignee: 'B', purchaseOrderId: 21, materialId: 246, billingPartyId: 18, consignor: 'SUSBDE' };
-  // lrPoPartyChanged should be false for consignee alone
-  assert.doesNotMatch(read('components/lr/partyIdentity.ts'), /consignee.*lrPoPartyChanged/);
-  // LRForm changeParty not used for consignee, so PO not cleared
+  assert.match(read('components/lr/partyIdentity.ts'), /previous\.consignee !== next\.consignee/);
+  assert.match(read('components/lr/LRForm.tsx'), /role="consignee"[\s\S]*?onChange=\{changeParty\}/);
 });
 
 test('PO21 selection correctly uses issueDate 2026-08-29 from master', () => {
@@ -314,10 +313,9 @@ test('unsaved Material change disables replacement', () => {
   assert.match(purchaseFields, /hasUnsavedIdentityChanges[\s\S]*?materialId/);
 });
 
-test('consignee-only change does NOT disable PO/replacement', () => {
-  // hasUnsaved checks only billingPartyId, consignor, materialId — consignee excluded
-  assert.doesNotMatch(purchaseFields, /hasUnsavedIdentityChanges[\s\S]*?consignee/);
-  assert.match(read('components/lr/partyIdentity.ts'), /consignee/);
+test('consignee-only change disables PO replacement until saved', () => {
+  assert.match(purchaseFields, /initialIdentities\.consigneeId !== \(lr\.consigneeId \?\? null\)/);
+  assert.match(read('components/lr/partyIdentity.ts'), /previous\.consigneeId !== next\.consigneeId/);
 });
 
 test('known Inactive exact current PO can offer replacement', () => {
@@ -423,7 +421,7 @@ test('legitimate known-Inactive PO still preserves Create Replacement PO flow', 
 test('Create LR follows pre-feature PO validation path (no legacy resolution)', () => {
   // LRDialog must have dedicated !isEditing branch with pre-feature validation and no getLrBillingPartyLookup
   const createBranch = lrDialog.slice(lrDialog.indexOf('if (!isEditing)'), lrDialog.indexOf('} else if (poChanged)'));
-  assert.match(createBranch, /getActiveLrPurchaseOrders\(values\.billingPartyId, values\.consignor, values\.materialId\)/);
+  assert.match(createBranch, /getActiveLrPurchaseOrders\(values\.billingPartyId, values\.consignor, values\.consigneeId, values\.materialId\)/);
   assert.match(createBranch, /\(active\.length > 0 \|\| values\.purchaseOrderId\) && !active\.some/);
   assert.doesNotMatch(createBranch, /getLrBillingPartyLookup/);
 });

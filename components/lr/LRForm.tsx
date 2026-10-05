@@ -78,7 +78,7 @@ export default function LRForm({
           role="consignee"
           lr={lr}
           errors={errors}
-          onChange={onChange}
+          onChange={changeParty}
         /></div>
       </div>
 

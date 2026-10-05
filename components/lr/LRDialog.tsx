@@ -397,6 +397,7 @@ export default function LRDialog({
       || values.customer !== lr?.customer
       || (values.billingPartyId ?? null) !== (lr?.billingPartyId ?? null)
       || (values.consignorId ?? null) !== (lr?.consignorId ?? null)
+      || (values.consigneeId ?? null) !== (lr?.consigneeId ?? null)
       || ((values.materialId ?? null) !== (lr?.materialId ?? null)
         && !(lr && isLegacyMaterialEnrichment(lr, values)))
       || values.consignor !== lr?.consignor
@@ -406,7 +407,7 @@ export default function LRDialog({
       const poChanged = isEditing && (values.purchaseOrderId ?? null) !== (lr?.purchaseOrderId ?? null);
       if (!isEditing) {
         // Create LR — pre-feature behavior exactly, no legacy resolution
-        const active = await getActiveLrPurchaseOrders(values.billingPartyId, values.consignor, values.materialId);
+        const active = await getActiveLrPurchaseOrders(values.billingPartyId, values.consignor, values.consigneeId, values.materialId);
         if ((active.length > 0 || values.purchaseOrderId) && !active.some((po) => po.id === values.purchaseOrderId)) {
           toast.error("Choose an active PO for this billing party before saving.");
           return;
@@ -426,7 +427,7 @@ export default function LRDialog({
         }
         let active: Awaited<ReturnType<typeof getActiveLrPurchaseOrders>> | null = null;
         try {
-          active = billingIdForLookup == null ? [] : await getActiveLrPurchaseOrders(billingIdForLookup, values.consignor, values.materialId);
+          active = billingIdForLookup == null ? [] : await getActiveLrPurchaseOrders(billingIdForLookup, values.consignor, values.consigneeId, values.materialId);
         } catch {
           active = null;
         }
@@ -436,7 +437,7 @@ export default function LRDialog({
         }
       } else if (mustCheckPo) {
         // Existing LR, PO did NOT change — preserve pre-feature behavior
-        const active = await getActiveLrPurchaseOrders(values.billingPartyId, values.consignor, values.materialId);
+        const active = await getActiveLrPurchaseOrders(values.billingPartyId, values.consignor, values.consigneeId, values.materialId);
         if ((active.length > 0 || values.purchaseOrderId) && !active.some((po) => po.id === values.purchaseOrderId)) {
             toast.error("Choose an active PO for this billing party before saving.");
             return;

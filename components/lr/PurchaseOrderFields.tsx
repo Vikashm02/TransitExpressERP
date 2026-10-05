@@ -28,12 +28,12 @@ export default function PurchaseOrderFields({
   replacementPoSaving?: boolean;
 }) {
   const [lookup, setLookup] = useState<{ key: string; options: PurchaseOrderLookup[]; failed: boolean; legacyUnresolved?: boolean } | null>(null);
-  const lookupKey = `${lr.billingPartyId ?? ""}\u0000${lr.consignorId ?? ""}\u0000${lr.customer}\u0000${lr.consignor}\u0000${lr.materialId ?? ""}`;
+  const lookupKey = `${lr.billingPartyId ?? ""}\u0000${lr.consignorId ?? ""}\u0000${lr.consigneeId ?? ""}\u0000${lr.customer}\u0000${lr.consignor}\u0000${lr.materialId ?? ""}`;
   const hasCustomerText = Boolean(lr.customer && lr.customer.trim());
   const hasConsignorText = Boolean(lr.consignor && lr.consignor.trim());
   const hasMaterial = Boolean(lr.materialId);
   const canResolveLegacy = hasCustomerText && hasConsignorText && hasMaterial;
-  const enabled = !readOnly && hasConsignorText && hasMaterial && (Boolean(lr.billingPartyId) || canResolveLegacy);
+  const enabled = !readOnly && hasConsignorText && hasMaterial && Boolean(lr.consigneeId) && (Boolean(lr.billingPartyId) || canResolveLegacy);
   const currentLookup = lookup?.key === lookupKey ? lookup : null;
   const options = enabled ? currentLookup?.options ?? [] : [];
   const loading = enabled && !currentLookup;
@@ -70,7 +70,7 @@ export default function PurchaseOrderFields({
           if (!cancelled) setLookup({ key: lookupKey, options: [], failed: false });
           return;
         }
-        const rows = await getActiveLrPurchaseOrders(billingId, lr.consignor, lr.materialId);
+        const rows = await getActiveLrPurchaseOrders(billingId, lr.consignor, lr.consigneeId, lr.materialId);
         if (cancelled) return;
         setLookup({ key: lookupKey, options: rows, failed: false });
         const current = latest.current;
@@ -84,11 +84,11 @@ export default function PurchaseOrderFields({
     }
     void fetchOptions();
     return () => { cancelled = true; };
-  }, [lr.customer, lr.consignor, lr.billingPartyId, lr.materialId, lookupKey, enabled, autoSelect, canResolveLegacy]);
+  }, [lr.customer, lr.consignor, lr.billingPartyId, lr.consigneeId, lr.materialId, lookupKey, enabled, autoSelect, canResolveLegacy]);
 
   const hint = readOnly ? undefined : loading ? "Loading active POs..." : failed ? "PO lookup unavailable. Existing PO details are preserved."
     : options.length > 1 ? "Multiple active POs found. Choose the correct PO."
-    : !options.length && lr.customer && lr.consignor ? "No active PO found for this Billing Party, Consignor and Material." : undefined;
+    : !options.length && lr.customer && lr.consignor && lr.consigneeId ? "No active PO found for this Billing Party, Consignor, Consignee and Material." : undefined;
   const selectedIsActive = options.some((p) => p.id === lr.purchaseOrderId);
   const selectedPO = options.find((p) => p.id === lr.purchaseOrderId);
   const poMasterDiffers = selectedPO && (selectedPO.poNumber !== lr.poNumber || selectedPO.issueDate !== lr.poDate);
@@ -119,23 +119,25 @@ export default function PurchaseOrderFields({
   const isCurrentPOActuallyInactive = statusResult?.purchaseOrderId === lr.purchaseOrderId && statusResult?.status === "Inactive";
   const isStatusUnknown = !statusResult || statusResult.purchaseOrderId !== lr.purchaseOrderId || statusResult.status == null;
   // Stabilise replacement availability against unsaved identity edits: replacement RPC uses
-  // the persisted LR row, not form values, so disable when Billing Party / Consignor / Material
+  // the persisted LR row, not form values, so disable when Billing Party / Consignor / Consignee / Material
   // have unsaved changes to avoid misleading operation.
-  const [initialIdentities, setInitialIdentities] = useState<{ billingPartyId: number | null; consignor: string; materialId: number | null } | null>(null);
+  const [initialIdentities, setInitialIdentities] = useState<{ billingPartyId: number | null; consignor: string; consigneeId: number | null; materialId: number | null } | null>(null);
   useEffect(() => {
-    if (initialIdentities === null && lr.customer && lr.consignor && lr.materialId) {
+    if (initialIdentities === null && lr.customer && lr.consignor && lr.consigneeId && lr.materialId) {
       setInitialIdentities({
         billingPartyId: lr.billingPartyId ?? null,
         consignor: lr.consignor,
+        consigneeId: lr.consigneeId ?? null,
         materialId: lr.materialId ?? null,
       });
     }
-  }, [lr.customer, lr.consignor, lr.materialId, lr.billingPartyId, initialIdentities]);
+  }, [lr.customer, lr.consignor, lr.consigneeId, lr.materialId, lr.billingPartyId, initialIdentities]);
   const hasUnsavedIdentityChanges =
     initialIdentities !== null &&
     (
       initialIdentities.billingPartyId !== (lr.billingPartyId ?? null) ||
       initialIdentities.consignor !== lr.consignor ||
+      initialIdentities.consigneeId !== (lr.consigneeId ?? null) ||
       initialIdentities.materialId !== (lr.materialId ?? null)
     );
   // Known Inactive -> offer. Unknown status (no purchase_orders/view) + successful Active lookup where current PO is absent → preserve candidate, RPC remains final authority.

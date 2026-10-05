@@ -15,13 +15,12 @@ import MasterAutocomplete from "@/components/lookup/MasterAutocomplete";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { getLrCustomerLookup, type LrCustomerLookupRow } from "@/components/services/customer.service";
 import { purchaseOrderUsage, purchaseOrderWarningClass } from "@/lib/purchaseOrderUsage";
 import { purchaseOrderSchema, type PurchaseOrder } from "./purchaseOrder.schema";
-import { getPurchaseOrders, getPurchaseOrderParties, getPurchaseOrderMaterials, savePurchaseOrder,
+import { getPurchaseOrders, getPurchaseOrderParties, getPurchaseOrderCustomers, getPurchaseOrderMaterials, savePurchaseOrder,
   type PurchaseOrderRecord, type PurchaseOrderParty } from "@/components/services/purchaseOrder.service";
 
-const empty: PurchaseOrder = { billingPartyId: 0, materialId: null, consignor: "", poNumber: "", issueDate: "", allottedWeight: 0, status: "Active" };
+const empty: PurchaseOrder = { billingPartyId: 0, materialId: null, consignor: "", consigneeId: 0, poNumber: "", issueDate: "", allottedWeight: 0, status: "Active" };
 const weight = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
 export default function PurchaseOrderListPage() {
@@ -29,7 +28,7 @@ export default function PurchaseOrderListPage() {
   const [rows, setRows] = useState<PurchaseOrderRecord[]>([]);
   const [parties, setParties] = useState<PurchaseOrderParty[]>([]);
   const [materials, setMaterials] = useState<{ id: number; name: string }[]>([]);
-  const [consignors, setConsignors] = useState<LrCustomerLookupRow[]>([]);
+  const [customers, setCustomers] = useState<PurchaseOrderParty[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
@@ -62,14 +61,14 @@ export default function PurchaseOrderListPage() {
 
   async function showForm(record: PurchaseOrderRecord | null) {
     try {
-      const [partyRows, consignorRows, materialRows] = await Promise.all([getPurchaseOrderParties(), getLrCustomerLookup(), getPurchaseOrderMaterials()]);
+      const [partyRows, customerRows, materialRows] = await Promise.all([getPurchaseOrderParties(), getPurchaseOrderCustomers(), getPurchaseOrderMaterials()]);
       setMaterials(materialRows);
       setParties(partyRows);
-      setConsignors(consignorRows.filter((row) => row.entryStatus !== "draft"));
+      setCustomers(customerRows);
       setEditing(record);
       setValues(record ? {
         billingPartyId: record.billingPartyId, materialId: record.materialId ?? null, poNumber: record.poNumber,
-        consignor: record.consignor, issueDate: record.issueDate, allottedWeight: record.allottedWeight, status: record.status,
+        consignor: record.consignor, consigneeId: record.consigneeId ?? 0, issueDate: record.issueDate, allottedWeight: record.allottedWeight, status: record.status,
       } : { ...empty });
       setErrors({});
       setOpen(true);
@@ -100,11 +99,12 @@ export default function PurchaseOrderListPage() {
   }
 
   const filtered = rows.filter((r) => (!status || r.status === status)
-    && `${r.poNumber} ${r.billingPartyName} ${r.consignor} ${r.materialName}`.toLowerCase().includes(search.trim().toLowerCase()));
+    && `${r.poNumber} ${r.billingPartyName} ${r.consignor} ${r.consignee} ${r.materialName}`.toLowerCase().includes(search.trim().toLowerCase()));
   const columns: DataTableColumn<PurchaseOrderRecord>[] = [
     { key: "poNumber", header: "PO Number", sortable: true },
     { key: "billingPartyName", header: "Billing Party", sortable: true },
     { key: "consignor", header: "Consignor", sortable: true },
+    { key: "consignee", header: "Consignee", sortable: true, render: (r) => r.consignee || "Not assigned (legacy)" },
     { key: "materialName", header: "Material", sortable: true, render: (r) => r.materialName || "Not assigned (legacy)" },
     { key: "issueDate", header: "Issue Date", sortable: true },
     { key: "allottedWeight", header: "Allotted (MT)", render: (r) => weight(r.allottedWeight), sortable: true },
@@ -145,9 +145,15 @@ export default function PurchaseOrderListPage() {
         </FormField>
         <FormField label="Consignor" htmlFor="po-consignor" required error={errors.consignor}>
           <MasterAutocomplete id="po-consignor" value={values.consignor}
-            options={consignors.map((row) => ({ id: row.id, label: row.name, description: [row.code, row.city].filter(Boolean).join(" · ") }))}
+            options={customers.map((row) => ({ id: row.id, label: row.name, description: row.code }))}
             onSelect={(row) => setValues({ ...values, consignor: row.label })}
             onClear={() => setValues({ ...values, consignor: "" })} placeholder="Select consignor..." />
+        </FormField>
+        <FormField label="Consignee" htmlFor="po-consignee" required error={errors.consigneeId}>
+          <MasterAutocomplete id="po-consignee" value={values.consigneeId ? (customers.find((p) => p.id === values.consigneeId)?.name ?? editing?.consignee ?? "") : ""}
+            options={customers.map((row) => ({ id: row.id, label: row.name, description: row.code }))}
+            onSelect={(row) => setValues({ ...values, consigneeId: Number(row.id) })}
+            onClear={() => setValues({ ...values, consigneeId: 0 })} placeholder="Select consignee..." />
         </FormField>
         <FormSelect label="Material" id="po-material" value={values.materialId == null ? "" : String(values.materialId)}
           required={!editing || editing.materialId != null} error={errors.materialId}

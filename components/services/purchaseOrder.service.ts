@@ -5,11 +5,12 @@ import { purchaseOrderSchema, type PurchaseOrder } from "@/components/purchaseOr
 export interface PurchaseOrderRecord extends PurchaseOrder {
   id: number;
   billingPartyName: string;
+  consignee: string;
   usedWeight: number;
   materialName: string;
 }
 
-export type PurchaseOrderLookup = Pick<PurchaseOrderRecord, "id" | "poNumber" | "issueDate" | "billingPartyId" | "materialId">;
+export type PurchaseOrderLookup = Pick<PurchaseOrderRecord, "id" | "poNumber" | "issueDate" | "billingPartyId" | "consigneeId" | "materialId">;
 export type PurchaseOrderParty = { id: number; name: string; code: string };
 
 export async function getPurchaseOrders(): Promise<PurchaseOrderRecord[]> {
@@ -20,6 +21,8 @@ export async function getPurchaseOrders(): Promise<PurchaseOrderRecord[]> {
     billingPartyId: Number(row.billing_party_id),
     billingPartyName: String(row.billing_party_name),
     consignor: String(row.consignor ?? ""),
+    consigneeId: readPartyIdentity(row.consignee_id) ?? 0,
+    consignee: String(row.consignee ?? ""),
     materialId: readPartyIdentity(row.material_id) ?? null,
     materialName: String(row.material_name ?? ""),
     poNumber: String(row.po_number),
@@ -38,18 +41,28 @@ export async function getPurchaseOrderParties(): Promise<PurchaseOrderParty[]> {
   }));
 }
 
-export async function getActiveLrPurchaseOrders(billingPartyId: number | null | undefined, consignor: string, materialId: number | null | undefined): Promise<PurchaseOrderLookup[]> {
-  if (billingPartyId == null || materialId == null || !consignor.trim()) return [];
+/** PO-entry-only Customer Master lookup; does not depend on LR permissions. */
+export async function getPurchaseOrderCustomers(): Promise<PurchaseOrderParty[]> {
+  const { data, error } = await supabase.rpc("get_purchase_order_customers");
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    id: Number(row.id), name: String(row.name), code: String(row.code),
+  }));
+}
+
+export async function getActiveLrPurchaseOrders(billingPartyId: number | null | undefined, consignor: string, consigneeId: number | null | undefined, materialId: number | null | undefined): Promise<PurchaseOrderLookup[]> {
+  if (billingPartyId == null || consigneeId == null || materialId == null || !consignor.trim()) return [];
   readPartyIdentity(billingPartyId);
+  readPartyIdentity(consigneeId);
   readPartyIdentity(materialId);
-  const { data, error } = await supabase.rpc("get_lr_purchase_orders_by_party_material_id", {
-    p_billing_party_id: billingPartyId, p_consignor: consignor, p_material_id: materialId,
+  const { data, error } = await supabase.rpc("get_lr_purchase_orders_by_party_consignee_material_id", {
+    p_billing_party_id: billingPartyId, p_consignor: consignor, p_consignee_id: consigneeId, p_material_id: materialId,
   });
   if (error) throw error;
   return (data ?? []).map((row: Record<string, unknown>) => ({
-    id: Number(row.id), billingPartyId: Number(row.billing_party_id), materialId: readPartyIdentity(row.material_id),
+    id: Number(row.id), billingPartyId: Number(row.billing_party_id), consigneeId: readPartyIdentity(row.consignee_id) ?? 0, materialId: readPartyIdentity(row.material_id),
     poNumber: String(row.po_number), issueDate: String(row.issue_date),
-  })).filter((row: PurchaseOrderLookup) => row.billingPartyId === billingPartyId && row.materialId === materialId);
+  })).filter((row: PurchaseOrderLookup) => row.billingPartyId === billingPartyId && row.consigneeId === consigneeId && row.materialId === materialId);
 }
 
 export async function getPurchaseOrderMaterials(): Promise<{ id: number; name: string }[]> {
@@ -65,6 +78,7 @@ export async function savePurchaseOrder(id: number | null, values: PurchaseOrder
     billing_party_id: parsed.billingPartyId,
     ...(parsed.materialId !== undefined ? { material_id: parsed.materialId } : {}),
     consignor: parsed.consignor,
+    consignee_id: parsed.consigneeId,
     po_number: parsed.poNumber,
     issue_date: parsed.issueDate,
     allotted_weight: parsed.allottedWeight || null,

@@ -43,7 +43,9 @@ export function isLegacyMaterialEnrichment(previous: LR, next: LR): boolean {
 /** Other matching-context changes still require a fresh PO selection. */
 export function lrPoPartyChanged(previous: LR, next: LR): boolean {
   return previous.customer !== next.customer || previous.consignor !== next.consignor
+    || previous.consignee !== next.consignee
     || previous.billingPartyId !== next.billingPartyId || previous.consignorId !== next.consignorId
+    || previous.consigneeId !== next.consigneeId
     || ((previous.materialId ?? null) !== (next.materialId ?? null)
       && !isLegacyMaterialEnrichment(previous, next));
 }
