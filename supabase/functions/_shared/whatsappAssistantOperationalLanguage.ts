@@ -1,9 +1,16 @@
+import { CURRENT_MONTH_PATTERN } from "./whatsappAssistantDateLanguage.ts";
+
 // Composable source grammar for INTERNAL entities. No database identity, master
 // spelling, branch name, or example sentence is embedded here. Model-selected
 // roles are compared with this source evidence before any resolver is invoked.
 export const INTERNAL_ENTITY_KEYS = ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "transporter", "vehicleNumber"] as const;
 const boundary = `[\\p{L}\\p{M}\\p{N}_]`;
 const token = (s: string) => new RegExp(`(?<!${boundary})(?:${s})(?!${boundary})`, "giu");
+const acceptedDirectionalConjunction = `(?:k|ke)\\s+liye`;
+const fallbackSafetyDirectionalConjunction = `(?:k|ke)[\\s./,&:;_\\-]*liye`;
+export function hasDirectionalMarkerForFallbackSafety(value: string): boolean {
+  return token(fallbackSafetyDirectionalConjunction).test(value);
+}
 const labels: Record<string, string> = {
   "consignor|sender|loading party|प्रेषक": "consignor",
   "consignee|receiver|delivery party|प्राप्तकर्ता": "consignee",
@@ -24,7 +31,10 @@ function clean(raw: string): string {
 export function extractInternalEntities(input: string): { source: string; fields: Record<string, string> } {
   let source = input;
   const fields: Record<string, string> = {};
-  const unlabelled = (raw: string) => !new RegExp(`^(?:${stops}|total|open|delivered|cancelled|canceled|billed|us|that|those|all|sab)(?!${boundary})`, "iu").test(clean(raw));
+  const unlabelled = (raw: string) => {
+    const value = clean(raw);
+    return !new RegExp(`^(?:${stops}|total|open|delivered|cancelled|canceled|billed|us|that|those|all|sab)(?!${boundary})`, "iu").test(value);
+  };
   const put = (key: string, value: string) => {
     if (Object.hasOwn(fields, key)) throw new Error("duplicate_entity");
     fields[key] = clean(value);
@@ -53,7 +63,11 @@ export function extractInternalEntities(input: string): { source: string; fields
   });
   // Mask date phrases only in the scan, retaining them verbatim in the source.
   // This allows '<date> <entity> ke ...' without consuming the date as a name.
-  let scan = source.replace(token("today|yesterday|aaj|आज|beete kal|बीता कल|(?:this|last) (?:month|mnth|year)|(?:is|pichle|pichhle) (?:month|mahine|saal)|(?:इस|पिछले) (?:महीने|साल)|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}"), s => " ".repeat(s.length));
+  let scan = source.replace(token(`${CURRENT_MONTH_PATTERN}|today|yesterday|aaj|आज|beete kal|बीता कल|last (?:month|mnth|year)|this (?:mnth|year)|(?:pichle|pichhle) (?:month|mahine|saal)|is saal|इस साल|(?:पिछले) (?:महीने|साल)|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}`), s => " ".repeat(s.length));
+  // Successful extraction deliberately accepts only the reviewed whitespace
+  // grammar below. This broader, token-bounded marker is fallback safety only:
+  // plausible separator variants must not be swallowed by generic entitySearch.
+  const hasDirectionalMarker = hasDirectionalMarkerForFallbackSafety(scan);
   const consume = (pattern: RegExp, callback: (...values: string[]) => void | false) => {
     const matches = [...scan.matchAll(pattern)];
     for (const m of matches) {
@@ -71,14 +85,20 @@ export function extractInternalEntities(input: string): { source: string; fields
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:transporter|vendor)(?!${boundary})`, "giu"), v => put("transporter", v));
   // "X k/ke liye" is destination-party grammar, not an unlabelled party
   // search. Keep the postposition out of the value sent to the resolver.
-  consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:k|ke)\\s+liye${end}`, "giu"), v => put("consignee", v));
+  consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+${acceptedDirectionalConjunction}${end}`, "giu"), v => put("consignee", v));
   // Directional references are unresolved party/location/branch references.
   // Only explicitly labelled source/destination cities request aggregation.
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:se|से|to)\\s+${entity}${end}`, "giu"), (a,b) => { if (new RegExp(`^(?:${stops})(?!${boundary})`, "iu").test(b)) return false; put("originSearch",a); put("destinationSearch",b); });
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:jane\\s+wali|jaane\\s+wali|जाने\\s+वाली)${end}`, "giu"), v => put("destinationSearch",v));
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:se|से)(?=\\s+(?:kitne|kitni|how|count|gaadi|gadi|lrs?|truck|कितने|कितनी))`, "giu"), v => put("originSearch",v));
-  consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:ke|ka|ki|mein|me|में|के|का|की)(?=\\s+(?:ke|ka|ki|के|का|की|kitne|kitni|kitna|pending|pods?|lrs?|gaadi|gadi|count|show|list|dikhao|कितने|कितनी))`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
-  consume(new RegExp(`(?<!${boundary})for\\s+${entity}${end}`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
-  consume(new RegExp(`(?:^|(?<=\\s))${entity}(?=\\s+(?:kitna|kitni|kitne)(?!${boundary}))`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
+  const hasDirectionalEntity = () => ["consignor", "consignee", "partySearch", "originSearch", "destinationSearch", "originCity", "destinationCity"]
+    .some(key => Object.hasOwn(fields, key));
+  // A directional marker may not fall back to generic entitySearch merely
+  // because unsupported residual words prevented directional extraction.
+  if (!hasDirectionalMarker && !hasDirectionalEntity()) {
+    consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:ke|ka|ki|mein|me|में|के|का|की)(?=\\s+(?:ke|ka|ki|के|का|की|kitne|kitni|kitna|pending|pods?|lrs?|gaadi|gadi|count|show|list|dikhao|कितने|कितनी))`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
+    consume(new RegExp(`(?<!${boundary})for\\s+${entity}${end}`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
+    consume(new RegExp(`(?:^|(?<=\\s))${entity}(?=\\s+(?:kitna|kitni|kitne)(?!${boundary}))`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
+  }
   return { source, fields };
 }

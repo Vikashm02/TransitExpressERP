@@ -4,6 +4,7 @@ import { runWhatsappAssistant, parseToolResponse, renderResult, LIMITS } from '.
 import { resolveIntent, validateNluInterpretation, buildQueryPlanFromNlu } from './whatsappAssistantIntent.ts';
 import { sanitizeResult, sanitizeOperationalResult, validateArguments, validateStoredOperationalArguments, nluIntentSchema } from './whatsappAssistantSchemas.ts';
 import { createWhatsappAssistantTools } from './whatsappAssistantTools.ts';
+import { extractInternalEntities, hasDirectionalMarkerForFallbackSafety } from './whatsappAssistantOperationalLanguage.ts';
 
 const NOW = new Date('2026-09-30T20:00:00Z'); // October 1 in IST.
 const UUID = '11111111-1111-4111-8111-111111111111';
@@ -1991,6 +1992,407 @@ test('internal Hinglish consignee vehicle count uses the precise consignee filte
     assert.equal(plan.args.lrDateFrom, '2026-09-01');
     assert.equal(plan.args.lrDateTo, '2026-09-30');
   }
+});
+
+const currentMonthConsigneeCases = [
+  'Acme k liye ye month kitna gaadi load hua',
+  'Ye month Acme k liye kitna gaadi load hua',
+  'Acme k liye kitna gaadi load hua is month me',
+  'Acme k liye kitna gaadi load hua iss month me',
+  'This month Acme k liye kitna gaadi load hua',
+  'Acme k liye is mahine kitna gaadi load hua',
+  'Is mahine Acme k liye kitna gaadi load hua',
+  'Acme k liye iss mahine kitna gaadi load hua',
+  'Iss mahine Acme k liye kitna gaadi load hua',
+];
+
+test('internal bounded current-month aliases preserve the precise consignee', () => {
+  for (const source of currentMonthConsigneeCases) {
+    const plan = resolveIntent(source, new Date('2026-10-05T12:00:00Z'), true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.operational, true, source);
+    assert.equal(plan.args.consignee, 'Acme', source);
+    assert.equal(plan.args.entitySearch, null, source);
+    assert.equal(plan.args.partySearch, null, source);
+    assert.equal(plan.args.lrDateFrom, '2026-10-01', source);
+    assert.equal(plan.args.lrDateTo, '2026-10-31', source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.limit, 10, source);
+    assert.equal(plan.args.offset, 0, source);
+  }
+});
+
+test('production current-month phrases never contaminate consignee or fall back to Reference', () => {
+  const cases = [
+    ['Shree cement k liye ye month kitna gaadi load hua hai', 'Shree cement'],
+    ['Sree cement k liye ye month kitna gaadi load hua', 'Sree cement'],
+    ['Ye month Sree cement k liye kitna gaadi load hua', 'Sree cement'],
+    ['Shree cement kodla k liye kitna gaadi load hua ye month me', 'Shree cement kodla'],
+    ['Kodla k liye kitna gaadi load hua is month me', 'Kodla'],
+  ];
+  for (const [source, consignee] of cases) {
+    const plan = resolveIntent(source, new Date('2026-10-05T12:00:00Z'), true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.args.consignee, consignee, source);
+    assert.equal(plan.args.entitySearch, null, source);
+    assert.equal(plan.args.partySearch, null, source);
+    assert.equal(plan.args.lrDateFrom, '2026-10-01', source);
+    assert.equal(plan.args.lrDateTo, '2026-10-31', source);
+  }
+});
+
+test('month remains valid company-name data with and without a reviewed date phrase', () => {
+  const cases = [
+    ['Month End Logistics k liye kitna gaadi load hua', 'Month End Logistics', null, null],
+    ['Acme Month Cement k liye kitna gaadi load hua', 'Acme Month Cement', null, null],
+    ['Next Month Logistics k liye kitna gaadi load hua', 'Next Month Logistics', null, null],
+    ['Next Logistics k liye kitna gaadi load hua', 'Next Logistics', null, null],
+    ['Next Generation Cement k liye kitna gaadi load hua', 'Next Generation Cement', null, null],
+    ['Some Month Transport k liye kitna gaadi load hua', 'Some Month Transport', null, null],
+    ['Current Industries k liye kitna gaadi load hua', 'Current Industries', null, null],
+    ['Current Wala Month Logistics k liye kitna gaadi load hua', 'Current Wala Month Logistics', null, null],
+    ['Month End Logistics k liye ye month kitna gaadi load hua', 'Month End Logistics', '2026-10-01', '2026-10-31'],
+    ['This month Acme Month Cement k liye kitna gaadi load hua', 'Acme Month Cement', '2026-10-01', '2026-10-31'],
+    ['Next Logistics k liye iss month kitna gaadi load hua', 'Next Logistics', '2026-10-01', '2026-10-31'],
+    ['Ye month Current Industries k liye kitna gaadi load hua', 'Current Industries', '2026-10-01', '2026-10-31'],
+  ];
+  for (const [source, consignee, from, to] of cases) {
+    const plan = resolveIntent(source, new Date('2026-10-05T12:00:00Z'), true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args.consignee, consignee, source);
+    assert.equal(plan.args.entitySearch, null, source);
+    assert.equal(plan.args.partySearch, null, source);
+    assert.equal(plan.args.lrDateFrom, from, source);
+    assert.equal(plan.args.lrDateTo, to, source);
+    assert.equal(plan.args.countOnly, true, source);
+  }
+});
+
+test('current-month aliases retain today, previous-month and trusted IST calendar behavior', () => {
+  const now = new Date('2026-09-30T20:00:00Z'); // October 1 in IST.
+  for (const source of ['this month Acme k liye kitna gaadi load hua', 'is mahine Acme k liye kitna gaadi load hua']) {
+    const plan = resolveIntent(source, now, true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.args.lrDateFrom, '2026-10-01', source);
+    assert.equal(plan.args.lrDateTo, '2026-10-31', source);
+  }
+  const previous = resolveIntent('Last month Sree cement k liye kitna gaadi load hua', now, true);
+  assert.equal(previous.kind, 'query');
+  assert.equal(previous.args.consignee, 'Sree cement');
+  assert.equal(previous.args.lrDateFrom, '2026-09-01');
+  assert.equal(previous.args.lrDateTo, '2026-09-30');
+  const today = resolveIntent('Aaj kitna gaadi load hua', new Date('2026-10-05T12:00:00Z'), true);
+  assert.equal(today.kind, 'query');
+  assert.equal(today.args.lrDateFrom, '2026-10-05');
+  assert.equal(today.args.lrDateTo, '2026-10-05');
+});
+
+test('deterministic current-month consignee queries bypass NLU and keep consignee clarification role', async () => {
+  for (const source of currentMonthConsigneeCases) {
+    const h = nluHarness([], { operationalRpc: (_name, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
+    assert.equal((await h.run(source)).status, 'answered', source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+    assert.equal(h.executions[0].args.consignee, 'Acme', source);
+    assert.equal(h.executions[0].args.entitySearch, null, source);
+  }
+  const h = nluHarness([], { operationalRpc: () => ({
+    status: 'clarification',
+    issues: [{ field: 'consignee', reference: 'Acme', role: 'consignee', options: [] }],
+  }) });
+  const result = await h.run('Acme k liye ye month kitna gaadi load hua');
+  assert.equal(result.status, 'clarification');
+  assert.match(result.text, /Consignee/);
+  assert.doesNotMatch(result.text, /Reference/);
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.executions.length, 1);
+});
+
+test('NLU provenance accepts only source-proven reviewed current-month aliases', () => {
+  for (const alias of ['ye month', 'is month', 'iss month', 'iss mahine', 'this month', 'is mahine']) {
+    const source = `${alias} Acme k liye kitna gaadi load hua`;
+    const nlu = operationalNlu({ date: { kind: 'relative', value: 'this_month' }, consignee: 'Acme' });
+    assert.doesNotThrow(() => validateNluInterpretation(nlu, source, NOW, true), source);
+  }
+  for (const source of [
+    'current wala month Acme k liye kitna gaadi load hua',
+    'month Acme k liye kitna gaadi load hua',
+    'next month Acme k liye kitna gaadi load hua',
+    'some month Acme k liye kitna gaadi load hua',
+    'unrelated text Acme k liye kitna gaadi load hua',
+  ]) {
+    const nlu = operationalNlu({ date: { kind: 'relative', value: 'this_month' }, consignee: 'Acme' });
+    assert.throws(() => validateNluInterpretation(nlu, source, NOW, true), source);
+  }
+});
+
+test('current-month aliases do not change explicit station or bare company-city routes', () => {
+  const station = resolveIntent('Nagpur station se Rawan station kitna gaadi gaya ye month?', NOW, true);
+  assert.equal(station.kind, 'query');
+  assert.equal(station.args.fromStation, 'Nagpur');
+  assert.equal(station.args.toStation, 'Rawan');
+  assert.equal(station.args.originCity, null);
+  assert.equal(station.args.destinationCity, null);
+  assert.equal(station.args.lrDateFrom, '2026-10-01');
+  assert.equal(station.args.lrDateTo, '2026-10-31');
+  const city = resolveIntent('nagpur se wadi kitna gaadi laga tha iss month?', NOW, true);
+  assert.equal(city.kind, 'query');
+  assert.equal(city.args.originCity, 'nagpur');
+  assert.equal(city.args.destinationCity, 'wadi');
+  assert.equal(city.args.fromStation, null);
+  assert.equal(city.args.toStation, null);
+  assert.equal(city.args.lrDateFrom, '2026-10-01');
+  assert.equal(city.args.lrDateTo, '2026-10-31');
+});
+
+const unsupportedDirectionalResidualCases = [
+    'Acme k liye ye month banana kitna gaadi load hua',
+    'Acme k liye ye month banana please kitna gaadi load hua',
+    'Acme k liye current wala month kitna gaadi load hua',
+    'Acme k liye current wala month please kitna gaadi load hua',
+    'Acme k liye current wala month please urgently kitna gaadi load hua',
+    'Acme k liye some month kitna gaadi load hua',
+    'Acme k liye some month banana kitna gaadi load hua',
+    'Acme k liye some month extra words kitna gaadi load hua',
+    'Acme k liye month kitna gaadi load hua',
+    'Acme k liye month extra kitna gaadi load hua',
+    'Acme k liye next month kitna gaadi load hua',
+    'Acme k liye next month please kitna gaadi load hua',
+    'Acme k liye iss month except cancelled kitna gaadi load hua',
+    'Acme k liye iss month except cancelled please kitna gaadi load hua',
+    'Acme k liye next quarter kitna gaadi load hua',
+    'Acme k liye kis month kitna gaadi load hua',
+    'Acme k liye har month kitna gaadi load hua',
+    'Acme k liye ye wala month kitna gaadi load hua',
+    'Acme k liye is wala month kitna gaadi load hua',
+    'Acme k liye next wala month kitna gaadi load hua',
+    'Acme k liye 2 month kitna gaadi load hua',
+    'Acme k liye monthwise kitna gaadi load hua',
+    'Acme k liye poore month kitna gaadi load hua',
+    'Acme k liye pury month kitna gaadi load hua',
+    'Acme k liye kisi bhi month kitna gaadi load hua',
+    'Acme k liye some quarter kitna gaadi load hua',
+    'Acme k liye banana kitna gaadi load hua',
+    'Acme k liye xyzabc kitna gaadi load hua',
+    'Acme k liye unknown qualifier kitna gaadi load hua',
+    'Acme k liye tomorrow maybe kitna gaadi load hua',
+    'Acme k liye agle cycle kitna gaadi load hua',
+    'Acme k liye random period kitna gaadi load hua',
+    'Acme k liye fiscal window kitna gaadi load hua',
+    'Acme k liye jab bhi kitna gaadi load hua',
+    'Acme k liye special case kitna gaadi load hua',
+    'Acme k liye unreviewed words kitna gaadi load hua',
+];
+
+test('unsupported current-month-like text and arbitrary directional residuals remain fail-closed', () => {
+  for (const source of unsupportedDirectionalResidualCases) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'clarification', source);
+  }
+});
+
+test('unsupported residual qualifiers cannot execute through entitySearch', async () => {
+  for (const source of unsupportedDirectionalResidualCases) {
+    const h = nluHarness([], { operationalRpc: () => { throw new Error('must not execute'); } });
+    assert.notEqual((await h.run(source)).status, 'answered', source);
+    assert.equal(h.executions.length, 0, source);
+  }
+});
+
+const directionalSeparatorSafetyCases = [
+  'Acme k liye xyz kitna gaadi load hua',
+  'Acme ke liye xyz kitna gaadi load hua',
+  'Acme k-liye xyz kitna gaadi load hua',
+  'Acme ke-liye xyz kitna gaadi load hua',
+  'Acme k - liye xyz kitna gaadi load hua',
+  'Acme ke - liye xyz kitna gaadi load hua',
+  'Acme k/liye xyz kitna gaadi load hua',
+  'Acme ke/liye xyz kitna gaadi load hua',
+  'Acme k / liye xyz kitna gaadi load hua',
+  'Acme ke / liye xyz kitna gaadi load hua',
+  'Acme k. liye xyz kitna gaadi load hua',
+  'Acme ke. liye xyz kitna gaadi load hua',
+  'Acme k: liye xyz kitna gaadi load hua',
+  'Acme ke: liye xyz kitna gaadi load hua',
+  'Acme k, liye xyz kitna gaadi load hua',
+  'Acme ke, liye xyz kitna gaadi load hua',
+  'Acme k; liye xyz kitna gaadi load hua',
+  'Acme ke; liye xyz kitna gaadi load hua',
+  'Acme k_liye xyz kitna gaadi load hua',
+  'Acme ke_liye xyz kitna gaadi load hua',
+  // Additional separators that the generic entity span can otherwise absorb.
+  'Acme k&liye xyz kitna gaadi load hua',
+  'Acme ke.&/liye xyz kitna gaadi load hua',
+  'Acme k--liye xyz kitna gaadi load hua',
+  'Acme ke / - liye xyz kitna gaadi load hua',
+  'Acme k\tliye xyz kitna gaadi load hua',
+];
+
+const gluedDirectionalSafetyCases = [
+  'Acme kliye kitna gaadi load hua',
+  'Acme keliye kitna gaadi load hua',
+  'Acme kLiye xyz kitna gaadi load hua',
+  'Acme keLiye xyz kitna gaadi load hua',
+  'Acme KLIYE xyz kitna gaadi load hua',
+  'Acme KELIYE xyz kitna gaadi load hua',
+];
+
+test('glued directional-looking forms cannot fall through to generic entitySearch', async () => {
+  for (const source of gluedDirectionalSafetyCases) {
+    const extracted = extractInternalEntities(source);
+    assert.equal(extracted.fields.entitySearch, undefined, source);
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'clarification', source);
+
+    const h = nluHarness([], { operationalRpc: () => { throw new Error('must not execute'); } });
+    assert.notEqual((await h.run(source)).status, 'answered', source);
+    assert.equal(h.executions.length, 0, source);
+  }
+});
+
+test('trailing letters remain outside the bounded directional safety marker', () => {
+  const source = 'Acme k liyexyz kitna gaadi load hua';
+  assert.equal(hasDirectionalMarkerForFallbackSafety(source), false);
+  const plan = resolveIntent(source, NOW, true);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.args.entitySearch, 'Acme k liyexyz');
+});
+
+test('directional separator variants cannot fall through to generic entitySearch', () => {
+  for (const source of directionalSeparatorSafetyCases) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'clarification', source);
+  }
+});
+
+test('directional separator variants cannot execute an undated generic query', async () => {
+  for (const source of directionalSeparatorSafetyCases) {
+    const h = nluHarness([], { operationalRpc: () => { throw new Error('must not execute'); } });
+    assert.notEqual((await h.run(source)).status, 'answered', source);
+    assert.equal(h.executions.length, 0, source);
+  }
+});
+
+test('fallback-safety marker remains token-bounded for non-directional company names', async () => {
+  const names = [
+    'Keshav',
+    'Kerala',
+    'Kelly',
+    'Keli',
+    'Kelin',
+    'Like',
+    'Unlike',
+    'Likely',
+    'Wake',
+    'Market',
+    'Keystone',
+    'K Line',
+    'K-LINE',
+    'KE Industries',
+    'Acme-Logistics',
+    'Wake-Line Transport',
+  ];
+  for (const name of names) {
+    assert.equal(hasDirectionalMarkerForFallbackSafety(name), false, name);
+  }
+
+  // These complete tokens are inherently indistinguishable from missing-space
+  // conjunction typos. They intentionally fail closed; capitalization is not
+  // used to guess whether the token is a company name or directional syntax.
+  for (const name of ['Keliye', 'Kliye']) {
+    assert.equal(hasDirectionalMarkerForFallbackSafety(name), true, name);
+    const source = `${name} mein kitni gaadi lagi last month?`;
+    assert.equal(resolveIntent(source, NOW, true).kind, 'clarification', source);
+    const h = nluHarness([], { operationalRpc: () => { throw new Error('must not execute'); } });
+    assert.notEqual((await h.run(source)).status, 'answered', source);
+    assert.equal(h.executions.length, 0, source);
+  }
+
+  // These names are supported by the existing generic entity grammar and must
+  // continue to reach entitySearch. Names beginning with standalone K/KE are
+  // already reserved grammar tokens, independently of this safety marker.
+  for (const name of names.filter(name => !['K Line', 'K-LINE', 'KE Industries'].includes(name))) {
+    const source = `${name} mein kitni gaadi lagi last month?`;
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.args.entitySearch, name, source);
+    assert.equal(plan.args.consignee, null, source);
+    assert.equal(plan.args.lrDateFrom, '2026-09-01', source);
+    assert.equal(plan.args.lrDateTo, '2026-09-30', source);
+
+    const h = nluHarness([], { operationalRpc: (_operation, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
+    assert.equal((await h.run(source)).status, 'answered', source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+    assert.equal(h.executions[0].args.entitySearch, name, source);
+  }
+});
+
+test('leading unsupported temporal wording remains part of the full resolver reference', async () => {
+  for (const source of [
+    'next month Acme k liye kitna gaadi load hua',
+    'next week Acme k liye kitna gaadi load hua',
+  ]) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.args.consignee, source.startsWith('next month') ? 'next month Acme' : 'next week Acme', source);
+    assert.equal(plan.args.lrDateFrom, null, source);
+    assert.equal(plan.args.lrDateTo, null, source);
+    assert.equal(plan.args.entitySearch, null, source);
+  }
+});
+
+test('Customer Master resolver is authoritative for ambiguous leading next-month company phrases', async () => {
+  const run = async (source, response) => {
+    let seen;
+    const h = nluHarness([], { operationalRpc: (_name, args) => { seen = args; return response(args); } });
+    const result = await h.run(source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+    assert.equal(seen.entitySearch, null, source);
+    assert.equal(seen.lrDateFrom, null, source);
+    assert.equal(seen.lrDateTo, null, source);
+    return { result, seen };
+  };
+  const ok = args => ({ status: 'ok', result: listResult(args, [], 0) });
+  const noMatch = reference => () => ({
+    status: 'clarification',
+    issues: [{ field: 'consignee', reference, role: 'consignee', options: [] }],
+  });
+
+  const a = await run('Next Month Logistics k liye kitna gaadi load hua', ok);
+  assert.equal(a.result.status, 'answered');
+  assert.equal(a.seen.consignee, 'Next Month Logistics');
+
+  const b = await run('Next Month Logistics k liye kitna gaadi load hua', noMatch('Next Month Logistics'));
+  assert.equal(b.result.status, 'clarification');
+  assert.match(b.result.text, /Consignee/);
+  assert.equal(b.seen.consignee, 'Next Month Logistics');
+
+  const c = await run('next month Acme k liye kitna gaadi load hua', noMatch('next month Acme'));
+  assert.equal(c.result.status, 'clarification');
+  assert.match(c.result.text, /next month Acme/);
+  assert.equal(c.seen.consignee, 'next month Acme');
+  assert.notEqual(c.seen.consignee, 'Acme');
+
+  const d = await run('next month Acme k liye kitna gaadi load hua', ok);
+  assert.equal(d.result.status, 'answered');
+  assert.equal(d.seen.consignee, 'next month Acme');
+});
+
+test('generic entitySearch remains available only when no directional entity was extracted', async () => {
+  const source = 'ACC Wadi mein kitni gaadi lagi last month?';
+  const plan = resolveIntent(source, NOW, true);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.args.entitySearch, 'ACC Wadi');
+  assert.equal(plan.args.consignee, null);
+  const h = nluHarness([], { operationalRpc: (_name, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
+  assert.equal((await h.run(source)).status, 'answered');
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.executions.length, 1);
+  assert.equal(h.executions[0].args.entitySearch, 'ACC Wadi');
 });
 
 test('internal Hinglish bare city route uses dedicated company-city filters', () => {

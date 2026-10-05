@@ -1,4 +1,5 @@
 import { extractInternalEntities, INTERNAL_ENTITY_KEYS } from "./whatsappAssistantOperationalLanguage.ts";
+import { CURRENT_MONTH_ALIASES, CURRENT_MONTH_PATTERN, isCurrentMonthAlias } from "./whatsappAssistantDateLanguage.ts";
 import { toolDefinitions, internalToolDefinitions, validateOperationalArguments, validateArguments, type ObjectValue, type ToolName, type SemanticOp, type SemanticDate, type NluInterpretation, nluIntentSchema, MODELS, object } from "./whatsappAssistantSchemas.ts";
 
 export type Language = "en" | "hi" | "hinglish";
@@ -40,15 +41,16 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
   const clarify = (reason: "year" | "filters" | "party_role" = "filters"): Intent => ({ kind: "clarification", language, reason });
   let source = raw.normalize("NFC").replace(/[०-९]/g, (c) => String(c.charCodeAt(0) - 0x0966)).trim();
   if (word("finance|freight|invoice|billing|payment|balance|amount|salary|sql|delete|update|insert|write|बिल|भुगतान|पैसा|रकम|मिटाओ").test(source)) return { kind: "out_of_scope", language, reason: "filters" };
-  // Negation, comparisons, multiple tasks and unresolved references are not
-  // approximated. Only the explicit range/age forms below are supported.
-  if (word("no|not|non|except|excluding|without|बिना|before|after|less|more|over|under|older|and|or|aur|ya|nahi|nahin|mat|sirf|only|us|that|those|next|previous|कल|नहीं|मत|सिर्फ|और|या|उस|पहले|बाद").test(source)) return clarify();
   if (/[\p{Cc}\p{Cf}]/u.test(source)) return clarify();
   let internalFields: ObjectValue = {};
   if (internal) {
     try { const extracted = extractInternalEntities(source); source = extracted.source; internalFields = extracted.fields; }
     catch { return clarify(); }
   }
+  // Negation, comparisons, multiple tasks and unresolved references are not
+  // approximated. For internal queries, inspect only residual source so words
+  // such as `Next` remain valid data inside an already extracted entity.
+  if (word("no|not|non|except|excluding|without|बिना|before|after|less|more|over|under|older|and|or|aur|ya|nahi|nahin|mat|sirf|only|us|that|those|next|previous|कल|नहीं|मत|सिर्फ|और|या|उस|पहले|बाद").test(source)) return clarify();
   // Vehicle words establish an LR movement only in this bounded internal
   // count grammar. A bare vehicle/gaadi remains out of scope.
   const vehicleCountLanguage = "(?:(?:kitna|kitne|kitni)\\s+(?:gaadi|gadi)|कितनी\\s+गाड़ी|how\\s+many\\s+vehicles?)";
@@ -123,14 +125,14 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Relative dates depend only on the trusted server clock, in IST.
     const istToday = new Date(now.getTime() + 330 * 60000).toISOString().slice(0, 10);
-    take(word("today|aaj|आज|yesterday|beete kal|बीता कल|this month|is mahine|इस महीने|last month|pichle month|pichhle month|pichhle mahine|पिछले महीने|this year|is saal|इस साल|last year|pichhle saal|पिछले साल"), (m) => {
+    take(word(`today|aaj|आज|yesterday|beete kal|बीता कल|${CURRENT_MONTH_PATTERN}|last month|pichle month|pichhle month|pichhle mahine|पिछले महीने|this year|is saal|इस साल|last year|pichhle saal|पिछले साल`), (m) => {
       const token = m[0].toLowerCase();
       const today = new Date(istToday);
       const year = today.getUTCFullYear(), month = today.getUTCMonth() + 1;
       if (["today", "aaj", "आज"].includes(token)) setRange([istToday, istToday]);
       else if (["yesterday", "beete kal", "बीता कल"].includes(token)) {
         const previous = new Date(today.getTime() - DAY_MS).toISOString().slice(0, 10); setRange([previous, previous]);
-      } else if (["this month", "is mahine", "इस महीने"].includes(token)) setRange(monthRange(year, month));
+      } else if (isCurrentMonthAlias(token)) setRange(monthRange(year, month));
       else if (["last month", "pichle month", "pichhle month", "pichhle mahine", "पिछले महीने"].includes(token)) setRange(monthRange(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1));
       else { const y = ["this year", "is saal", "इस साल"].includes(token) ? year : year - 1; setRange([day(y, 1, 1), day(y, 12, 31)]); }
     });
@@ -524,7 +526,8 @@ export function validateNluInterpretation(
   let semantic: SemanticDate | null = null;
   const setDate = (d: SemanticDate) => { if (semantic) throw new Error("nlu_multiple_dates"); semantic = d; };
   const relatives: Record<string, SemanticDate & { kind: "relative" }> = {};
-  for (const [value, forms] of Object.entries({ today: "today|aaj|आज", yesterday: "yesterday|beete kal|बीता कल", this_month: "this month|is mahine|इस महीने", last_month: "last month|pichhle mahine|पिछले महीने", this_year: "this year|is saal|इस साल", last_year: "last year|pichhle saal|पिछले साल" })) {
+  for (const form of CURRENT_MONTH_ALIASES) relatives[form] = { kind: "relative", value: "this_month" };
+  for (const [value, forms] of Object.entries({ today: "today|aaj|आज", yesterday: "yesterday|beete kal|बीता कल", last_month: "last month|pichhle mahine|पिछले महीने", this_year: "this year|is saal|इस साल", last_year: "last year|pichhle saal|पिछले साल" })) {
     for (const form of forms.split("|")) relatives[form] = { kind: "relative", value: value as Extract<SemanticDate, {kind: "relative"}>["value"] };
   }
   source = source.replace(word(Object.keys(relatives).join("|")), token => { setDate(relatives[token.toLowerCase()]); return "NLUDATE"; });
