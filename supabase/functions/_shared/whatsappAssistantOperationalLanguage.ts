@@ -38,12 +38,18 @@ export function extractInternalEntities(input: string): { source: string; fields
   }
   source = source.replace(token("[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}"), value => { put("vehicleNumber", value.toUpperCase()); return " ".repeat(value.length); });
   source = source.replace(/\b(?:vehicle\s+(\d{4})|(\d{4})\s+(?:gaadi|gadi|vehicle))\b/giu, (whole,a,b) => { put("vehicleNumber",a ?? b); return " ".repeat(whole.length); });
-  // A route immediately followed by vehicle-count language is the concise
-  // station-style grammar. This runs against the original source (before date
-  // masking), so a party route with an intervening date stays unresolved.
-  const station = `([\\p{L}\\p{M}][\\p{L}\\p{M}\\p{N}&/-]*)`;
-  source = source.replace(new RegExp(`(?:^|(?<=\\s))${station}\\s+(?:se|से)\\s+${station}(?=\\s+(?:(?:kitna|kitne|kitni)\\s+(?:gaadi|gadi)|कितनी\\s+गाड़ी))`, "giu"), (whole, a, b) => {
+  // An explicit `station` suffix is the only concise physical-route grammar.
+  // Keep station snapshots separate from Customer Master city identity.
+  const stationName = `([\\p{L}\\p{M}][\\p{L}\\p{M}\\p{N} .&/-]*?)`;
+  source = source.replace(new RegExp(`^\\s*(?:from\\s+)?${stationName}\\s+station\\s+(?:se|से|to)\\s+${stationName}\\s+station(?=\\s|$|[,?!])`, "giu"), (whole, a, b) => {
     put("fromStation", a); put("toStation", b); return " ".repeat(whole.length);
+  });
+  // A bare single-token route is company-location grammar. It is resolved only
+  // against stable directional Customer Master identities with an exact city.
+  // Multi-word references continue through the existing party-route resolver.
+  const station = `([\\p{L}\\p{M}][\\p{L}\\p{M}\\p{N}&/-]*)`;
+  source = source.replace(new RegExp(`^\\s*(?:from\\s+)?${station}\\s+(?:se|से|to)\\s+(?!(?:kitna|kitne|kitni|how|count|gaadi|gadi|lrs?|vehicles?)(?!${boundary}))${station}(?=\\s|$|[,?!])`, "giu"), (whole, a, b) => {
+    put("originCity", a); put("destinationCity", b); return " ".repeat(whole.length);
   });
   // Mask date phrases only in the scan, retaining them verbatim in the source.
   // This allows '<date> <entity> ke ...' without consuming the date as a name.

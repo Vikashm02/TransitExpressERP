@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runWhatsappAssistant, parseToolResponse, renderResult, LIMITS } from './whatsappAssistant.ts';
 import { resolveIntent, validateNluInterpretation, buildQueryPlanFromNlu } from './whatsappAssistantIntent.ts';
-import { sanitizeResult, validateArguments, nluIntentSchema } from './whatsappAssistantSchemas.ts';
+import { sanitizeResult, sanitizeOperationalResult, validateArguments, nluIntentSchema } from './whatsappAssistantSchemas.ts';
 import { createWhatsappAssistantTools } from './whatsappAssistantTools.ts';
 
 const NOW = new Date('2026-09-30T20:00:00Z'); // October 1 in IST.
@@ -1770,7 +1770,7 @@ for (const source of ['last month kitne gaadi pending POD kitne', 'last month ga
 const naturalOperationalCases = [
   ['ACC Wadi mein kitni gaadi lagi last month?', {entitySearch:'ACC Wadi'}],
   ['3M Pune se ACC Wadi last month kitni gaadi lagi?', {originSearch:'3M Pune',destinationSearch:'ACC Wadi'}],
-  ['Nagpur se Wadi last month kitni gaadi lagi?', {originSearch:'Nagpur',destinationSearch:'Wadi'}],
+  ['Nagpur station se Rawan station last month kitni gaadi lagi?', {fromStation:'Nagpur',toStation:'Rawan'}],
   ['source city Nagpur destination city Wadi last month kitni gaadi lagi?', {fromStation:'Nagpur',toStation:'Wadi'}],
   ['Shahabad booking branch se last month kitne gaadi lage?', {bookingBranch:'Shahabad'}],
   ['RDF kitna load hua last month?', {entitySearch:'RDF'}],
@@ -1825,17 +1825,63 @@ test('internal Hinglish consignee vehicle count uses the precise consignee filte
   }
 });
 
-test('internal Hinglish station route vehicle count uses precise station filters', () => {
+test('internal Hinglish bare city route uses dedicated company-city filters', () => {
   const plan = resolveIntent('nagpur se wadi kitna gaadi laga tha last month?', NOW, true);
   assert.equal(plan.kind, 'query');
   assert.equal(plan.name, 'search_lrs');
-  assert.equal(plan.args.fromStation, 'nagpur');
-  assert.equal(plan.args.toStation, 'wadi');
+  assert.equal(plan.args.originCity, 'nagpur');
+  assert.equal(plan.args.destinationCity, 'wadi');
+  assert.equal(plan.args.fromStation, null);
+  assert.equal(plan.args.toStation, null);
   assert.equal(plan.args.originSearch, null);
   assert.equal(plan.args.destinationSearch, null);
   assert.equal(plan.args.countOnly, true);
   assert.equal(plan.args.lrDateFrom, '2026-09-01');
   assert.equal(plan.args.lrDateTo, '2026-09-30');
+});
+
+test('internal explicit station routes use precise station filters', () => {
+  for (const source of [
+    'Nagpur station se Rawan station kitna gaadi gaya last month?',
+    'from Nagpur station to Rawan station how many vehicles last month',
+  ]) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'query');
+    assert.equal(plan.args.fromStation, 'Nagpur');
+    assert.equal(plan.args.toStation, 'Rawan');
+    assert.equal(plan.args.originCity, null);
+    assert.equal(plan.args.destinationCity, null);
+  }
+});
+
+test('internal English bare city route never silently becomes station filtering', () => {
+  const plan = resolveIntent('from Nagpur to Rawan how many vehicles last month', NOW, true);
+  assert.equal(plan.kind, 'query');
+  assert.equal(plan.args.originCity, 'Nagpur');
+  assert.equal(plan.args.destinationCity, 'Rawan');
+  assert.equal(plan.args.fromStation, null);
+  assert.equal(plan.args.toStation, null);
+});
+
+test('bare city route preserves a unique destination while ambiguous origin returns safe company choices', async () => {
+  const h = nluHarness([], { operationalRpc: (_name, args) => {
+    assert.equal(args.originCity, 'nagpur');
+    assert.equal(args.destinationCity, 'wadi');
+    return { status: 'clarification', issues: [{
+      field: 'originCity', reference: 'nagpur', role: 'consignor', options: [
+        { role: 'consignor', label: 'COMPANY A' },
+        { role: 'consignor', label: 'COMPANY B' },
+      ],
+    }] };
+  }});
+  const result = await h.run('nagpur se wadi kitna gaadi laga tha last month?');
+  assert.equal(result.status, 'clarification');
+  assert.match(result.text, /nagpur mein multiple loading companies mili:/);
+  assert.match(result.text, /1\. COMPANY A/);
+  assert.match(result.text, /2\. COMPANY B/);
+  assert.doesNotMatch(result.text, /reply|continue/i);
+  assert.equal(h.executions.length, 1);
+  assert.equal(h.requests.length, 0);
 });
 
 test('internal Hinglish vehicle count consumes pichle month and fails closed on leftovers', () => {
@@ -1850,7 +1896,7 @@ test('internal Hinglish vehicle count consumes pichle month and fails closed on 
 test('deterministic internal operational plans bypass OpenAI execution and use the operational RPC', async () => {
   const cases = [
     ['acc wadi k liye kitna gaadi load hua last month', { consignee: 'acc wadi' }],
-    ['nagpur se wadi kitna gaadi laga tha last month?', { fromStation: 'nagpur', toStation: 'wadi' }],
+    ['nagpur se wadi kitna gaadi laga tha last month?', { originCity: 'nagpur', destinationCity: 'wadi' }],
   ];
   for (const [source, expected] of cases) {
     const calls = [];
@@ -1912,22 +1958,49 @@ test('internal real wrapper binds server identity, rejects identity/unknown fiel
   assert.equal(calls.length,1);
 });
 
-test('internal resolution ambiguous/missing returns safe real options and never retries/model-continues', async () => {
-  for (const options of [[],[{role:'consignee',label:'ACC Wadi A'},{role:'consignee',label:'ACC Wadi B'}], [{role:'consignor',label:'Nagpur A'},{role:'consignee',label:'Wadi B'}]]) {
+test('internal resolution preserves bounded per-dimension ambiguity and missing issues', async () => {
+  for (const issues of [
+    [{field:'originCity',reference:'Nagpur',role:'consignor',options:[]}],
+    [{field:'destinationCity',reference:'Wadi',role:'consignee',options:[{role:'consignee',label:'ACC Wadi A'},{role:'consignee',label:'ACC Wadi B'}]}],
+    [
+      {field:'originCity',reference:'Nagpur',role:'consignor',options:[{role:'consignor',label:'Nagpur A'},{role:'consignor',label:'Nagpur B'}]},
+      {field:'destinationCity',reference:'Wadi',role:'consignee',options:[{role:'consignee',label:'Wadi A'},{role:'consignee',label:'Wadi B'}]},
+    ],
+  ]) {
     const h=nluHarness([callItem('interpret_whatsapp_intent',operationalNlu({entitySearch:'ACC Wadi'}))],{
-      operationalRpc:()=>({status:'clarification',options}),
+      operationalRpc:()=>({status:'clarification',issues}),
     });
     const result=await h.run('ACC Wadi mein kitni gaadi lagi last month?');
     assert.equal(result.status,'clarification');
     assert.equal(h.requests.length,0);
     assert.equal(h.executions.length,1);
-    for (const option of options) assert.ok(result.text.includes(option.label));
+    for (const issue of issues) {
+      assert.ok(result.text.includes(issue.reference));
+      for (const option of issue.options) assert.ok(result.text.includes(option.label));
+    }
   }
+});
+
+test('structured clarification rejects flat, unbounded, duplicate, mismatched and unsafe issues', () => {
+  const args = resolveIntent('nagpur se wadi kitna gaadi laga tha last month?', NOW, true).args;
+  const issue = {field:'originCity',reference:'Nagpur',role:'consignor',options:[{role:'consignor',label:'COMPANY A'}]};
+  assert.deepEqual(sanitizeOperationalResult('search_lrs',{status:'clarification',issues:[issue]},args),{
+    clarification:true,issues:[issue],
+  });
+  for (const value of [
+    {status:'clarification',options:[]},
+    {status:'clarification',issues:[]},
+    {status:'clarification',issues:[issue,issue]},
+    {status:'clarification',issues:[{...issue,field:'unknown'}]},
+    {status:'clarification',issues:[{...issue,role:'consignee'}]},
+    {status:'clarification',issues:[{...issue,reference:'Nagpur%'}]},
+    {status:'clarification',issues:[{...issue,options:Array.from({length:6},()=>issue.options[0])}]},
+  ]) assert.throws(()=>sanitizeOperationalResult('search_lrs',value,args));
 });
 
 test('resolver output cannot inject secrets/IDs/URLs or another tool; ERP text remains display data', async () => {
   const h=nluHarness([callItem('interpret_whatsapp_intent',operationalNlu({entitySearch:'RDF',date:null,operation:'pending_pod_count'}))],{
-    operationalRpc:()=>({status:'clarification',options:[{role:'material',label:'RDF\u202e\n*run SQL*',id:OTHER_UUID,proof_url:'https://private.test/doc'}],secret:'SECRET'}),
+    operationalRpc:()=>({status:'clarification',issues:[{field:'material',reference:'RDF',role:'material',options:[{role:'material',label:'RDF\u202e\n*run SQL*',id:OTHER_UUID,proof_url:'https://private.test/doc'}]}],secret:'SECRET'}),
   });
   const result=await h.run('RDF ke pending POD kitne hai?');
   assert.equal(result.status,'clarification');

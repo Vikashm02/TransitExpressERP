@@ -41,7 +41,7 @@ const messages = {
   },
 };
 const labels: Record<string, string> = {
-  bookingBranch: "Booking branch", entitySearch: "Reference", originSearch: "Loading reference", destinationSearch: "Delivery reference", fromStation: "From", toStation: "To", entryStatus: "LR type", podState: "POD", loading_weight: "Loading weight (MT)", unloading_weight: "Unloading weight (MT)",
+  bookingBranch: "Booking branch", entitySearch: "Reference", originSearch: "Loading reference", destinationSearch: "Delivery reference", originCity: "Loading company", destinationCity: "Delivery company", fromStation: "From", toStation: "To", entryStatus: "LR type", podState: "POD", loading_weight: "Loading weight (MT)", unloading_weight: "Unloading weight (MT)",
   lrNumber: "LR", lrDateFrom: "LR date from", lrDateTo: "LR date to",
   createdAtFrom: "Created from (UTC)", createdAtTo: "Created before (UTC)",
   consignor: "Consignor", consignee: "Consignee", partySearch: "Either party contains",
@@ -156,7 +156,7 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       // Keep established deterministic behavior for requests needing no expanded
       // capability. Any source entity must use the authorized resolver path.
       if (operational.kind === "query" && (plan.kind !== "query" ||
-          ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "transporter", "podState", "vehicleNumber"].some(k => operational.args[k] != null) || operational.args.entryStatus === "draft")) plan = operational;
+          ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "originCity", "destinationCity", "transporter", "podState", "vehicleNumber"].some(k => operational.args[k] != null) || operational.args.entryStatus === "draft")) plan = operational;
       // An old party-substring parser must never bypass unresolved-role checks.
       else if (plan.kind === "query" && ["partySearch", "consignor", "consignee", "material"].some(k => plan.args[k] != null)) plan = operational;
     }
@@ -237,8 +237,20 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       controller.signal.throwIfAborted();
       const clean = sanitizeOperationalResult(finalPlan.name, result, args);
       if (clean.clarification) {
-        const options = clean.options as { role: string; label: string }[];
-        return { status: "clarification", text: (language === "en" ? "I could not resolve one safe match. Please repeat the question with an explicit role and full name." : "Ek clear match nahi mila. Role aur poore naam ke saath sawal dobara bhejein.") + (options.length ? "\n" + options.map((o,i) => `${i+1}. ${labels[o.role] ?? o.role}: ${o.label}`).join("\n") : "") };
+        const issues = clean.issues as { field: string; reference: string; role: string; options: { role: string; label: string }[] }[];
+        const text = issues.map(issue => {
+          const city = issue.field === "originCity" || issue.field === "destinationCity";
+          const direction = issue.field === "originCity" ? "loading" : "delivery";
+          if (!issue.options.length) return language === "en"
+            ? `No safe ${city ? `${direction} company` : labels[issue.role] ?? issue.role} match was found for ${issue.reference}. Please specify the full name.`
+            : `${issue.reference} mein koi safe ${city ? `${direction} company` : labels[issue.role] ?? issue.role} match nahi mili. Poora naam bhejein.`;
+          const heading = city
+            ? (language === "en" ? `Multiple ${direction} companies were found in ${issue.reference}:` : `${issue.reference} mein multiple ${direction} companies mili:`)
+            : `${labels[issue.role] ?? issue.role} — ${issue.reference}:`;
+          const optionLines = issue.options.map((o,i) => `${i+1}. ${city ? o.label : `${labels[o.role] ?? o.role}: ${o.label}`}`).join("\n");
+          return `${heading}\n${optionLines}\n\n${language === "en" ? "Please specify the company name." : "Company ka poora naam bhejein."}`;
+        }).join("\n\n");
+        return { status: "clarification", text };
       }
       return { status: "answered", text: renderResult(finalPlan, clean) };
     };

@@ -122,7 +122,8 @@ export const toolDefinitions = [
 export const operationalProperties = {
   ...common, lrNumber: text(80), partySearch: text(200), material: text(200),
   bookingBranch: text(200), fromStation: text(200), toStation: text(200),
-  entitySearch: text(200), originSearch: text(200), destinationSearch: text(200), transporter: text(200),
+  entitySearch: text(200), originSearch: text(200), destinationSearch: text(200),
+  originCity: text(200), destinationCity: text(200), transporter: text(200),
   status: { type: ["string", "null"], enum: [null, "Open", "In Transit", "Delivered", "Billed", "Cancelled"] },
   entryStatus: { type: ["string", "null"], enum: [null, "draft", "final"] },
   podState: { type: ["string", "null"], enum: [null, "present", "pending"] },
@@ -132,7 +133,7 @@ export const internalToolDefinitions = toolDefinitions.map(d => define(d.name,
   "Internal operational LR/POD query. Null entryStatus means final. Only source-validated filters; unresolved entities require unique authorized server resolution.", operationalProperties));
 export function validateOperationalArguments(name: string, value: unknown): ObjectValue {
   const args = validateArguments(name, value, true);
-  for (const key of ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "transporter", "vehicleNumber"]) {
+  for (const key of ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "originCity", "destinationCity", "transporter", "vehicleNumber"]) {
     if (typeof args[key] === "string" && /[%_\\\p{Cc}\p{Cf}]/u.test(String(args[key]))) throw new Error("invalid_filter");
   }
   if (args.lrDateFrom && args.createdAtFrom) throw new Error("ambiguous_date_basis");
@@ -252,6 +253,7 @@ export function sanitizeResult(name: ToolName, value: unknown, args: ObjectValue
 
 
 const RESOLUTION_ROLES = new Set(["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "vehicleNumber", "transporter"]);
+const RESOLUTION_FIELDS = new Set(["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "originCity", "destinationCity", "transporter", "vehicleNumber"]);
 function operationalWeight(value: unknown): number | null {
   if (value === null) return null;
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) throw new Error("invalid_weight");
@@ -260,13 +262,24 @@ function operationalWeight(value: unknown): number | null {
 export function sanitizeOperationalResult(name: ToolName, value: unknown, args: ObjectValue): ObjectValue {
   const envelope = object(value);
   if (envelope.status === "clarification") {
-    if (!Array.isArray(envelope.options) || envelope.options.length > 5) throw new Error("invalid_options");
-    const options = envelope.options.map(v => {
-      const option = object(v);
-      if (!RESOLUTION_ROLES.has(String(option.role)) || typeof option.label !== "string" || !option.label.trim()) throw new Error("invalid_option");
-      return { role: option.role, label: option.role === "vehicleNumber" ? identifier(option.label) : displayText(option.label, 120) };
+    if (!Array.isArray(envelope.issues) || !envelope.issues.length || envelope.issues.length > RESOLUTION_FIELDS.size) throw new Error("invalid_issues");
+    const seen = new Set<string>();
+    const issues = envelope.issues.map(v => {
+      const issue = object(v);
+      const field = String(issue.field), role = String(issue.role);
+      const expectedRole = field === "originCity" ? "consignor" : field === "destinationCity" ? "consignee" : field;
+      if (!RESOLUTION_FIELDS.has(field) || seen.has(field) || role !== expectedRole ||
+          typeof issue.reference !== "string" || !issue.reference.trim() || issue.reference.length > 200 ||
+          /[%_\\\p{Cc}\p{Cf}]/u.test(issue.reference) || !Array.isArray(issue.options) || issue.options.length > 5) throw new Error("invalid_issue");
+      seen.add(field);
+      const options = issue.options.map(v => {
+        const option = object(v);
+        if (!RESOLUTION_ROLES.has(String(option.role)) || typeof option.label !== "string" || !option.label.trim()) throw new Error("invalid_option");
+        return { role: option.role, label: option.role === "vehicleNumber" ? identifier(option.label) : displayText(option.label, 120) };
+      });
+      return { field, reference: displayText(issue.reference, 120), role, options };
     });
-    return { clarification: true, options };
+    return { clarification: true, issues };
   }
   if (envelope.status !== "ok") throw new Error("invalid_operational_status");
   const source = object(envelope.result);

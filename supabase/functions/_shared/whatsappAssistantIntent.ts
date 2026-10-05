@@ -167,7 +167,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Movement wording is consumed only after the internal LR vehicle-count
     // grammar has established scope. It is never a generic filler word.
-    if (internal && countOnly && hasLr) take(word("load\\s+hua|load\\s+hue|laga\\s+tha|lagi\\s+thi|lage|lagi|laga"), () => {});
+    if (internal && countOnly && hasLr) take(word("load\\s+hua|load\\s+hue|laga\\s+tha|lagi\\s+thi|lage|lagi|laga|gaye|gaya|gayi"), () => {});
     // Words that can change semantics are deliberately NOT in this filler set.
     take(word("lrs?|pods?|एलआर|एल आर|पीओडी|पी ओ डी|please|kripya|कृपया|batao|bataye|बताओ|बताएं|बताएँ|hai|hain|tha|the|है|हैं|थे|था|ke|ka|ki|के|का|की|mein|में|se|से|tak|तक|in|on|from|to|through|for|of|the|me|mujhe|मुझे|vehicle|गाड़ी|वाहन|number|no|नंबर|status|स्टेटस|date|तारीख|total|कुल|all|sab|सभी"), () => {});
     if (internal && countOnly && hasLr) {
