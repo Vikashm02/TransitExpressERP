@@ -1,16 +1,20 @@
 /* eslint-disable */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import FormField from "@/components/ui/FormField";
 import FormSelect from "@/components/ui/FormSelect";
 import FormDatePicker from "@/components/ui/FormDatePicker";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getActiveLrPurchaseOrders, type PurchaseOrderLookup } from "@/components/services/purchaseOrder.service";
+import { getActiveLrPurchaseOrders } from "@/components/services/purchaseOrder.service";
 import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
 import { supabase } from "@/lib/supabase";
 import type { LR } from "./lr.schema";
+import {
+  shouldReconcileCurrentPurchaseOrderLookup,
+  type TaggedPurchaseOrderLookup,
+} from "./poAutoReconciliation";
 
 export default function PurchaseOrderFields({
   lr,
@@ -27,7 +31,7 @@ export default function PurchaseOrderFields({
   onCreateReplacementPo?: (poNumber: string, issueDate: string) => Promise<void>;
   replacementPoSaving?: boolean;
 }) {
-  const [lookup, setLookup] = useState<{ key: string; options: PurchaseOrderLookup[]; failed: boolean; legacyUnresolved?: boolean } | null>(null);
+  const [lookup, setLookup] = useState<TaggedPurchaseOrderLookup | null>(null);
   const lookupKey = `${lr.billingPartyId ?? ""}\u0000${lr.consignorId ?? ""}\u0000${lr.consigneeId ?? ""}\u0000${lr.customer}\u0000${lr.consignor}\u0000${lr.materialId ?? ""}`;
   const hasCustomerText = Boolean(lr.customer && lr.customer.trim());
   const hasConsignorText = Boolean(lr.consignor && lr.consignor.trim());
@@ -38,8 +42,10 @@ export default function PurchaseOrderFields({
   const options = enabled ? currentLookup?.options ?? [] : [];
   const loading = enabled && !currentLookup;
   const failed = enabled && Boolean(currentLookup?.failed);
-  const latest = useRef({ lr, onChange });
-  useEffect(() => { latest.current = { lr, onChange }; }, [lr, onChange]);
+  const currentFormRef = useRef({ lr, onChange, lookupKey, enabled, autoSelect });
+  useLayoutEffect(() => {
+    currentFormRef.current = { lr, onChange, lookupKey, enabled, autoSelect };
+  }, [lr, onChange, lookupKey, enabled, autoSelect]);
   const [changeMode, setChangeMode] = useState(false);
   // Reset changeMode when identities change (so stale selection is not shown)
   const prevIdentitiesRef = useRef(lookupKey);
@@ -73,18 +79,26 @@ export default function PurchaseOrderFields({
         const rows = await getActiveLrPurchaseOrders(billingId, lr.consignor, lr.consigneeId, lr.materialId);
         if (cancelled) return;
         setLookup({ key: lookupKey, options: rows, failed: false });
-        const current = latest.current;
-        if (autoSelect && rows.length === 1 && !current.lr.poNumber && !current.lr.purchaseOrderId) {
-          const po = rows[0];
-          current.onChange({ ...current.lr, purchaseOrderId: po.id, poNumber: po.poNumber, poDate: po.issueDate });
-        }
       } catch {
         if (!cancelled) setLookup({ key: lookupKey, options: [], failed: true });
       }
     }
     void fetchOptions();
     return () => { cancelled = true; };
-  }, [lr.customer, lr.consignor, lr.billingPartyId, lr.consigneeId, lr.materialId, lookupKey, enabled, autoSelect, canResolveLegacy]);
+  }, [lr.customer, lr.consignor, lr.billingPartyId, lr.consigneeId, lr.materialId, lookupKey, enabled, canResolveLegacy]);
+
+  useEffect(() => {
+    const current = currentFormRef.current;
+    if (!shouldReconcileCurrentPurchaseOrderLookup(
+      current.lr,
+      currentLookup,
+      current.lookupKey,
+      current.enabled,
+      current.autoSelect,
+    )) return;
+    const po = currentLookup!.options[0];
+    current.onChange({ ...current.lr, purchaseOrderId: po.id, poNumber: po.poNumber, poDate: po.issueDate });
+  }, [lr, onChange, currentLookup, lookupKey, enabled, autoSelect]);
 
   const hint = readOnly ? undefined : loading ? "Loading active POs..." : failed ? "PO lookup unavailable. Existing PO details are preserved."
     : options.length > 1 ? "Multiple active POs found. Choose the correct PO."

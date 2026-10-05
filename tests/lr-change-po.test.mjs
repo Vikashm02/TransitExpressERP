@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import {
+  shouldAutoReconcileSingleActivePo,
+  shouldReconcileCurrentPurchaseOrderLookup,
+} from '../components/lr/poAutoReconciliation.ts';
 
 const read = (p) => readFileSync(new URL('../'+p, import.meta.url), 'utf8');
 
@@ -13,6 +17,66 @@ const lrService = read('components/services/lr.service.ts');
 const m102 = read('database/migrations/102_po_material_identity.sql');
 const m103 = read('database/migrations/103_po_material_identity_enforcement.sql');
 const m095 = read('database/migrations/095_create_replacement_po_from_lr.sql');
+
+const lr19682Po = {
+  id: 19,
+  poNumber: '6200002939',
+  issueDate: '2026-09-27',
+  billingPartyId: 23,
+  consigneeId: 86,
+  materialId: 183,
+};
+
+test('sole four-condition PO reconciles an unlinked matching draft snapshot', () => {
+  const lr = { purchaseOrderId: null, poNumber: ' 6200002939 ', poDate: '2026-09-27' };
+  assert.equal(shouldAutoReconcileSingleActivePo(lr, [lr19682Po], true), true);
+  const reconciled = { ...lr, purchaseOrderId: lr19682Po.id, poNumber: lr19682Po.poNumber, poDate: lr19682Po.issueDate };
+  assert.deepEqual(reconciled, { purchaseOrderId: 19, poNumber: '6200002939', poDate: '2026-09-27' });
+});
+
+test('sole PO auto-selection preserves blank-snapshot behavior and rejects unsafe reconciliation', () => {
+  const blank = { purchaseOrderId: null, poNumber: '', poDate: '' };
+  assert.equal(shouldAutoReconcileSingleActivePo(blank, [lr19682Po], true), true);
+  assert.equal(shouldAutoReconcileSingleActivePo(
+    { purchaseOrderId: null, poNumber: '6200002939', poDate: '2026-09-27' },
+    [lr19682Po, { ...lr19682Po, id: 20, poNumber: '6200002940' }], true,
+  ), false, 'multiple compatible Active POs remain ambiguous');
+  assert.equal(shouldAutoReconcileSingleActivePo(
+    { purchaseOrderId: null, poNumber: 'OTHER', poDate: '2026-09-27' }, [lr19682Po], true,
+  ), false, 'mismatched PO number cannot reconcile');
+  assert.equal(shouldAutoReconcileSingleActivePo(
+    { purchaseOrderId: null, poNumber: '6200002939', poDate: '2026-09-28' }, [lr19682Po], true,
+  ), false, 'mismatched populated PO date cannot reconcile');
+  assert.equal(shouldAutoReconcileSingleActivePo(
+    { purchaseOrderId: 99, poNumber: '6200002939', poDate: '2026-09-27' }, [lr19682Po], true,
+  ), false, 'an explicit stable PO selection is never overwritten');
+  assert.equal(shouldAutoReconcileSingleActivePo(blank, [lr19682Po], false), false, 'ineligible lookup cannot reconcile');
+});
+
+test('a stale tagged lookup cannot reconcile after identity changes, while the current result can', () => {
+  const identityA = '23\u0000consignor-a\u000086\u0000billing-a\u0000sender-a\u0000183';
+  const identityB = '24\u0000consignor-b\u000087\u0000billing-b\u0000sender-b\u0000184';
+  const poA = { ...lr19682Po, id: 19, poNumber: 'A-PO', issueDate: '2026-09-27' };
+  const poB = { ...lr19682Po, id: 20, poNumber: 'B-PO', issueDate: '2026-09-28' };
+  const lrB = { purchaseOrderId: null, poNumber: 'B-PO', poDate: '2026-09-28' };
+
+  // A completes after the form has rendered B: its tagged result is rejected.
+  assert.equal(shouldReconcileCurrentPurchaseOrderLookup(
+    lrB, { key: identityA, options: [poA], failed: false }, identityB, true, true,
+  ), false);
+  // B completes: only B may reconcile current form state.
+  assert.equal(shouldReconcileCurrentPurchaseOrderLookup(
+    lrB, { key: identityB, options: [poB], failed: false }, identityB, true, true,
+  ), true);
+});
+
+test('an in-flight tagged lookup cannot overwrite a manual stable PO selection', () => {
+  const key = '23\u0000consignor\u000086\u0000billing\u0000sender\u0000183';
+  assert.equal(shouldReconcileCurrentPurchaseOrderLookup(
+    { purchaseOrderId: 99, poNumber: 'MANUAL', poDate: '2026-09-01' },
+    { key, options: [lr19682Po], failed: false }, key, true, true,
+  ), false);
+});
 
 // 1. No new migration remains (106 removed)
 test('no new migration/RPC remains for Change PO', () => {
