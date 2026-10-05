@@ -1,6 +1,6 @@
 import { externalDefinition, validateExternalArguments, sanitizeExternalResult, type WhatsappExternalAssistantTools } from "./whatsappExternalAssistantTools.ts";
 import type { WhatsappAssistantTools } from "./whatsappAssistantTools.ts";
-import { displayText, object, sanitizeResult, sanitizeOperationalResult, internalToolDefinitions, validateOperationalArguments, toolDefinitions, validateArguments, type ObjectValue, MODELS } from "./whatsappAssistantSchemas.ts";
+import { displayText, object, sanitizeResult, sanitizeOperationalResult, internalToolDefinitions, validateOperationalArguments, validateStoredOperationalArguments, toolDefinitions, validateArguments, type ObjectValue, MODELS } from "./whatsappAssistantSchemas.ts";
 import { detectLanguage, matchesPlan, matchesOperationalPlan, resolveIntent, type QueryPlan, interpretIntentNLU, validateNluInterpretation, buildQueryPlanFromNlu } from "./whatsappAssistantIntent.ts";
 
 export const LIMITS = Object.freeze({ input: 2000, responseBytes: 65536, outputTokens: 1200, toolExecutions: 1, deadlineMs: 30000, reply: 3500 });
@@ -195,7 +195,7 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
         }
         if (pending.status === "ok" && pending.continued === true && typeof pending.operation === "string") {
           const continuedName = pending.operation as QueryPlan["name"];
-          const args = validateOperationalArguments(continuedName, object(pending.filters));
+          const args = validateStoredOperationalArguments(continuedName, pending.filters);
           const continuedPlan: QueryPlan = { kind: "query", name: continuedName, args, language, operational: true };
           const clean = sanitizeOperationalResult(continuedPlan.name, pending, args);
           return { status: "answered", text: renderResult(continuedPlan, clean) };

@@ -143,6 +143,19 @@ export function validateOperationalArguments(name: string, value: unknown): Obje
   if (args.podState === "pending" && args.status === "Cancelled") throw new Error("invalid_pending_status");
   return args;
 }
+export function validateStoredOperationalArguments(name: string, value: unknown): ObjectValue {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_object");
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) throw new Error("invalid_object");
+  const stored = value as ObjectValue;
+  if (Object.keys(stored).some((key) => !Object.hasOwn(operationalProperties, key))) throw new Error("invalid_keys");
+  const dense: ObjectValue = { ...stored };
+  for (const [key, rawSchema] of Object.entries(operationalProperties)) {
+    const schema = rawSchema as { type: string | string[] };
+    if (!Object.hasOwn(dense, key) && Array.isArray(schema.type) && schema.type.includes("null")) dense[key] = null;
+  }
+  return validateOperationalArguments(name, dense);
+}
 export function object(value: unknown): ObjectValue {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid_object");
   return value as ObjectValue;

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runWhatsappAssistant, parseToolResponse, renderResult, LIMITS } from './whatsappAssistant.ts';
 import { resolveIntent, validateNluInterpretation, buildQueryPlanFromNlu } from './whatsappAssistantIntent.ts';
-import { sanitizeResult, sanitizeOperationalResult, validateArguments, nluIntentSchema } from './whatsappAssistantSchemas.ts';
+import { sanitizeResult, sanitizeOperationalResult, validateArguments, validateStoredOperationalArguments, nluIntentSchema } from './whatsappAssistantSchemas.ts';
 import { createWhatsappAssistantTools } from './whatsappAssistantTools.ts';
 
 const NOW = new Date('2026-09-30T20:00:00Z'); // October 1 in IST.
@@ -25,6 +25,10 @@ function listResult(args, rows = [], total = rows.length) {
     pagination: { count_only: args.countOnly, limit: args.limit, offset: args.offset, returned_count: rows.length, has_more: total > args.offset + args.limit },
   };
 }
+const sparseCityFilters = (limit = 20) => ({
+  lrDateFrom: '2026-09-01', lrDateTo: '2026-09-30', countOnly: true,
+  limit, offset: 0, originCity: 'nagpur', destinationCity: 'wadi',
+});
 function harness(options = {}) {
   const requests = [], executions = [];
   const tools = Object.fromEntries(['searchLrs', 'searchPendingPods', 'getLrDetail', 'getPodDetail'].map((name) => [name, async (args, signal) => {
@@ -383,11 +387,12 @@ test('number and full displayed name can continue only a server-owned pending pl
   assert.equal(original.kind, 'query');
   for (const selection of ['2', 'M/S SUSBDE LOC NAGPUR PVT LTD']) {
     const selections = [];
+    const stored = sparseCityFilters();
     const tools = {
       continuePending: async value => {
         selections.push(value);
-        return { status: 'ok', continued: true, operation: original.name, filters: original.args,
-          result: listResult(original.args, [], 0) };
+        return { status: 'ok', continued: true, operation: original.name, filters: stored,
+          result: listResult(stored, [], 0) };
       },
       operationalQuery: async () => { throw new Error('must not begin a new query'); },
     };
@@ -398,6 +403,66 @@ test('number and full displayed name can continue only a server-owned pending pl
     assert.deepEqual(selections, [selection]);
     assert.equal(h.requests.length, 0);
   }
+});
+
+test('stored continuation filters restore only nullable fields and retain strict validation', () => {
+  const stored = sparseCityFilters();
+  assert.deepEqual(validateStoredOperationalArguments('search_lrs', stored), stored);
+  for (const required of ['countOnly', 'limit', 'offset']) {
+    const invalid = { ...stored };
+    delete invalid[required];
+    assert.throws(() => validateStoredOperationalArguments('search_lrs', invalid), { message: 'invalid_keys' });
+  }
+  for (const invalid of [
+    { ...stored, resolvedOriginCustomerId: 19 },
+    { ...stored, limit: '20' },
+    { ...stored, limit: 21 },
+    { ...stored, lrDateFrom: '2026-09-31' },
+    { ...stored, createdAtFrom: '2026-09-01T00:00:00Z' },
+    { ...stored, status: 'Unknown' },
+    { ...stored, originCity: 'nag%' },
+  ]) assert.throws(() => validateStoredOperationalArguments('search_lrs', invalid));
+  for (const invalid of [null, [], new Date(), 'filters']) {
+    assert.throws(() => validateStoredOperationalArguments('search_lrs', invalid), { message: 'invalid_object' });
+  }
+});
+
+test('conversation wrappers preserve the real sparse M112 filters across two messages', async () => {
+  const calls = [];
+  let stored;
+  const admin = { rpc: (name, args) => ({
+    abortSignal(signal) { this.signal = signal; return this; },
+    then(resolve, reject) {
+      calls.push({ name, args, signal: this.signal });
+      if (name === 'whatsapp_internal_operational_begin') {
+        stored = args.p_filters;
+        return Promise.resolve({ data: { status: 'clarification', continuation_ready: true, issues: [{
+          field: 'originCity', reference: 'nagpur', role: 'consignor',
+          options: [{ role: 'consignor', label: 'M/S SUSBDE LOC NAGPUR PVT LTD' }],
+        }] }, error: null }).then(resolve, reject);
+      }
+      assert.equal(name, 'whatsapp_internal_operational_continue');
+      return Promise.resolve({ data: { status: 'ok', continued: true, operation: 'search_lrs',
+        filters: stored, result: listResult(stored, [], 0) }, error: null }).then(resolve, reject);
+    },
+  }) };
+  const env = (key) => ({ WHATSAPP_ASSISTANT_ENABLED: 'true', WHATSAPP_NLU_ENABLED: 'true', OPENAI_API_KEY: 'FAKE_TEST_KEY' })[key];
+  let providerCalls = 0;
+  const fetch = async () => { providerCalls++; throw new Error('must not call provider'); };
+  const first = await runWhatsappAssistant('nagpur se wadi kitna gaadi laga tha last month?', {
+    tools: createWhatsappAssistantTools(admin, UUID, { senderPhone: '+919876543210', eventId: '65' }), env, fetch, now: () => NOW,
+  });
+  assert.equal(first.status, 'clarification');
+  assert.deepEqual(stored, sparseCityFilters(10));
+  const second = await runWhatsappAssistant('1', {
+    tools: createWhatsappAssistantTools(admin, UUID, { senderPhone: '+919876543210', eventId: '66' }), env, fetch, now: () => NOW,
+  });
+  assert.equal(second.status, 'answered');
+  assert.match(second.text, /Total: 0/);
+  assert.equal(providerCalls, 0);
+  assert.deepEqual(calls.map((call) => call.name), [
+    'whatsapp_internal_operational_begin', 'whatsapp_internal_operational_continue',
+  ]);
 });
 
 test('bare selection continuation is bounded by the absolute assistant deadline', async (t) => {
@@ -427,15 +492,9 @@ test('bare selection continuation is bounded by the absolute assistant deadline'
   assert.equal(continuationCalls, 1);
   assert.equal(operationalCalls, 0);
   assert.equal(h.requests.length, 0);
-  finish({ status: 'ok', continued: true, operation: 'search_lrs', filters: {
-    lrDateFrom: null, lrDateTo: null, createdAtFrom: null, createdAtTo: null,
-    consignor: null, consignee: null, partySearch: null, vehicleNumber: null,
-    material: null, bookingBranch: null, fromStation: null, toStation: null,
-    entitySearch: null, originSearch: null, destinationSearch: null,
-    originCity: null, destinationCity: null, transporter: null, status: null,
-    entryStatus: 'final', podState: null, minPendingDays: null,
-    lrNumber: null, countOnly: true, limit: 20, offset: 0,
-  }, result: listResult({ countOnly: true, limit: 20, offset: 0 }, [], 0) });
+  const stored = sparseCityFilters();
+  finish({ status: 'ok', continued: true, operation: 'search_lrs', filters: stored,
+    result: listResult(stored, [], 0) });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(operationalCalls, 0);
   assert.equal(h.requests.length, 0);
