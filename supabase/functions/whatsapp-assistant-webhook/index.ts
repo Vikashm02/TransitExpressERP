@@ -139,7 +139,10 @@ async function processInboundMessage(admin: SupabaseClient, message: InboundMess
     if (!registered) return;
     try {
       const result = await (dependencies.assistant ?? runWhatsappAssistant)(text, {
-        tools: createWhatsappAssistantTools(admin, linkedUser),
+        tools: createWhatsappAssistantTools(admin, linkedUser, {
+          senderPhone,
+          eventId: trustedInternalEventId(inserted.id),
+        }),
         env: dependencies.env,
         fetch: dependencies.fetch,
       });
@@ -150,6 +153,12 @@ async function processInboundMessage(admin: SupabaseClient, message: InboundMess
   });
   dependencies.waitUntil(work);
   registered = true;
+}
+
+function trustedInternalEventId(value: unknown): string {
+  const normalized = String(value);
+  if (!/^[1-9][0-9]*$/.test(normalized)) throw new Error("Invalid internal event identity.");
+  return normalized;
 }
 
 

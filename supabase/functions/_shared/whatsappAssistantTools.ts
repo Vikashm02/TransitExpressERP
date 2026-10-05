@@ -28,16 +28,34 @@ type SharedFilters = {
 
 export type WhatsappAssistantTools = ReturnType<typeof createWhatsappAssistantTools>;
 
-export function createWhatsappAssistantTools(admin: SupabaseClient, appUserId: string) {
+export type WhatsappAssistantConversation = Readonly<{ senderPhone: string; eventId: string }>;
+
+export function createWhatsappAssistantTools(admin: SupabaseClient, appUserId: string, conversation?: WhatsappAssistantConversation) {
   if (!UUID.test(appUserId)) throw new Error("Invalid resolved WhatsApp ERP identity.");
+  if (conversation && (!/^\+[1-9][0-9]{7,14}$/.test(conversation.senderPhone) || !/^[1-9][0-9]*$/.test(conversation.eventId))) {
+    throw new Error("Invalid trusted WhatsApp conversation identity.");
+  }
 
   return Object.freeze({
     // One fixed INTERNAL RPC includes permission checks, entity resolution and
     // the answer query. No resolver retry, fallback or model-controlled identity.
     operationalQuery: async (name: ToolName, input: ObjectValue, signal?: AbortSignal): Promise<JsonObject> => {
       const args = validateOperationalArguments(name, input);
-      return invoke(admin, "whatsapp_internal_operational_query", {
-        p_app_user_id: appUserId, p_operation: name, p_filters: args,
+      return conversation
+        ? invoke(admin, "whatsapp_internal_operational_begin", {
+          p_app_user_id: appUserId, p_sender_phone_e164: conversation.senderPhone,
+          p_event_id: conversation.eventId, p_operation: name, p_filters: args,
+        }, signal)
+        : invoke(admin, "whatsapp_internal_operational_query", {
+          p_app_user_id: appUserId, p_operation: name, p_filters: args,
+        }, signal);
+    },
+    continuePending: async (selection: string, signal?: AbortSignal): Promise<JsonObject> => {
+      if (!conversation) return { status: "no_pending" };
+      const safeSelection = requiredText(selection, 200, "Pending selection");
+      return invoke(admin, "whatsapp_internal_operational_continue", {
+        p_app_user_id: appUserId, p_sender_phone_e164: conversation.senderPhone,
+        p_event_id: conversation.eventId, p_selection: safeSelection,
       }, signal);
     },
     searchLrs: async (input: SharedFilters & {

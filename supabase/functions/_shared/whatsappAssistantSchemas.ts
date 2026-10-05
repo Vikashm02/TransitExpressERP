@@ -279,7 +279,8 @@ export function sanitizeOperationalResult(name: ToolName, value: unknown, args: 
       });
       return { field, reference: displayText(issue.reference, 120), role, options };
     });
-    return { clarification: true, issues };
+    if (envelope.continuation_ready !== undefined && typeof envelope.continuation_ready !== "boolean") throw new Error("invalid_continuation_state");
+    return envelope.continuation_ready === true ? { clarification: true, issues, continuation_ready: true } : { clarification: true, issues };
   }
   if (envelope.status !== "ok") throw new Error("invalid_operational_status");
   const source = object(envelope.result);

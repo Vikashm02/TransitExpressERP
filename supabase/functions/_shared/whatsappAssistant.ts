@@ -89,6 +89,25 @@ export function renderResult(plan: QueryPlan, data: ObjectValue): string {
   if (lines.join("\n").length > LIMITS.reply) throw new Error("invalid_render_size");
   return lines.join("\n");
 }
+function renderOperationalClarification(clean: ObjectValue, language: QueryPlan["language"]): string {
+  const issues = clean.issues as { field: string; reference: string; role: string; options: { role: string; label: string }[] }[];
+  const canContinue = clean.continuation_ready === true;
+  return issues.map(issue => {
+    const city = issue.field === "originCity" || issue.field === "destinationCity";
+    const direction = issue.field === "originCity" ? "loading" : "delivery";
+    if (!issue.options.length) return language === "en"
+      ? `No safe ${city ? `${direction} company` : labels[issue.role] ?? issue.role} match was found for ${issue.reference}. Please specify the full name.`
+      : `${issue.reference} mein koi safe ${city ? `${direction} company` : labels[issue.role] ?? issue.role} match nahi mili. Poora naam bhejein.`;
+    const heading = city
+      ? (language === "en" ? `Multiple ${direction} companies were found in ${issue.reference}:` : `${issue.reference} mein multiple ${direction} companies mili:`)
+      : `${labels[issue.role] ?? issue.role} — ${issue.reference}:`;
+    const optionLines = issue.options.map((o,i) => `${i+1}. ${city ? o.label : `${labels[o.role] ?? o.role}: ${o.label}`}`).join("\n");
+    const instruction = canContinue
+      ? (language === "en" ? "Reply with the option number or full company name." : "Option number ya company ka poora naam reply karein.")
+      : (language === "en" ? "Please specify the company name in a new full question." : "Company ka poora naam poore naye sawal mein bhejein.");
+    return `${heading}\n${optionLines}\n\n${instruction}`;
+  }).join("\n\n");
+}
 async function readBounded(response: Response): Promise<unknown> {
   if (!response.ok || !response.body) {
     await response.body?.cancel();
@@ -159,6 +178,27 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
           ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "originCity", "destinationCity", "transporter", "podState", "vehicleNumber"].some(k => operational.args[k] != null) || operational.args.entryStatus === "draft")) plan = operational;
       // An old party-substring parser must never bypass unresolved-role checks.
       else if (plan.kind === "query" && ["partySearch", "consignor", "consignee", "material"].some(k => plan.args[k] != null)) plan = operational;
+    }
+
+    // A bounded server-owned continuation is consulted only when this message
+    // is not itself a complete query. Bare replies never invent local context.
+    if (!external && plan.kind !== "query" && "continuePending" in dependencies.tools) {
+      const pending = await dependencies.tools.continuePending(text, controller.signal);
+      if (pending.status === "cancelled") return { status: "clarification", text: language === "en" ? "Pending company choice cancelled." : "Pending company choice cancel ho gayi." };
+      if (pending.status !== "no_pending") {
+        if (pending.status === "clarification") {
+          const clean = sanitizeOperationalResult("search_lrs", pending, { countOnly: true, limit: 1, offset: 0 });
+          return { status: "clarification", text: renderOperationalClarification(clean, language) };
+        }
+        if (pending.status === "ok" && pending.continued === true && typeof pending.operation === "string") {
+          const continuedName = pending.operation as QueryPlan["name"];
+          const args = validateOperationalArguments(continuedName, object(pending.filters));
+          const continuedPlan: QueryPlan = { kind: "query", name: continuedName, args, language, operational: true };
+          const clean = sanitizeOperationalResult(continuedPlan.name, pending, args);
+          return { status: "answered", text: renderResult(continuedPlan, clean) };
+        }
+        throw new Error("invalid_pending_response");
+      }
     }
 
     const nluEnabled = env("WHATSAPP_NLU_ENABLED") === "true" && !external;
@@ -237,20 +277,7 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       controller.signal.throwIfAborted();
       const clean = sanitizeOperationalResult(finalPlan.name, result, args);
       if (clean.clarification) {
-        const issues = clean.issues as { field: string; reference: string; role: string; options: { role: string; label: string }[] }[];
-        const text = issues.map(issue => {
-          const city = issue.field === "originCity" || issue.field === "destinationCity";
-          const direction = issue.field === "originCity" ? "loading" : "delivery";
-          if (!issue.options.length) return language === "en"
-            ? `No safe ${city ? `${direction} company` : labels[issue.role] ?? issue.role} match was found for ${issue.reference}. Please specify the full name.`
-            : `${issue.reference} mein koi safe ${city ? `${direction} company` : labels[issue.role] ?? issue.role} match nahi mili. Poora naam bhejein.`;
-          const heading = city
-            ? (language === "en" ? `Multiple ${direction} companies were found in ${issue.reference}:` : `${issue.reference} mein multiple ${direction} companies mili:`)
-            : `${labels[issue.role] ?? issue.role} — ${issue.reference}:`;
-          const optionLines = issue.options.map((o,i) => `${i+1}. ${city ? o.label : `${labels[o.role] ?? o.role}: ${o.label}`}`).join("\n");
-          return `${heading}\n${optionLines}\n\n${language === "en" ? "Please specify the company name." : "Company ka poora naam bhejein."}`;
-        }).join("\n\n");
-        return { status: "clarification", text };
+        return { status: "clarification", text: renderOperationalClarification(clean, language) };
       }
       return { status: "answered", text: renderResult(finalPlan, clean) };
     };

@@ -358,6 +358,69 @@ test('real wrappers bind ERP identity and pass AbortSignal separately to every f
   assert.equal(calls.length, 4);
 });
 
+test('trusted conversation wrapper binds begin and continuation RPCs to user, phone and event', async () => {
+  const calls = [];
+  const admin = { rpc: (name, args) => ({
+    then(resolve, reject) { calls.push({ name, args }); return Promise.resolve({ data: { status: 'no_pending' }, error: null }).then(resolve, reject); },
+  }) };
+  const tools = createWhatsappAssistantTools(admin, UUID, { senderPhone: '+919876543210', eventId: '41' });
+  const plan = resolveIntent('nagpur se wadi kitna gaadi laga tha last month?', NOW, true);
+  assert.equal(plan.kind, 'query');
+  await tools.operationalQuery(plan.name, plan.args);
+  await tools.continuePending('2');
+  assert.deepEqual(calls.map(c => c.name), ['whatsapp_internal_operational_begin', 'whatsapp_internal_operational_continue']);
+  for (const call of calls) {
+    assert.equal(call.args.p_app_user_id, UUID);
+    assert.equal(call.args.p_sender_phone_e164, '+919876543210');
+    assert.equal(call.args.p_event_id, '41');
+  }
+  assert.equal(calls[1].args.p_selection, '2');
+  assert.throws(() => createWhatsappAssistantTools(admin, UUID, { senderPhone: '+919876543210', eventId: '0' }));
+});
+
+test('number and full displayed name can continue only a server-owned pending plan', async () => {
+  const original = resolveIntent('nagpur se wadi kitna gaadi laga tha last month?', NOW, true);
+  assert.equal(original.kind, 'query');
+  for (const selection of ['2', 'M/S SUSBDE LOC NAGPUR PVT LTD']) {
+    const selections = [];
+    const tools = {
+      continuePending: async value => {
+        selections.push(value);
+        return { status: 'ok', continued: true, operation: original.name, filters: original.args,
+          result: listResult(original.args, [], 0) };
+      },
+      operationalQuery: async () => { throw new Error('must not begin a new query'); },
+    };
+    const h = harness({ tools });
+    const result = await h.run(selection);
+    assert.equal(result.status, 'answered');
+    assert.deepEqual(selections, [selection]);
+  }
+});
+
+test('invalid, expired, replayed or absent pending replies execute no operational query', async () => {
+  for (const pending of [
+    { status: 'no_pending' },
+    { status: 'clarification', continuation_ready: true, issues: [{ field: 'originCity', reference: 'Nagpur', role: 'consignor', options: [{ role: 'consignor', label: 'A' }] }] },
+  ]) {
+    let executions = 0;
+    const h = harness({ tools: {
+      continuePending: async () => pending,
+      operationalQuery: async () => { executions++; throw new Error('must not execute'); },
+    } });
+    const result = await h.run('99');
+    assert.ok(['clarification', 'out_of_scope'].includes(result.status));
+    assert.equal(executions, 0);
+    if (pending.status === 'clarification') assert.match(result.text, /option number|Option number/i);
+  }
+});
+
+test('numbered continuation is advertised only after durable state reports ready', () => {
+  const base = { status: 'clarification', issues: [{ field: 'originCity', reference: 'Nagpur', role: 'consignor', options: [{ role: 'consignor', label: 'A' }] }] };
+  assert.equal(sanitizeOperationalResult('search_lrs', base, {}).continuation_ready, undefined);
+  assert.equal(sanitizeOperationalResult('search_lrs', { ...base, continuation_ready: true }, {}).continuation_ready, true);
+});
+
 test('real wrapper stops before an already-aborted RPC', async () => {
   let calls = 0;
   const tools = createWhatsappAssistantTools({ rpc: () => { calls++; throw new Error('must not run'); } }, UUID);
