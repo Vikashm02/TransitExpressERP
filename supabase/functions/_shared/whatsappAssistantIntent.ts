@@ -3,7 +3,10 @@ import { CURRENT_MONTH_ALIASES, LAST_MONTH_ALIASES, RELATIVE_MONTH_PHRASE_PATTER
 import { toolDefinitions, internalToolDefinitions, validateOperationalArguments, validateArguments, type ObjectValue, type ToolName, type SemanticOp, type SemanticDate, type NluInterpretation, nluIntentSchema, MODELS, object } from "./whatsappAssistantSchemas.ts";
 
 export type Language = "en" | "hi" | "hinglish";
-export type QueryPlan = { kind: "query"; name: ToolName; args: ObjectValue; language: Language; operational?: true };
+export type PodDetailField = "unloading_weight" | "pod_date" | "unloading_date" | "pod_present" | "proof_present" | "full";
+// Presentation-only metadata. It is deliberately outside `args`, whose
+// strict schema is the complete RPC contract.
+export type QueryPlan = { kind: "query"; name: ToolName; args: ObjectValue; language: Language; operational?: true; podDetailField?: PodDetailField };
 export type Intent = QueryPlan | { kind: "clarification" | "out_of_scope"; language: Language; reason: "year" | "filters" | "party_role" };
 const MONTHS = [
   ["january", "jan", "जनवरी"], ["february", "feb", "फरवरी", "फ़रवरी"],
@@ -46,11 +49,11 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
   if (internal) {
     // An exact LR plus a bounded POD field question is a record lookup, not an
     // unlabelled entity search. Resolve it before generic entity extraction.
-    const podDetailLr = explicitPodDetailLr(source);
-    if (podDetailLr) {
-      const complete = completeArguments("get_pod_detail", { lrNumber: podDetailLr, countOnly: false, limit: 10, offset: 0 }, true);
+    const podDetail = explicitPodDetailLr(source);
+    if (podDetail) {
+      const complete = completeArguments("get_pod_detail", { lrNumber: podDetail.lrNumber, countOnly: false, limit: 10, offset: 0 }, true);
       validateOperationalArguments("get_pod_detail", complete);
-      return { kind: "query", name: "get_pod_detail", args: complete, language, operational: true };
+      return { kind: "query", name: "get_pod_detail", args: complete, language, operational: true, podDetailField: podDetail.field };
     }
     // Only complete, reviewed POD-pending forms rewrite their local negation
     // into the existing pending operation. All other negated input still fails
@@ -253,27 +256,28 @@ function normalizePendingPodLanguage(source: string): string {
  * residual-token check prevents this convenience path from accepting extra
  * qualifiers, PII, file/URL requests, or a second task.
  */
-function explicitPodDetailLr(source: string): string | null {
+function explicitPodDetailLr(source: string): { lrNumber: string; field: PodDetailField } | null {
   const lrPattern = /(?<![\p{L}\p{M}\p{N}_])lr\s*([0-9]+)(?![-\p{L}\p{M}\p{N}_])/giu;
   const lrMatches = [...source.matchAll(lrPattern)];
   if (lrMatches.length !== 1) return null;
 
   let residual = source.replace(lrPattern, " ");
-  const fields = [
-    "unloading\\s+weight",
-    "unloading\\s+date",
-    "pods?\\s+date",
-    "pods?\\s+proof",
-    "pods?\\s+bana",
-    "(?:does\\s+)?have\\s+pods?",
+  const fields: { field: PodDetailField; pattern: string }[] = [
+    { field: "unloading_weight", pattern: "unloading\\s+weight" },
+    { field: "unloading_date", pattern: "unloading\\s+date" },
+    { field: "pod_date", pattern: "pods?\\s+date" },
+    { field: "proof_present", pattern: "pods?\\s+proof" },
+    { field: "pod_present", pattern: "pods?\\s+bana" },
+    { field: "pod_present", pattern: "(?:does\\s+)?have\\s+pods?" },
+    { field: "full", pattern: "(?:full\\s+)?pods?\\s+details?" },
   ];
-  const found = fields.filter((field) => word(field).test(residual));
+  const found = fields.filter(({ pattern }) => word(pattern).test(residual));
   if (found.length !== 1) return null;
-  residual = residual.replace(word(found[0]), " ");
+  residual = residual.replace(word(found[0].pattern), " ");
   // These are grammatical wrappers for the reviewed English/Roman-Hinglish
   // forms. Anything else is intentionally left behind and rejected.
-  residual = residual.replace(word("ye|this|lr|ka|ki|ke|kya|kitna|kitni|kitne|tha|thi|hai|hain|what|is|the|of|does|do|has|available|for|was|were"), " ");
-  return residual.replace(/[\s?,.:!?]/g, "") ? null : `LR${lrMatches[0][1]}`;
+  residual = residual.replace(word("ye|this|lr|ka|ki|ke|kya|kitna|kitni|kitne|tha|thi|hai|hain|what|is|the|of|does|do|has|available|for|was|were|show|batao|full"), " ");
+  return residual.replace(/[\s?,.:!?]/g, "") ? null : { lrNumber: `LR${lrMatches[0][1]}`, field: found[0].field };
 }
 
 function cleanEntity(value: string): string {

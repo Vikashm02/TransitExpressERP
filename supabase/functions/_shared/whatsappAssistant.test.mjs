@@ -132,24 +132,88 @@ test('POD-1 bounded pending language selects the existing pending-POD operation'
 });
 
 test('POD-1 exact LR field questions stay record identity lookups', () => {
-  for (const source of [
-    'LR19664 ye LR ka unloading weight kitna tha',
-    'LR19664 ka unloading weight kya hai',
-    'LR19664 unloading weight',
-    'what is unloading weight of LR19664',
-    'LR19664 ka POD date kya hai',
-    'LR19664 ka unloading date kya hai',
-    'LR19664 ka POD bana hai kya',
-    'does LR19664 have POD',
-    'LR19664 ka POD proof hai kya',
-    'is POD proof available for LR19664',
+  for (const [source, field] of [
+    ['LR19664 ye LR ka unloading weight kitna tha', 'unloading_weight'],
+    ['LR19664 ka unloading weight kya hai', 'unloading_weight'],
+    ['LR19664 unloading weight', 'unloading_weight'],
+    ['what is unloading weight of LR19664', 'unloading_weight'],
+    ['LR19664 ka POD date kya hai', 'pod_date'],
+    ['what is the POD date of LR19664', 'pod_date'],
+    ['LR19664 ka unloading date kya hai', 'unloading_date'],
+    ['what is the unloading date of LR19664', 'unloading_date'],
+    ['LR19664 ka POD bana hai kya', 'pod_present'],
+    ['does LR19664 have POD', 'pod_present'],
+    ['LR19664 ka POD proof hai kya', 'proof_present'],
+    ['is POD proof available for LR19664', 'proof_present'],
+    ['LR19664 full POD detail', 'full'],
+    ['LR19664 ka full POD detail batao', 'full'],
+    ['show POD details for LR19664', 'full'],
   ]) {
     const plan = resolveIntent(source, NOW, true);
     assert.equal(plan.kind, 'query', source);
     assert.equal(plan.name, 'get_pod_detail', source);
     assert.equal(plan.args.lrNumber, 'LR19664', source);
     assert.equal(plan.args.entitySearch, null, source);
+    assert.equal(plan.podDetailField, field, source);
+    assert.equal(Object.hasOwn(plan.args, 'podDetailField'), false, source);
   }
+});
+
+test('POD-1 field selectors render only sanitized requested evidence', async () => {
+  const result = (pod) => ({ status: 'ok', result: {
+    found: true, lr: detailRow('LR19664'), pod_present: true,
+    pod: { pod_date: '2026-10-03', unloading_date: '2026-10-02', unloading_weight: 23.2, proof_present: true, proof_url: 'PRIVATE_URL', ...pod },
+  }});
+  for (const [source, expected] of [
+    ['LR19664 ka unloading weight kya hai', 'LR19664 ka unloading weight 23.2 MT tha.'],
+    ['LR19664 ka POD date kya hai', 'LR19664 ka POD date 2026-10-03 hai.'],
+    ['LR19664 ka unloading date kya hai', 'LR19664 ka unloading date 2026-10-02 hai.'],
+    ['LR19664 ka POD bana hai kya', 'Haan, LR19664 ka POD available hai.'],
+    ['LR19664 ka POD proof hai kya', 'Haan, LR19664 ka POD proof available hai.'],
+  ]) {
+    const h = harness({ operationalRpc: (name, args) => {
+      assert.equal(name, 'get_pod_detail', source);
+      assert.equal(Object.hasOwn(args, 'podDetailField'), false, source);
+      return result({});
+    }});
+    const answer = await h.run(source);
+    assert.equal(answer.status, 'answered', source);
+    assert.equal(answer.text, expected, source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+    assert.ok(!answer.text.includes('PRIVATE_URL'), source);
+  }
+});
+
+test('POD-1 field selectors preserve null, absent POD and explicit full-detail behavior', async () => {
+  const run = async (source, result) => {
+    const h = harness({ operationalRpc: () => ({ status: 'ok', result }) });
+    const answer = await h.run(source);
+    assert.equal(h.executions.length, 1, source);
+    return answer;
+  };
+  assert.equal((await run('LR19664 ka unloading weight kya hai', {
+    found: true, lr: detailRow('LR19664'), pod_present: true,
+    pod: { pod_date: null, unloading_date: null, unloading_weight: null, proof_present: false },
+  })).text, 'LR19664 ka unloading weight recorded nahi hai.');
+  assert.equal((await run('LR19664 ka POD date kya hai', {
+    found: true, lr: detailRow('LR19664'), pod_present: true,
+    pod: { pod_date: null, unloading_date: null, unloading_weight: 23.2, proof_present: false },
+  })).text, 'LR19664 ka POD date recorded nahi hai.');
+  assert.equal((await run('LR19664 ka POD proof hai kya', {
+    found: true, lr: detailRow('LR19664'), pod_present: true,
+    pod: { pod_date: null, unloading_date: null, unloading_weight: 23.2, proof_present: false },
+  })).text, 'Nahi, LR19664 ka POD proof available nahi hai.');
+  assert.equal((await run('LR19664 ka POD date kya hai', {
+    found: true, lr: detailRow('LR19664'), pod_present: false, pod: null,
+  })).text, 'Nahi, LR19664 ka POD abhi available nahi hai.');
+  const full = await run('LR19664 full POD detail', {
+    found: true, lr: detailRow('LR19664'), pod_present: true,
+    pod: { pod_date: '2026-10-03', unloading_date: '2026-10-02', unloading_weight: 23.2, proof_present: true, proof_url: 'PRIVATE_URL' },
+  });
+  assert.match(full.text, /POD date: 2026-10-03/);
+  assert.match(full.text, /Unloading weight \(MT\): 23.2/);
+  assert.ok(!full.text.includes('PRIVATE_URL'));
 });
 
 test('POD-1 deterministic success invokes one authorized operation and no NLU', async () => {
@@ -167,6 +231,7 @@ test('POD-1 pending and detail grammar remains fail-closed outside reviewed form
     'POD nahi', 'LR nahi', 'weight nahi', 'arbitrary nahi question',
     'unloading weight kitna hai', 'POD proof hai kya', 'LR19664 POD proof URL',
     'LR19664 POD proof file', 'LR19664 driver mobile', 'LR19664 and LR19665 POD date',
+    'LR19664 unloading weight and POD date', 'LR19664 POD colour', 'LR19664x unloading weight',
     'LR19664 POD date for billing', 'LR19664 freight POD date',
   ]) {
     const h = harness();
@@ -2816,10 +2881,49 @@ test('POD detail uses actual unloading weight/date, never LR loading weight', as
     });
     const result=await h.run('LR19600 ka unloading weight kya tha?');
     assert.equal(result.status,'answered');
-    assert.ok(result.text.includes(`Unloading weight (MT): ${unloading??'not recorded'}`));
+    assert.equal(result.text, unloading == null
+      ? 'LR19600 ka unloading weight recorded nahi hai.'
+      : `LR19600 ka unloading weight ${unloading} MT tha.`);
     assert.ok(!result.text.includes('SECRET_URL'));
     assert.equal(h.executions.length,1);
   }
+});
+
+test('NLU-derived POD detail without a presentation selector retains full sanitized rendering', async () => {
+  const source = '19600 ka pod aya kya';
+  // This natural legacy form has no literal LR token, so it cannot take the
+  // deterministic exact-LR field selector path.
+  assert.notEqual(resolveIntent(source, NOW, true).kind, 'query');
+  const nlu = operationalNlu({ date: null, operation: 'pod_detail', lrNumber: 'LR19600' });
+  const plan = buildQueryPlanFromNlu(nlu, NOW, true);
+  assert.equal(plan.name, 'get_pod_detail');
+  assert.equal(plan.podDetailField, undefined);
+  assert.equal(Object.hasOwn(plan.args, 'podDetailField'), false);
+
+  const h = nluHarness([callItem('interpret_whatsapp_intent', nlu)], {
+    operationalRpc: (name, args) => {
+      assert.equal(name, 'get_pod_detail');
+      assert.equal(Object.hasOwn(args, 'podDetailField'), false);
+      return { status: 'ok', result: {
+        found: true,
+        lr: { ...detailRow('LR19600'), loading_weight: 30, pod_present: true },
+        pod_present: true,
+        pod: {
+          pod_date: '2026-09-28', unloading_date: '2026-09-27',
+          unloading_weight: 24.82, proof_present: true, proof_url: 'PRIVATE_URL',
+        },
+      }};
+    },
+  });
+  const result = await h.run(source);
+  assert.equal(result.status, 'answered');
+  assert.equal(h.requests.length, 1, 'only the NLU request is made');
+  assert.equal(h.executions.length, 1);
+  assert.match(result.text, /Loading weight \(MT\): 30/);
+  assert.match(result.text, /Unloading weight \(MT\): 24.82/);
+  assert.match(result.text, /Unloading date: 2026-09-27/);
+  assert.match(result.text, /Proof present: true/);
+  assert.ok(!result.text.includes('PRIVATE_URL'));
 });
 
 test('internal operational denial/error has no retry/fallback and no raw error leakage',async()=>{

@@ -80,6 +80,31 @@ export function renderResult(plan: QueryPlan, data: ObjectValue): string {
     return lines.join("\n");
   }
   if (!data.found) return `${header}\n${m.missing}`;
+  if (plan.name === "get_pod_detail" && plan.podDetailField && plan.podDetailField !== "full") {
+    const lrNumber = String(object(data.lr).lr_number);
+    if (data.pod_present !== true) return `Nahi, ${lrNumber} ka POD abhi available nahi hai.`;
+    const pod = object(data.pod);
+    switch (plan.podDetailField) {
+      case "unloading_weight":
+        return pod.unloading_weight == null
+          ? `${lrNumber} ka unloading weight recorded nahi hai.`
+          : `${lrNumber} ka unloading weight ${pod.unloading_weight} MT tha.`;
+      case "pod_date":
+        return pod.pod_date == null
+          ? `${lrNumber} ka POD date recorded nahi hai.`
+          : `${lrNumber} ka POD date ${pod.pod_date} hai.`;
+      case "unloading_date":
+        return pod.unloading_date == null
+          ? `${lrNumber} ka unloading date recorded nahi hai.`
+          : `${lrNumber} ka unloading date ${pod.unloading_date} hai.`;
+      case "pod_present":
+        return `Haan, ${lrNumber} ka POD available hai.`;
+      case "proof_present":
+        return pod.proof_present === true
+          ? `Haan, ${lrNumber} ka POD proof available hai.`
+          : `Nahi, ${lrNumber} ka POD proof available nahi hai.`;
+    }
+  }
   const lines = [header, ...Object.entries(data.lr as ObjectValue).map(([key, value]) => formatField(key, value))];
   if (data.pod_present !== undefined) lines.push(formatField("pod_present", data.pod_present));
   if (data.pod) lines.push(...Object.entries(data.pod as ObjectValue).map(([key, value]) => formatField(key, value)));
