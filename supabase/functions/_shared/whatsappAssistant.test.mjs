@@ -104,6 +104,103 @@ test('English, Hinglish and Hindi natural requests resolve deterministically', (
   assert.equal(planFor('consignor ACC ke pending POD dikhao').args.consignor, 'ACC');
 });
 
+test('POD-1 bounded pending language selects the existing pending-POD operation', () => {
+  const counts = [
+    'kitne gaadi ka abhi tak POD nahi bana hai',
+    'kitni gaadi ka POD nai bana',
+    'kitne LR ka POD pending hai',
+    'abhi kitne POD pending hai',
+    'how many PODs are pending',
+    'how many vehicles have pending POD',
+    "how many LRs don't have POD yet",
+    'how many LRs without POD',
+    'how many LRs POD not received',
+  ];
+  for (const source of counts) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.name, 'search_pending_pods', source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.podState, 'pending', source);
+  }
+  for (const source of ['which LRs have pending POD', 'pending POD dikhao']) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.name, 'search_pending_pods', source);
+    assert.equal(plan.args.countOnly, false, source);
+  }
+});
+
+test('POD-1 exact LR field questions stay record identity lookups', () => {
+  for (const source of [
+    'LR19664 ye LR ka unloading weight kitna tha',
+    'LR19664 ka unloading weight kya hai',
+    'LR19664 unloading weight',
+    'what is unloading weight of LR19664',
+    'LR19664 ka POD date kya hai',
+    'LR19664 ka unloading date kya hai',
+    'LR19664 ka POD bana hai kya',
+    'does LR19664 have POD',
+    'LR19664 ka POD proof hai kya',
+    'is POD proof available for LR19664',
+  ]) {
+    const plan = resolveIntent(source, NOW, true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.name, 'get_pod_detail', source);
+    assert.equal(plan.args.lrNumber, 'LR19664', source);
+    assert.equal(plan.args.entitySearch, null, source);
+  }
+});
+
+test('POD-1 deterministic success invokes one authorized operation and no NLU', async () => {
+  for (const source of ['how many PODs are pending', 'LR19664 ka unloading weight kya hai']) {
+    const h = harness();
+    const result = await h.run(source);
+    assert.equal(result.status, 'answered', source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+  }
+});
+
+test('POD-1 pending and detail grammar remains fail-closed outside reviewed forms', async () => {
+  for (const source of [
+    'POD nahi', 'LR nahi', 'weight nahi', 'arbitrary nahi question',
+    'unloading weight kitna hai', 'POD proof hai kya', 'LR19664 POD proof URL',
+    'LR19664 POD proof file', 'LR19664 driver mobile', 'LR19664 and LR19665 POD date',
+    'LR19664 POD date for billing', 'LR19664 freight POD date',
+  ]) {
+    const h = harness();
+    await h.run(source);
+    assert.equal(h.executions.length, 0, source);
+  }
+});
+
+test('POD-1 settlement wording is commercial out-of-scope before execution', async () => {
+  for (const source of [
+    'LR19664 ka POD date for settlement',
+    'LR19664 POD date settlement',
+    'LR19664 unloading weight for settlement',
+    'settlement for LR19664',
+    'settle LR19664',
+  ]) {
+    const h = harness();
+    const result = await h.run(source);
+    assert.equal(result.status, 'out_of_scope', source);
+    assert.equal(h.executions.length, 0, source);
+  }
+  for (const source of [
+    'LR19664 ka POD date kya hai',
+    'LR19664 ka unloading weight kya hai',
+    'does LR19664 have POD',
+    'kitne gaadi ka abhi tak POD nahi bana hai',
+    'which LRs have pending POD',
+  ]) {
+    const h = harness();
+    assert.equal((await h.run(source)).status, 'answered', source);
+    assert.equal(h.executions.length, 1, source);
+  }
+});
+
 test('missing year clarifies before provider or RPC', async () => {
   for (const input of ['August ke LR kitne the?', 'ACC ke September ke LR dikhao', 'अगस्त के LR कितने हैं?']) {
     const h = harness();
@@ -2161,8 +2258,74 @@ test('deterministic current-month consignee queries bypass NLU and keep consigne
   assert.equal(h.executions.length, 1);
 });
 
+test('relative-month postpositions and trailing movement predicates preserve bounded consignee extraction', () => {
+  const cases = [
+    ['pichle mahine me kitne gaadi sree cement kodla k liye laga', 'sree cement kodla', '2026-09-01', '2026-09-30'],
+    ['pichle mahine me sree cement kodla k liye kitni gaadi lagi', 'sree cement kodla', '2026-09-01', '2026-09-30'],
+    ['pichle mahine me kitni gaadi sree cement kodla ke liye lagi', 'sree cement kodla', '2026-09-01', '2026-09-30'],
+    ['is mahine me kitne gaadi shree cement ke liye lage', 'shree cement', '2026-10-01', '2026-10-31'],
+    ['iss month me kitni gaadi ACC wadi k liye lagi', 'ACC wadi', '2026-10-01', '2026-10-31'],
+    ['iss month me kitni gaadi ACC wadi k liye load hui', 'ACC wadi', '2026-10-01', '2026-10-31'],
+    ['पिछले महीने में कितनी गाड़ी श्री सीमेंट के लिए लगी', 'श्री सीमेंट', '2026-09-01', '2026-09-30'],
+  ];
+  for (const [source, consignee, from, to] of cases) {
+    const extracted = extractInternalEntities(source);
+    assert.equal(extracted.fields.consignee, consignee, source);
+    assert.ok(!/^(?:me|mein|में)\s/iu.test(extracted.fields.consignee), source);
+    const plan = resolveIntent(source, new Date('2026-10-05T12:00:00Z'), true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args.consignee, consignee, source);
+    assert.equal(plan.args.lrDateFrom, from, source);
+    assert.equal(plan.args.lrDateTo, to, source);
+    assert.equal(plan.args.countOnly, true, source);
+  }
+});
+
+test('relative-month postposition forms execute once without NLU', async () => {
+  for (const source of [
+    'pichle mahine me kitne gaadi sree cement kodla k liye laga',
+    'is mahine me kitne gaadi shree cement ke liye lage',
+    'पिछले महीने में कितनी गाड़ी श्री सीमेंट के लिए लगी',
+  ]) {
+    const h = nluHarness([], { operationalRpc: (_name, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
+    assert.equal((await h.run(source)).status, 'answered', source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+  }
+});
+
+test('relative-month postpositions stay bounded and directional suffixes reject arbitrary predicates', () => {
+  for (const source of [
+    'Acme k liye dispatched kitna gaadi pichle mahine me',
+    'Acme k liye urgent kitna gaadi pichle mahine mein',
+    'Acme ke liye banana kitna gaadi is mahine me',
+    'pichle mahine me sree cement k liye unknown kitna gaadi laga',
+  ]) {
+    const extracted = extractInternalEntities(source);
+    assert.equal(extracted.fields.consignee, undefined, source);
+    assert.equal(resolveIntent(source, NOW, true).kind, 'clarification', source);
+  }
+
+  for (const source of [
+    'Me Logistics k liye kitna gaadi laga',
+    'Mein Logistics k liye kitna gaadi laga',
+    'में Logistics के लिए कितनी गाड़ी लगी',
+  ]) {
+    const extracted = extractInternalEntities(source);
+    assert.equal(extracted.fields.consignee, source.startsWith('में') ? 'में Logistics' : source.split(' k liye')[0], source);
+  }
+
+  assert.equal(resolveIntent('pichle mahine me Acme k liye kitna gaadi laga ACC k liye laga', NOW, true).kind, 'clarification');
+});
+
 test('NLU provenance accepts only source-proven reviewed month aliases', () => {
   for (const alias of ['ye month', 'is month', 'iss month', 'iss mahine', 'this month', 'is mahine']) {
+    const source = `${alias} Acme k liye kitna gaadi load hua`;
+    const nlu = operationalNlu({ date: { kind: 'relative', value: 'this_month' }, consignee: 'Acme' });
+    assert.doesNotThrow(() => validateNluInterpretation(nlu, source, NOW, true), source);
+  }
+  for (const alias of ['ye month me', 'is month mein', 'iss month me', 'iss mahine mein', 'this month me', 'is mahine में']) {
     const source = `${alias} Acme k liye kitna gaadi load hua`;
     const nlu = operationalNlu({ date: { kind: 'relative', value: 'this_month' }, consignee: 'Acme' });
     assert.doesNotThrow(() => validateNluInterpretation(nlu, source, NOW, true), source);
@@ -2179,6 +2342,13 @@ test('NLU provenance accepts only source-proven reviewed month aliases', () => {
   }
   for (const alias of ['last month', 'pichle month', 'pichhle month', 'pichle mahine', 'pichhle mahine', 'पिछले महीने']) {
     const source = alias === 'पिछले महीने'
+      ? `${alias} Acme के लिए कितनी गाड़ी लगी`
+      : `${alias} Acme k liye kitna gaadi load hua`;
+    const nlu = operationalNlu({ date: { kind: 'relative', value: 'last_month' }, consignee: 'Acme' });
+    assert.doesNotThrow(() => validateNluInterpretation(nlu, source, NOW, true), source);
+  }
+  for (const alias of ['last month me', 'pichle month mein', 'pichhle mahine me', 'पिछले महीने में']) {
+    const source = alias === 'पिछले महीने में'
       ? `${alias} Acme के लिए कितनी गाड़ी लगी`
       : `${alias} Acme k liye kitna gaadi load hua`;
     const nlu = operationalNlu({ date: { kind: 'relative', value: 'last_month' }, consignee: 'Acme' });

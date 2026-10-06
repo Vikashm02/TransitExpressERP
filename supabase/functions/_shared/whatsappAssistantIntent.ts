@@ -1,5 +1,5 @@
-import { extractInternalEntities, INTERNAL_ENTITY_KEYS } from "./whatsappAssistantOperationalLanguage.ts";
-import { CURRENT_MONTH_ALIASES, CURRENT_MONTH_PATTERN, LAST_MONTH_ALIASES, LAST_MONTH_PATTERN, isCurrentMonthAlias, isLastMonthAlias } from "./whatsappAssistantDateLanguage.ts";
+import { extractInternalEntities, INTERNAL_ENTITY_KEYS, VEHICLE_COUNT_MOVEMENT_PATTERN } from "./whatsappAssistantOperationalLanguage.ts";
+import { CURRENT_MONTH_ALIASES, LAST_MONTH_ALIASES, RELATIVE_MONTH_PHRASE_PATTERN, isCurrentMonthAlias, isLastMonthAlias } from "./whatsappAssistantDateLanguage.ts";
 import { toolDefinitions, internalToolDefinitions, validateOperationalArguments, validateArguments, type ObjectValue, type ToolName, type SemanticOp, type SemanticDate, type NluInterpretation, nluIntentSchema, MODELS, object } from "./whatsappAssistantSchemas.ts";
 
 export type Language = "en" | "hi" | "hinglish";
@@ -40,15 +40,27 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
   const language = detectLanguage(raw);
   const clarify = (reason: "year" | "filters" | "party_role" = "filters"): Intent => ({ kind: "clarification", language, reason });
   let source = raw.normalize("NFC").replace(/[०-९]/g, (c) => String(c.charCodeAt(0) - 0x0966)).trim();
-  if (word("finance|freight|invoice|billing|payment|balance|amount|salary|sql|delete|update|insert|write|बिल|भुगतान|पैसा|रकम|मिटाओ").test(source)) return { kind: "out_of_scope", language, reason: "filters" };
+  if (word("finance|freight|invoice|billing|payment|balance|amount|salary|settlement|settle|sql|delete|update|insert|write|बिल|भुगतान|पैसा|रकम|मिटाओ").test(source)) return { kind: "out_of_scope", language, reason: "filters" };
   if (/[\p{Cc}\p{Cf}]/u.test(source)) return clarify();
   let internalFields: ObjectValue = {};
   if (internal) {
+    // An exact LR plus a bounded POD field question is a record lookup, not an
+    // unlabelled entity search. Resolve it before generic entity extraction.
+    const podDetailLr = explicitPodDetailLr(source);
+    if (podDetailLr) {
+      const complete = completeArguments("get_pod_detail", { lrNumber: podDetailLr, countOnly: false, limit: 10, offset: 0 }, true);
+      validateOperationalArguments("get_pod_detail", complete);
+      return { kind: "query", name: "get_pod_detail", args: complete, language, operational: true };
+    }
+    // Only complete, reviewed POD-pending forms rewrite their local negation
+    // into the existing pending operation. All other negated input still fails
+    // closed below.
+    source = normalizePendingPodLanguage(source);
     try { const extracted = extractInternalEntities(source); source = extracted.source; internalFields = extracted.fields; }
     catch { return clarify(); }
     // A dangling company preposition before a date is not an entity filter.
     // Refuse it before generic filler consumption can broaden the query.
-    if (!Object.hasOwn(internalFields, "entitySearch") && word(`(?:in|for)\\s+(?:${CURRENT_MONTH_PATTERN}|${LAST_MONTH_PATTERN})`).test(source)) return clarify();
+    if (!Object.hasOwn(internalFields, "entitySearch") && word(`(?:in|for)\\s+${RELATIVE_MONTH_PHRASE_PATTERN}`).test(source)) return clarify();
   }
   // Negation, comparisons, multiple tasks and unresolved references are not
   // approximated. For internal queries, inspect only residual source so words
@@ -128,7 +140,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Relative dates depend only on the trusted server clock, in IST.
     const istToday = new Date(now.getTime() + 330 * 60000).toISOString().slice(0, 10);
-    take(word(`today|aaj|आज|yesterday|beete kal|बीता कल|${CURRENT_MONTH_PATTERN}|${LAST_MONTH_PATTERN}|this year|is saal|इस साल|last year|pichhle saal|पिछले साल`), (m) => {
+    take(word(`today|aaj|आज|yesterday|beete kal|बीता कल|${RELATIVE_MONTH_PHRASE_PATTERN}|this year|is saal|इस साल|last year|pichhle saal|पिछले साल`), (m) => {
       const token = m[0].toLowerCase();
       const today = new Date(istToday);
       const year = today.getUTCFullYear(), month = today.getUTCMonth() + 1;
@@ -172,7 +184,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Movement wording is consumed only after the internal LR vehicle-count
     // grammar has established scope. It is never a generic filler word.
-    if (internal && countOnly && hasLr) take(word("(?:was|were)\\s+loaded|loaded|went|load\\s+hua|load\\s+hue|load|laga\\s+tha|lagi\\s+thi|lage|lagi|laga|gaye|gaya|gayi|लगी|लगा|गई"), () => {});
+    if (internal && countOnly && hasLr) take(word(VEHICLE_COUNT_MOVEMENT_PATTERN), () => {});
     // Words that can change semantics are deliberately NOT in this filler set.
     take(word("lrs?|pods?|एलआर|एल आर|पीओडी|पी ओ डी|please|kripya|कृपया|batao|bataye|बताओ|बताएं|बताएँ|hai|hain|tha|the|है|हैं|थे|था|ke|ka|ki|के|का|की|mein|में|se|से|tak|तक|in|on|from|to|through|for|of|the|me|mujhe|मुझे|vehicle|गाड़ी|वाहन|number|no|नंबर|status|स्टेटस|date|तारीख|total|कुल|all|sab|सभी"), () => {});
     if (internal && countOnly && hasLr) {
@@ -209,6 +221,61 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
     return { kind: "query", name, args: complete, language, ...(internal ? { operational: true as const } : {}) };
   } catch { return clarify(); }
 }
+
+/**
+ * Converts only self-contained POD-not-created phrases into the already
+ * authorized pending-POD vocabulary. This deliberately does not remove a
+ * general negation: a bare "POD nahi" or unrelated "without" remains in the
+ * source and is rejected by the normal fail-closed guard.
+ */
+function normalizePendingPodLanguage(source: string): string {
+  let normalized = source;
+  const replace = (pattern: string, value: string) => {
+    normalized = normalized.replace(word(pattern), value);
+  };
+  // List form is normalized first because its grammatical "have" is not an
+  // operational filter. It still requires both an LR subject and pending POD.
+  replace("which\\s+lrs?\\s+(?:have|has)\\s+pending\\s+pods?", "show LRs pending POD");
+  replace("(?:abhi\\s+tak\\s+)?pods?\\s+(?:nahi|nai)\\s+bana(?:\\s+hai)?", "POD pending");
+  replace("pods?\\s+not\\s+received", "POD pending");
+  replace("without\\s+pods?", "POD pending");
+  replace("lrs?\\s+(?:do\\s+not|don't)\\s+have\\s+pods?(?:\\s+yet)?", "LRs pending POD");
+  normalized = normalized.replace(word("(vehicles?|lrs?)\\s+(?:have|has)\\s+pending\\s+pods?"), (_whole, subject: string) => `${subject} pending POD`);
+  replace("pods?\\s+(?:are\\s+)?pending", "POD pending");
+  // "abhi" is grammar only in a recognized pending-POD count construction;
+  // it is never stripped from arbitrary input or a company name.
+  normalized = normalized.replace(/\babhi\s+(?=(?:kitna|kitne|kitni|how\s+many)\s+(?:(?:gaadi|gadi|vehicles?|lrs?)\s+pod|pods?)\s+pending\b)/giu, "");
+  return normalized;
+}
+
+/**
+ * Recognizes a single explicit LR and one safe POD-detail field request. The
+ * residual-token check prevents this convenience path from accepting extra
+ * qualifiers, PII, file/URL requests, or a second task.
+ */
+function explicitPodDetailLr(source: string): string | null {
+  const lrPattern = /(?<![\p{L}\p{M}\p{N}_])lr\s*([0-9]+)(?![-\p{L}\p{M}\p{N}_])/giu;
+  const lrMatches = [...source.matchAll(lrPattern)];
+  if (lrMatches.length !== 1) return null;
+
+  let residual = source.replace(lrPattern, " ");
+  const fields = [
+    "unloading\\s+weight",
+    "unloading\\s+date",
+    "pods?\\s+date",
+    "pods?\\s+proof",
+    "pods?\\s+bana",
+    "(?:does\\s+)?have\\s+pods?",
+  ];
+  const found = fields.filter((field) => word(field).test(residual));
+  if (found.length !== 1) return null;
+  residual = residual.replace(word(found[0]), " ");
+  // These are grammatical wrappers for the reviewed English/Roman-Hinglish
+  // forms. Anything else is intentionally left behind and rejected.
+  residual = residual.replace(word("ye|this|lr|ka|ki|ke|kya|kitna|kitni|kitne|tha|thi|hai|hain|what|is|the|of|does|do|has|available|for|was|were"), " ");
+  return residual.replace(/[\s?,.:!?]/g, "") ? null : `LR${lrMatches[0][1]}`;
+}
+
 function cleanEntity(value: string): string {
   const quoted = /^["']/.test(value);
   // Without quotes a word such as "delivered" may be a status qualifier,
@@ -533,7 +600,15 @@ export function validateNluInterpretation(
   for (const [value, forms] of Object.entries({ today: "today|aaj|आज", yesterday: "yesterday|beete kal|बीता कल", last_month: LAST_MONTH_ALIASES.join("|"), this_year: "this year|is saal|इस साल", last_year: "last year|pichhle saal|पिछले साल" })) {
     for (const form of forms.split("|")) relatives[form] = { kind: "relative", value: value as Extract<SemanticDate, {kind: "relative"}>["value"] };
   }
-  source = source.replace(word(Object.keys(relatives).join("|")), token => { setDate(relatives[token.toLowerCase()]); return "NLUDATE"; });
+  source = source.replace(word(`${RELATIVE_MONTH_PHRASE_PATTERN}|${Object.keys(relatives).join("|")}`), token => {
+    const relative = isCurrentMonthAlias(token)
+      ? { kind: "relative", value: "this_month" } as const
+      : isLastMonthAlias(token)
+      ? { kind: "relative", value: "last_month" } as const
+      : relatives[token.toLowerCase()];
+    setDate(relative);
+    return "NLUDATE";
+  });
   // A placeholder prevents the source parser from requiring a clock or guessing
   // a year. Semantic equality is checked separately before this projection.
   if (!semantic) {
