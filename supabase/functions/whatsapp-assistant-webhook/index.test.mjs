@@ -737,6 +737,25 @@ test('Outbound: empty assistant reply -> no outbound send (H)', async () => {
   assert.equal(h.outboundCalls.length, 0);
 });
 
+test('Outbound: authorized out-of-scope result sends only the fixed safe scope reply', async () => {
+  const outboundCalls = [];
+  const scope = 'This pilot currently supports LR and POD queries only.';
+  const h = setup({
+    assistant: async () => ({ status: 'out_of_scope', text: scope }),
+    fetch: async (url, init) => {
+      if (url === 'https://api.gupshup.io/wa/api/v1/msg') {
+        outboundCalls.push({ url, init });
+        return Response.json({ status: 'submitted' });
+      }
+      return Response.json({});
+    },
+  });
+  await acknowledge(h);
+  const body = new URLSearchParams(outboundCalls[0].init.body);
+  assert.equal(JSON.parse(body.get('message')).text, scope);
+  assert.equal(h.assistantCalls.length, 1);
+});
+
 test('Outbound: missing API key -> no outbound network call (I)', async () => {
   const h = setup({ env: { GUPSHUP_API_KEY: undefined } });
   await acknowledge(h);

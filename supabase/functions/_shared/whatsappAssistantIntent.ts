@@ -1,5 +1,5 @@
 import { extractInternalEntities, INTERNAL_ENTITY_KEYS } from "./whatsappAssistantOperationalLanguage.ts";
-import { CURRENT_MONTH_ALIASES, CURRENT_MONTH_PATTERN, isCurrentMonthAlias } from "./whatsappAssistantDateLanguage.ts";
+import { CURRENT_MONTH_ALIASES, CURRENT_MONTH_PATTERN, LAST_MONTH_ALIASES, LAST_MONTH_PATTERN, isCurrentMonthAlias, isLastMonthAlias } from "./whatsappAssistantDateLanguage.ts";
 import { toolDefinitions, internalToolDefinitions, validateOperationalArguments, validateArguments, type ObjectValue, type ToolName, type SemanticOp, type SemanticDate, type NluInterpretation, nluIntentSchema, MODELS, object } from "./whatsappAssistantSchemas.ts";
 
 export type Language = "en" | "hi" | "hinglish";
@@ -46,6 +46,9 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
   if (internal) {
     try { const extracted = extractInternalEntities(source); source = extracted.source; internalFields = extracted.fields; }
     catch { return clarify(); }
+    // A dangling company preposition before a date is not an entity filter.
+    // Refuse it before generic filler consumption can broaden the query.
+    if (!Object.hasOwn(internalFields, "entitySearch") && word(`(?:in|for)\\s+(?:${CURRENT_MONTH_PATTERN}|${LAST_MONTH_PATTERN})`).test(source)) return clarify();
   }
   // Negation, comparisons, multiple tasks and unresolved references are not
   // approximated. For internal queries, inspect only residual source so words
@@ -53,7 +56,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
   if (word("no|not|non|except|excluding|without|बिना|before|after|less|more|over|under|older|and|or|aur|ya|nahi|nahin|mat|sirf|only|us|that|those|next|previous|कल|नहीं|मत|सिर्फ|और|या|उस|पहले|बाद").test(source)) return clarify();
   // Vehicle words establish an LR movement only in this bounded internal
   // count grammar. A bare vehicle/gaadi remains out of scope.
-  const vehicleCountLanguage = "(?:(?:kitna|kitne|kitni)\\s+(?:gaadi|gadi)|कितनी\\s+गाड़ी|how\\s+many\\s+vehicles?)";
+  const vehicleCountLanguage = "(?:(?:kitna|kitne|kitni)\\s+(?:gaadi|gadi)|कितनी\\s+गाड़ी|how\\s+many\\s+vehicles?|vehicles?\\s+(?:loaded|went))";
   const hasVehicleCount = internal && word(vehicleCountLanguage).test(source);
   const hasLr = (internal && word("drafts?|final").test(source)) || hasVehicleCount || word("lrs?|एलआर|एल आर|lr[0-9]+").test(source);
   const hasPod = word("pods?|पीओडी|पी ओ डी").test(source);
@@ -125,7 +128,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Relative dates depend only on the trusted server clock, in IST.
     const istToday = new Date(now.getTime() + 330 * 60000).toISOString().slice(0, 10);
-    take(word(`today|aaj|आज|yesterday|beete kal|बीता कल|${CURRENT_MONTH_PATTERN}|last month|pichle month|pichhle month|pichhle mahine|पिछले महीने|this year|is saal|इस साल|last year|pichhle saal|पिछले साल`), (m) => {
+    take(word(`today|aaj|आज|yesterday|beete kal|बीता कल|${CURRENT_MONTH_PATTERN}|${LAST_MONTH_PATTERN}|this year|is saal|इस साल|last year|pichhle saal|पिछले साल`), (m) => {
       const token = m[0].toLowerCase();
       const today = new Date(istToday);
       const year = today.getUTCFullYear(), month = today.getUTCMonth() + 1;
@@ -133,7 +136,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
       else if (["yesterday", "beete kal", "बीता कल"].includes(token)) {
         const previous = new Date(today.getTime() - DAY_MS).toISOString().slice(0, 10); setRange([previous, previous]);
       } else if (isCurrentMonthAlias(token)) setRange(monthRange(year, month));
-      else if (["last month", "pichle month", "pichhle month", "pichhle mahine", "पिछले महीने"].includes(token)) setRange(monthRange(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1));
+      else if (isLastMonthAlias(token)) setRange(monthRange(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1));
       else { const y = ["this year", "is saal", "इस साल"].includes(token) ? year : year - 1; setRange([day(y, 1, 1), day(y, 12, 31)]); }
     });
     const dates: { value: string; index: number }[] = [];
@@ -169,7 +172,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Movement wording is consumed only after the internal LR vehicle-count
     // grammar has established scope. It is never a generic filler word.
-    if (internal && countOnly && hasLr) take(word("load\\s+hua|load\\s+hue|laga\\s+tha|lagi\\s+thi|lage|lagi|laga|gaye|gaya|gayi"), () => {});
+    if (internal && countOnly && hasLr) take(word("(?:was|were)\\s+loaded|loaded|went|load\\s+hua|load\\s+hue|load|laga\\s+tha|lagi\\s+thi|lage|lagi|laga|gaye|gaya|gayi|लगी|लगा|गई"), () => {});
     // Words that can change semantics are deliberately NOT in this filler set.
     take(word("lrs?|pods?|एलआर|एल आर|पीओडी|पी ओ डी|please|kripya|कृपया|batao|bataye|बताओ|बताएं|बताएँ|hai|hain|tha|the|है|हैं|थे|था|ke|ka|ki|के|का|की|mein|में|se|से|tak|तक|in|on|from|to|through|for|of|the|me|mujhe|मुझे|vehicle|गाड़ी|वाहन|number|no|नंबर|status|स्टेटस|date|तारीख|total|कुल|all|sab|सभी"), () => {});
     if (internal && countOnly && hasLr) {
@@ -177,7 +180,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
     }
     if (source.replace(/[\s?,.:]/g, "")) return clarify();
     for (const [marker, key] of [["vehicle|गाड़ी|वाहन", "vehicleNumber"], ["status|स्टेटस", "status"], ["material|सामग्री", "material"], ["consignor|sender|प्रेषक", "consignor"], ["consignee|receiver|प्राप्तकर्ता", "consignee"]]) {
-      if (word(marker).test(raw) && !args[key]) return clarify();
+      if (word(marker).test(raw) && !args[key] && !(internal && key === "vehicleNumber" && hasVehicleCount)) return clarify();
     }
     if (!internal && pending && (args.partySearch || args.material || args.status || args.lrNumber)) return clarify(args.partySearch ? "party_role" : "filters");
     if (internal && pending) {
@@ -501,7 +504,7 @@ export function validateNluInterpretation(
   // These are source-only aliases, never substitutions taken from model output.
   // Unknown qualifiers remain in the input and must be consumed by resolveIntent.
   if (/[\p{Cc}\p{Cf}%_\\]/u.test(source) || word("distinct|unique|different|alag|अलग|rate|rates|amount|freight|ledger|outstanding|finance").test(source)) throw new Error("nlu_unsupported");
-  source = source.replace(word("last mnth|pichle mahine"), "last month")
+  source = source.replace(word("last mnth"), "last month")
     .replace(word("kitni"), "kitne").replace(word("me"), "mein")
     .replace(word("bane"), "created");
   // Existing product aliases mean LR/trip count, never distinct vehicle count.
@@ -527,7 +530,7 @@ export function validateNluInterpretation(
   const setDate = (d: SemanticDate) => { if (semantic) throw new Error("nlu_multiple_dates"); semantic = d; };
   const relatives: Record<string, SemanticDate & { kind: "relative" }> = {};
   for (const form of CURRENT_MONTH_ALIASES) relatives[form] = { kind: "relative", value: "this_month" };
-  for (const [value, forms] of Object.entries({ today: "today|aaj|आज", yesterday: "yesterday|beete kal|बीता कल", last_month: "last month|pichhle mahine|पिछले महीने", this_year: "this year|is saal|इस साल", last_year: "last year|pichhle saal|पिछले साल" })) {
+  for (const [value, forms] of Object.entries({ today: "today|aaj|आज", yesterday: "yesterday|beete kal|बीता कल", last_month: LAST_MONTH_ALIASES.join("|"), this_year: "this year|is saal|इस साल", last_year: "last year|pichhle saal|पिछले साल" })) {
     for (const form of forms.split("|")) relatives[form] = { kind: "relative", value: value as Extract<SemanticDate, {kind: "relative"}>["value"] };
   }
   source = source.replace(word(Object.keys(relatives).join("|")), token => { setDate(relatives[token.toLowerCase()]); return "NLUDATE"; });

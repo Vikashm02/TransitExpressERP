@@ -1,4 +1,4 @@
-import { CURRENT_MONTH_PATTERN } from "./whatsappAssistantDateLanguage.ts";
+import { CURRENT_MONTH_PATTERN, LAST_MONTH_PATTERN } from "./whatsappAssistantDateLanguage.ts";
 
 // Composable source grammar for INTERNAL entities. No database identity, master
 // spelling, branch name, or example sentence is embedded here. Model-selected
@@ -22,7 +22,8 @@ const labels: Record<string, string> = {
 };
 const stops = `k|ke|ka|ki|liye|mein|me|se|to|for|in|on|from|के|का|की|में|से|तक|lrs?|pods?|gaadi|gadi|truck|vehicle|kitne|kitni|kitna|how|count|show|list|dikhao|batao|pending|present|drafts?|final|status|created|creation|last|this|today|yesterday|consignor|consignee|material|party|branch|booking|source|destination|transporter|vendor|कितने|कितनी|गाड़ी`;
 const entity = `("[^"\\r\\n]+"|'[^'\\r\\n]+'|[\\p{L}\\p{M}\\p{N}][\\p{L}\\p{M}\\p{N} .&/-]*?)`;
-const end = `(?=\\s+(?:${stops})(?!${boundary})|$|[,?!])`;
+const dateMask = "\uE000";
+const end = `(?=\\s+(?:${stops})(?!${boundary})|\\s*${dateMask}|$|[,?!])`;
 function clean(raw: string): string {
   const value = raw.replace(/^["']|["']$/g, "").trim();
   if (!value || value.length > 200 || /[%_\\\p{Cc}\p{Cf}]/u.test(value)) throw new Error("nlu_entity");
@@ -63,7 +64,7 @@ export function extractInternalEntities(input: string): { source: string; fields
   });
   // Mask date phrases only in the scan, retaining them verbatim in the source.
   // This allows '<date> <entity> ke ...' without consuming the date as a name.
-  let scan = source.replace(token(`${CURRENT_MONTH_PATTERN}|today|yesterday|aaj|आज|beete kal|बीता कल|last (?:month|mnth|year)|this (?:mnth|year)|(?:pichle|pichhle) (?:month|mahine|saal)|is saal|इस साल|(?:पिछले) (?:महीने|साल)|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}`), s => " ".repeat(s.length));
+  let scan = source.replace(token(`${CURRENT_MONTH_PATTERN}|${LAST_MONTH_PATTERN}|today|yesterday|aaj|आज|beete kal|बीता कल|last (?:mnth|year)|this (?:mnth|year)|(?:pichle|pichhle) saal|is saal|इस साल|(?:पिछले) साल|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}`), s => dateMask.repeat(s.length));
   // Successful extraction deliberately accepts only the reviewed whitespace
   // grammar below. This broader, token-bounded marker is fallback safety only:
   // plausible separator variants must not be swallowed by generic entitySearch.
@@ -86,6 +87,10 @@ export function extractInternalEntities(input: string): { source: string; fields
   // "X k/ke liye" is destination-party grammar, not an unlabelled party
   // search. Keep the postposition out of the value sent to the resolver.
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+${acceptedDirectionalConjunction}${end}`, "giu"), v => put("consignee", v));
+  consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+के\\s+लिए${end}`, "giu"), v => put("consignee", v));
+  // A movement explicitly going to an entity establishes destination-side
+  // direction before generic X-to-Y route grammar can inspect the phrase.
+  consume(new RegExp(`(?<!${boundary})(?:went|go|going)\\s+to\\s+${entity}${end}`, "giu"), v => { if (!unlabelled(v)) return false; put("destinationSearch", v); });
   // Directional references are unresolved party/location/branch references.
   // Only explicitly labelled source/destination cities request aggregation.
   consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:se|से|to)\\s+${entity}${end}`, "giu"), (a,b) => { if (new RegExp(`^(?:${stops})(?!${boundary})`, "iu").test(b)) return false; put("originSearch",a); put("destinationSearch",b); });
@@ -96,8 +101,10 @@ export function extractInternalEntities(input: string): { source: string; fields
   // A directional marker may not fall back to generic entitySearch merely
   // because unsupported residual words prevented directional extraction.
   if (!hasDirectionalMarker && !hasDirectionalEntity()) {
+    // English in/for wording establishes a generic entity reference. A movement
+    // explicitly going to an entity establishes destination-side direction.
+    consume(new RegExp(`(?<!${boundary})(?:in|for)\\s+${entity}${end}`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch", v); });
     consume(new RegExp(`(?:^|(?<=\\s))${entity}\\s+(?:ke|ka|ki|mein|me|में|के|का|की)(?=\\s+(?:ke|ka|ki|के|का|की|kitne|kitni|kitna|pending|pods?|lrs?|gaadi|gadi|count|show|list|dikhao|कितने|कितनी))`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
-    consume(new RegExp(`(?<!${boundary})for\\s+${entity}${end}`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
     consume(new RegExp(`(?:^|(?<=\\s))${entity}(?=\\s+(?:kitna|kitni|kitne)(?!${boundary}))`, "giu"), v => { if (!unlabelled(v)) return false; put("entitySearch",v); });
   }
   return { source, fields };

@@ -2042,6 +2042,57 @@ test('production current-month phrases never contaminate consignee or fall back 
   }
 });
 
+test('bounded multilingual vehicle-count constructions preserve source-proven company semantics', () => {
+  const cases = [
+    ['how many vehicles loaded last month in sree cement', 'entitySearch', 'sree cement'],
+    ['vehicles loaded for sree cement last month', 'entitySearch', 'sree cement'],
+    ['last month how many vehicles were loaded for sree cement', 'entitySearch', 'sree cement'],
+    ['how many vehicles went to sree cement last month', 'destinationSearch', 'sree cement'],
+    ['last month sree cement me kitni gaadi lagi', 'entitySearch', 'sree cement'],
+    ['last month sree cement mein kitni gaadi lagi', 'entitySearch', 'sree cement'],
+    ['pichle mahine sree cement ke liye kitni gaadi lagi', 'consignee', 'sree cement'],
+    ['sree cement ke liye pichhle mahine kitni gaadi lagi', 'consignee', 'sree cement'],
+    ['पिछले महीने श्री सीमेंट के लिए कितनी गाड़ी लगी', 'consignee', 'श्री सीमेंट'],
+  ];
+  for (const [source, field, value] of cases) {
+    const plan = resolveIntent(source, new Date('2026-10-05T12:00:00Z'), true);
+    assert.equal(plan.kind, 'query', source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args[field], value, source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.lrDateFrom, '2026-09-01', source);
+    assert.equal(plan.args.lrDateTo, '2026-09-30', source);
+  }
+});
+
+test('bounded multilingual vehicle-count queries execute once without NLU', async () => {
+  for (const source of [
+    'how many vehicles loaded last month in sree cement',
+    'vehicles loaded for sree cement last month',
+    'how many vehicles went to sree cement last month',
+    'पिछले महीने श्री सीमेंट के लिए कितनी गाड़ी लगी',
+  ]) {
+    const h = nluHarness([], { operationalRpc: (_name, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
+    assert.equal((await h.run(source)).status, 'answered', source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+  }
+});
+
+test('company prepositions require a source-proven company and preserve station safety', () => {
+  for (const source of [
+    'in last month how many vehicles loaded',
+    'for last month vehicles loaded',
+    'how many vehicles loaded last month in sree cement for ACC',
+  ]) assert.equal(resolveIntent(source, NOW, true).kind, 'clarification', source);
+
+  const station = resolveIntent('Nagpur station se Rawan station kitna gaadi gaya last month?', NOW, true);
+  assert.equal(station.kind, 'query');
+  assert.equal(station.args.fromStation, 'Nagpur');
+  assert.equal(station.args.toStation, 'Rawan');
+  assert.equal(station.args.entitySearch, null);
+});
+
 test('month remains valid company-name data with and without a reviewed date phrase', () => {
   const cases = [
     ['Month End Logistics k liye kitna gaadi load hua', 'Month End Logistics', null, null],
@@ -2110,7 +2161,7 @@ test('deterministic current-month consignee queries bypass NLU and keep consigne
   assert.equal(h.executions.length, 1);
 });
 
-test('NLU provenance accepts only source-proven reviewed current-month aliases', () => {
+test('NLU provenance accepts only source-proven reviewed month aliases', () => {
   for (const alias of ['ye month', 'is month', 'iss month', 'iss mahine', 'this month', 'is mahine']) {
     const source = `${alias} Acme k liye kitna gaadi load hua`;
     const nlu = operationalNlu({ date: { kind: 'relative', value: 'this_month' }, consignee: 'Acme' });
@@ -2125,6 +2176,13 @@ test('NLU provenance accepts only source-proven reviewed current-month aliases',
   ]) {
     const nlu = operationalNlu({ date: { kind: 'relative', value: 'this_month' }, consignee: 'Acme' });
     assert.throws(() => validateNluInterpretation(nlu, source, NOW, true), source);
+  }
+  for (const alias of ['last month', 'pichle month', 'pichhle month', 'pichle mahine', 'pichhle mahine', 'पिछले महीने']) {
+    const source = alias === 'पिछले महीने'
+      ? `${alias} Acme के लिए कितनी गाड़ी लगी`
+      : `${alias} Acme k liye kitna gaadi load hua`;
+    const nlu = operationalNlu({ date: { kind: 'relative', value: 'last_month' }, consignee: 'Acme' });
+    assert.doesNotThrow(() => validateNluInterpretation(nlu, source, NOW, true), source);
   }
 });
 

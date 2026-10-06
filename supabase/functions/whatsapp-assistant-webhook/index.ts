@@ -146,7 +146,7 @@ async function processInboundMessage(admin: SupabaseClient, message: InboundMess
         env: dependencies.env,
         fetch: dependencies.fetch,
       });
-      if ((result?.status === "answered" || result?.status === "clarification") && result.text?.trim()) {
+      if ((result?.status === "answered" || result?.status === "clarification" || result?.status === "out_of_scope") && result.text?.trim()) {
         await sendGupshupOutbound(senderDigits, result.text, dependencies.env, dependencies.fetch ?? fetch);
       } else if (result?.status === "unavailable") {
         console.info("[WhatsApp assistant webhook] assistant unavailable");
