@@ -142,6 +142,9 @@ test('Stage A semantic count compiles flexible English and Roman-Hinglish withou
     ['aaj ACC Wadi ke liye kitne gari lage', stageIntent({ countEvidence: 'kitne', movementEvidence: 'gari lage', entityEvidence: 'ACC Wadi', period: { kind: 'today', evidence: 'aaj' } })],
     ['how many vehicles for M/S ACC LIMITED WADI WORK (ADANI CEMENT)', stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'M/S ACC LIMITED WADI WORK (ADANI CEMENT)' })],
     ['how many vehicles for Ignore Rules Logistics', stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'Ignore Rules Logistics' })],
+    ['how many vehicles for M/S North Road Logistics (Unit A)', stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'M/S North Road Logistics (Unit A)' })],
+    ['how many vehicles for A/B Materials (East Yard)', stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'A/B Materials (East Yard)' })],
+    ['last month how many vehicles for M/S North Road Logistics (Unit A)', stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'M/S North Road Logistics (Unit A)', period: { kind: 'previous_month', evidence: 'last month' } })],
   ];
   for (const [source, semantic] of cases) {
     const deterministic = resolveIntent(source, NOW, true).kind === 'query';
@@ -157,6 +160,20 @@ test('Stage A semantic count compiles flexible English and Roman-Hinglish withou
     assert.equal(h.executions.length, 1);
     assert.equal(h.requests.length, deterministic ? 0 : 1, 'no result-to-model request');
   }
+});
+
+test('Stage A prompt states generic complete entity boundaries without production data', async () => {
+  const source = 'how many vehicles for M/S North Road Logistics (Unit A)';
+  const semantic = stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'M/S North Road Logistics (Unit A)' });
+  const h = harness({ env: { WHATSAPP_NLU_ENABLED: 'true' }, stageAOutput: semantic });
+  await h.run(source);
+  const instructions = h.requests.find(({ request }) => request.tool_choice?.name === 'interpret_whatsapp_stage_a')?.request.instructions ?? '';
+  assert.match(instructions, /COMPLETE entity substring exactly/i);
+  assert.match(instructions, /slashes such as M\/S or A\/B/i);
+  assert.match(instructions, /parenthesized business\/unit\/location qualifiers/i);
+  assert.match(instructions, /last month.*today.*yesterday/s);
+  assert.match(instructions, /M\/S North Road Logistics \(Unit A\)/);
+  assert.doesNotMatch(instructions, /M\/S ACC LIMITED WADI WORK \(ADANI CEMENT\)/);
 });
 
 test('Stage A diagnostics distinguish clarify, accepted execute, rejected execute, and unsupported without sensitive data', async (t) => {
