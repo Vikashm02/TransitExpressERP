@@ -7,6 +7,7 @@ export const CURRENT_MONTH_ALIASES = [
   "iss month",
   "is mahine",
   "iss mahine",
+  "ye mahina",
   "इस महीने",
 ] as const;
 

@@ -1,4 +1,4 @@
-import { extractInternalEntities, INTERNAL_ENTITY_KEYS, VEHICLE_COUNT_MOVEMENT_PATTERN } from "./whatsappAssistantOperationalLanguage.ts";
+import { extractInternalEntities, INTERNAL_ENTITY_KEYS, PAST_KAL_MOVEMENT_PATTERN, VEHICLE_COUNT_MOVEMENT_PATTERN, VEHICLE_COUNT_WORD_PATTERN, VEHICLE_WORD_PATTERN } from "./whatsappAssistantOperationalLanguage.ts";
 import { CURRENT_MONTH_ALIASES, LAST_MONTH_ALIASES, RELATIVE_MONTH_PHRASE_PATTERN, isCurrentMonthAlias, isLastMonthAlias } from "./whatsappAssistantDateLanguage.ts";
 import { toolDefinitions, internalToolDefinitions, validateOperationalArguments, validateArguments, type ObjectValue, type ToolName, type SemanticOp, type SemanticDate, type NluInterpretation, nluIntentSchema, MODELS, object } from "./whatsappAssistantSchemas.ts";
 
@@ -31,7 +31,7 @@ function monthRange(year: number, month: number): [string, string] {
 }
 export function detectLanguage(text: string): Language {
   if (/[\u0900-\u097f]/u.test(text)) return "hi";
-  return /\b(ka|ke|ki|kitne|kitna|batao|bataye|dikhao|din|hain|hai|mein|se)\b/i.test(text) ? "hinglish" : "en";
+  return /\b(ka|ke|ki|kitne|kitni|kitna|kitha|aaj|mahina|mahine|gadi|gaadi|gari|hua|hui|bna|nhi|nahi|batao|bataye|dikhao|din|hain|hai|mein|se)\b/i.test(text) ? "hinglish" : "en";
 }
 
 /** Conservative, fully consumed grammar: unknown qualifiers never disappear.
@@ -43,8 +43,10 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
   const language = detectLanguage(raw);
   const clarify = (reason: "year" | "filters" | "party_role" = "filters"): Intent => ({ kind: "clarification", language, reason });
   let source = raw.normalize("NFC").replace(/[०-९]/g, (c) => String(c.charCodeAt(0) - 0x0966)).trim();
-  if (word("finance|freight|invoice|billing|payment|balance|amount|salary|settlement|settle|sql|delete|update|insert|write|बिल|भुगतान|पैसा|रकम|मिटाओ").test(source)) return { kind: "out_of_scope", language, reason: "filters" };
+  if (word("finance|freight|invoice|billing|payment|balance|amount|salary|settlement|settle|sql|delete|update|insert|write|बिल|भुगतान|पैसा|रकम|मिटाओ").test(source) ||
+      word("bills?\\s+(?:no\\.?|number)|lrs?\\s*\\d+\\s+ka\\s+bills?|lrs?\\s+ka\\s+bills?").test(source)) return { kind: "out_of_scope", language, reason: "filters" };
   if (/[\p{Cc}\p{Cf}]/u.test(source)) return clarify();
+  if (internal && (/^\d+$/u.test(source) || word("(?:first|last)\\s+(?:lrs?|pods?)").test(source))) return clarify();
   let internalFields: ObjectValue = {};
   if (internal) {
     // An exact LR plus a bounded POD field question is a record lookup, not an
@@ -61,6 +63,9 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
     source = normalizePendingPodLanguage(source);
     try { const extracted = extractInternalEntities(source); source = extracted.source; internalFields = extracted.fields; }
     catch { return clarify(); }
+    // A name containing Kal is data; only an unconsumed temporal "kal"
+    // reaches this guard. The completed-movement form is reviewed below.
+    if (word("kal").test(source) && !word(PAST_KAL_MOVEMENT_PATTERN).test(source)) return clarify();
     // A dangling company preposition before a date is not an entity filter.
     // Refuse it before generic filler consumption can broaden the query.
     if (!Object.hasOwn(internalFields, "entitySearch") && word(`(?:in|for)\\s+${RELATIVE_MONTH_PHRASE_PATTERN}`).test(source)) return clarify();
@@ -71,12 +76,20 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
   if (word("no|not|non|except|excluding|without|बिना|before|after|less|more|over|under|older|and|or|aur|ya|nahi|nahin|mat|sirf|only|us|that|those|next|previous|कल|नहीं|मत|सिर्फ|और|या|उस|पहले|बाद").test(source)) return clarify();
   // Vehicle words establish an LR movement only in this bounded internal
   // count grammar. A bare vehicle/gaadi remains out of scope.
-  const vehicleCountLanguage = "(?:(?:kitna|kitne|kitni)\\s+(?:gaadi|gadi)|कितनी\\s+गाड़ी|how\\s+many\\s+vehicles?|vehicles?\\s+(?:loaded|went))";
-  const hasVehicleCount = internal && word(vehicleCountLanguage).test(source);
+  const vehicleCountLanguage = `(?:(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})|कितनी\\s+गाड़ी|how\\s+many\\s+vehicles?|vehicles?\\s+(?:loaded|went))`;
+  const loadCountLanguage = `(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:load|lode|loaded)\\s+(?:hua|hue|hui)`;
+  const bareLoadCount = internal && word(loadCountLanguage).test(source);
+  const hasVehicleCount = internal && (word(vehicleCountLanguage).test(source) || bareLoadCount);
   const hasLr = (internal && word("drafts?|final").test(source)) || hasVehicleCount || word("lrs?|एलआर|एल आर|lr[0-9]+").test(source);
   const hasPod = word("pods?|पीओडी|पी ओ डी").test(source);
-  if (!hasLr && !hasPod) return { kind: "out_of_scope", language, reason: "filters" };
+  if (!hasLr && !hasPod) return internal && word(`${VEHICLE_COUNT_WORD_PATTERN}|how\\s+many`).test(source)
+    ? clarify() : { kind: "out_of_scope", language, reason: "filters" };
   const args: ObjectValue = { ...internalFields };
+  // A reviewed overall count, not a general meaning for "abhi tak".
+  const overallConsignee = internal && typeof args.consignee === "string" &&
+    word(`abhi\\s+tak\\s+(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})\\s+(?:laga|lagi|load|lode|loaded)`).test(source);
+  if (overallConsignee) source = source.replace(word("abhi\\s+tak"), " ");
+  const pastKal = internal && word(PAST_KAL_MOVEMENT_PATTERN).test(source);
   let countOnly = false, explicitList = false, detail = false, created = false, pending = false;
   let range: [string, string] | undefined;
   // Consumption preserves all non-matching text so an unsupported filter cannot
@@ -123,7 +136,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
     take(word("(?:created(?:\\s+(?:at|on|time))?|creation(?:\\s+(?:date|time))?|create\\s+(?:hua|hue)|बनाए गए|बनाया गया|बने हुए)"), () => { if (created) throw new Error("duplicate_basis"); created = true; });
     // Reuse the vehicle-count grammar above, while retaining existing LR
     // count forms such as "how many draft LRs" and "count LRs".
-    take(word(`(?:${vehicleCountLanguage}|how\\s+many|count|number\\s+of|kitne|kitna|kitni|कितने|कितनी|संख्या)`), () => { if (countOnly) throw new Error("duplicate_count"); countOnly = true; });
+    take(word(`(?:${vehicleCountLanguage}|how\\s+many|count|number\\s+of|${VEHICLE_COUNT_WORD_PATTERN}|कितने|कितनी|संख्या)`), () => { if (countOnly) throw new Error("duplicate_count"); countOnly = true; });
     take(word("(?:show|list|dikhao|दिखाओ|दिखाएं|दिखाएँ|सूची)"), () => { if (explicitList) throw new Error("duplicate_list"); explicitList = true; });
     take(word("(?:details?|detail\\s+batao|विवरण|जानकारी)"), () => { detail = true; });
     if (countOnly && (explicitList || detail)) return clarify();
@@ -143,12 +156,12 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
 
     // Relative dates depend only on the trusted server clock, in IST.
     const istToday = new Date(now.getTime() + 330 * 60000).toISOString().slice(0, 10);
-    take(word(`today|aaj|आज|yesterday|beete kal|बीता कल|${RELATIVE_MONTH_PHRASE_PATTERN}|this year|is saal|इस साल|last year|pichhle saal|पिछले साल`), (m) => {
+    take(word(`today|aaj|आज|yesterday|beete kal|बीता कल|${pastKal ? "kal|" : ""}${RELATIVE_MONTH_PHRASE_PATTERN}|this year|is saal|इस साल|last year|pichhle saal|पिछले साल`), (m) => {
       const token = m[0].toLowerCase();
       const today = new Date(istToday);
       const year = today.getUTCFullYear(), month = today.getUTCMonth() + 1;
       if (["today", "aaj", "आज"].includes(token)) setRange([istToday, istToday]);
-      else if (["yesterday", "beete kal", "बीता कल"].includes(token)) {
+      else if (["yesterday", "beete kal", "बीता कल", "kal"].includes(token)) {
         const previous = new Date(today.getTime() - DAY_MS).toISOString().slice(0, 10); setRange([previous, previous]);
       } else if (isCurrentMonthAlias(token)) setRange(monthRange(year, month));
       else if (isLastMonthAlias(token)) setRange(monthRange(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1));
@@ -176,6 +189,10 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
       setRange([day(years[0], 1, 1), day(years[0], 12, 31)]);
     }
     if (range && dates.length !== 2 && word("from|to|through|se|से|tak|तक").test(source)) return clarify();
+    if (overallConsignee && range) return clarify();
+    // Without a period or the reviewed consignee construction, "kitna load"
+    // might ask for loading weight rather than an LR/movement count.
+    if (bareLoadCount && !range && !args.consignee && !args.lrNumber) return clarify();
     if (created && !range) return clarify();
     if (range) {
       if (created) {
@@ -188,6 +205,7 @@ export function resolveIntent(raw: string, now = new Date(), internal = false): 
     // Movement wording is consumed only after the internal LR vehicle-count
     // grammar has established scope. It is never a generic filler word.
     if (internal && countOnly && hasLr) take(word(VEHICLE_COUNT_MOVEMENT_PATTERN), () => {});
+    if (internal && pending && countOnly) take(word("h"), () => {});
     // Words that can change semantics are deliberately NOT in this filler set.
     take(word("lrs?|pods?|एलआर|एल आर|पीओडी|पी ओ डी|please|kripya|कृपया|batao|bataye|बताओ|बताएं|बताएँ|hai|hain|tha|the|है|हैं|थे|था|ke|ka|ki|के|का|की|mein|में|se|से|tak|तक|in|on|from|to|through|for|of|the|me|mujhe|मुझे|vehicle|गाड़ी|वाहन|number|no|नंबर|status|स्टेटस|date|तारीख|total|कुल|all|sab|सभी"), () => {});
     if (internal && countOnly && hasLr) {
@@ -267,16 +285,21 @@ function explicitPodDetailLr(source: string): { lrNumber: string; field: PodDeta
     { field: "unloading_date", pattern: "unloading\\s+date" },
     { field: "pod_date", pattern: "pods?\\s+date" },
     { field: "proof_present", pattern: "pods?\\s+proof" },
-    { field: "pod_present", pattern: "pods?\\s+bana" },
+    { field: "pod_present", pattern: "pods?\\s+(?:bna|ban(?:a)?(?:\\s+gaya)?|completed)" },
     { field: "pod_present", pattern: "(?:does\\s+)?have\\s+pods?" },
     { field: "full", pattern: "(?:full\\s+)?pods?\\s+details?" },
   ];
   const found = fields.filter(({ pattern }) => word(pattern).test(residual));
   if (found.length !== 1) return null;
   residual = residual.replace(word(found[0].pattern), " ");
+  // Only a bounded yes/no suffix may consume a negation; "POD nahi" on its
+  // own is not proof of absence and must not become an existence lookup.
+  if (found[0].field === "pod_present") {
+    residual = residual.replace(word("(?:h|hai)?\\s*(?:ki|ya)\\s+(?:nhi|nahi)"), " ");
+  }
   // These are grammatical wrappers for the reviewed English/Roman-Hinglish
   // forms. Anything else is intentionally left behind and rejected.
-  residual = residual.replace(word("ye|this|lr|ka|ki|ke|kya|kitna|kitni|kitne|tha|thi|hai|hain|what|is|the|of|does|do|has|available|for|was|were|show|batao|full"), " ");
+  residual = residual.replace(word("ye|this|lr|ka|ki|ke|kya|kitna|kitni|kitne|tha|thi|hai|hain|h|what|is|the|of|does|do|has|available|for|was|were|show|batao|full"), " ");
   return residual.replace(/[\s?,.:!?]/g, "") ? null : { lrNumber: `LR${lrMatches[0][1]}`, field: found[0].field };
 }
 
@@ -328,7 +351,8 @@ Rules:
 - For month+year (e.g., "september 2026"), use {kind:"month_year", month:9, year:2026}.
 - entryStatus is draft only when explicitly requested, otherwise null (final default).
 - Explicit branch/source city/destination city/transporter labels populate their respective fields.
-- Unlabelled names populate entitySearch, NOT a guessed party/material/branch role.
+- Unlabelled names populate entitySearch, NOT a guessed party/material/branch role. Only a complete reviewed count-and-movement construction with "X ka" can establish consignee; generic "X ka" cannot.
+- "X ke account mein" remains entitySearch, not consignee. Bare "kal" is ambiguous; only a complete past/completed LR movement count may mean yesterday. Do not infer a period from "abhi tak" except a complete directional overall count.
 - Directional unlabelled references populate originSearch/destinationSearch; the server resolves party/location ambiguity.
 - Explicit consignor/consignee/material/party labels populate only that named role.
 - Never return database IDs. Preserve complete user entity wording, including spelling.
@@ -575,11 +599,21 @@ export function validateNluInterpretation(
   // These are source-only aliases, never substitutions taken from model output.
   // Unknown qualifiers remain in the input and must be consumed by resolveIntent.
   if (/[\p{Cc}\p{Cf}%_\\]/u.test(source) || word("distinct|unique|different|alag|अलग|rate|rates|amount|freight|ledger|outstanding|finance").test(source)) throw new Error("nlu_unsupported");
+  // Canonicalizing "load" to LR must not authorize an undated quantity/weight
+  // question that the source grammar itself could not establish as LR count.
+  if (internal && word(`(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:load|lode|loaded)\\s+(?:hua|hue|hui)`).test(source) &&
+      resolveIntent(originalText, now, true).kind !== "query") throw new Error("nlu_source_unsupported");
+  if (internal && internalFields.consignee &&
+      word(`abhi\\s+tak\\s+(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})\\s+(?:laga|lagi|load|lode|loaded)`).test(source)) {
+    if (nlu.date !== null || nlu.createdDate !== null) throw new Error("nlu_date_provenance");
+    source = source.replace(word("abhi\\s+tak"), " ");
+  }
+  if (internal && word(PAST_KAL_MOVEMENT_PATTERN).test(source)) source = source.replace(word("kal"), "yesterday");
   source = source.replace(word("last mnth"), "last month")
     .replace(word("kitni"), "kitne").replace(word("me"), "mein")
     .replace(word("bane"), "created");
   // Existing product aliases mean LR/trip count, never distinct vehicle count.
-  source = source.replace(word("gaadi|gadi|गाड़ी"), "LR")
+  source = source.replace(word(internal ? "gaadi|gadi|gari|गाड़ी" : "gaadi|gadi|गाड़ी"), "LR")
     .replace(word("total vehicle"), "total LR").replace(word(internal ? "lage|lge|lagi|gaye|gaya|gayi|laga" : "lage|lge"), internal ? "LR" : "");
   source = source.replace(/^\s*(\d+)\s+ka\s+pod\s+aya\s+kya\s*[?]?$/iu, "LR$1 POD detail")
     .replace(/\b(lr\s*\d+)\s+ka\s+kya\s+status\s+h\s*[?]?$/iu, "$1 detail");
@@ -588,7 +622,7 @@ export function validateNluInterpretation(
     source = source.replace(word("trucks?|vehicles?|गाडियां|गाड़ियाँ"), "LR")
       .replace(word("drafts"), "draft LR")
       .replace(word("kitni baar|kitne baar|how many times"), "count LR")
-      .replace(word("loads?|loaded|loading"), "LR")
+      .replace(word("loads?|loaded|loading|lode"), "LR")
       .replace(word("hua|hue|hui"), "");
     // A requested POD field is an exact-LR POD detail operation, never a weight
     // substituted from the LR. Any leftover qualifiers still fail closed.

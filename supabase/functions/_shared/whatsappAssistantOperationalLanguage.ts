@@ -6,7 +6,12 @@ import { RELATIVE_MONTH_PHRASE_PATTERN } from "./whatsappAssistantDateLanguage.t
 export const INTERNAL_ENTITY_KEYS = ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "transporter", "vehicleNumber"] as const;
 // Reused by the parser after entity extraction and by the bounded directional
 // suffix boundary below. New movement wording must be reviewed in one place.
-export const VEHICLE_COUNT_MOVEMENT_PATTERN = "(?:was|were)\\s+loaded|loaded|went|load\\s+(?:hua|hue|hui)|load|laga\\s+tha|lagi\\s+thi|lage|lagi|laga|gaye|gaya|gayi|लगी|लगा|गई";
+export const VEHICLE_COUNT_MOVEMENT_PATTERN = "(?:was|were)\\s+loaded|loaded\\s+(?:hua|hue|hui)|loaded|went|(?:load|lode)\\s+(?:hua|hue|hui)|load|lode|laga\\s+tha|lagi\\s+thi|lage|lagi|laga|gaye|gaya|gayi|लगी|लगा|गई";
+export const VEHICLE_COUNT_WORD_PATTERN = "kitna|kitne|kitni|kitha";
+export const VEHICLE_WORD_PATTERN = "gaadi|gadi|gari";
+// A bare `kal` is never a date. Only a complete count with an explicit
+// past/completed movement predicate can establish yesterday.
+export const PAST_KAL_MOVEMENT_PATTERN = `kal\\s+(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})\\s+(?:(?:load|lode)\\s+(?:hua|hue|hui)|loaded(?:\\s+(?:hua|hue|hui))?)`;
 const boundary = `[\\p{L}\\p{M}\\p{N}_]`;
 const token = (s: string) => new RegExp(`(?<!${boundary})(?:${s})(?!${boundary})`, "giu");
 const acceptedDirectionalConjunction = `(?:k|ke)\\s+liye`;
@@ -23,16 +28,16 @@ const labels: Record<string, string> = {
   "to station|destination city|destination": "toStation",
   "transporter|vendor": "transporter",
 };
-const stops = `k|ke|ka|ki|liye|mein|me|se|to|for|in|on|from|के|का|की|में|से|तक|lrs?|pods?|gaadi|gadi|truck|vehicle|kitne|kitni|kitna|how|count|show|list|dikhao|batao|pending|present|drafts?|final|status|created|creation|last|this|today|yesterday|consignor|consignee|material|party|branch|booking|source|destination|transporter|vendor|कितने|कितनी|गाड़ी`;
+const stops = `k|ke|ka|ki|liye|mein|me|se|to|for|in|on|from|के|का|की|में|से|तक|lrs?|pods?|gaadi|gadi|gari|truck|vehicle|kitne|kitni|kitna|kitha|how|count|show|list|dikhao|batao|pending|present|drafts?|final|status|created|creation|last|this|today|yesterday|consignor|consignee|material|party|branch|booking|source|destination|transporter|vendor|कितने|कितनी|गाड़ी`;
 const entity = `("[^"\\r\\n]+"|'[^'\\r\\n]+'|[\\p{L}\\p{M}\\p{N}][\\p{L}\\p{M}\\p{N} .&/-]*?)`;
 // A suffix directional span must begin at a plausible entity, not at the
 // count phrase that can naturally precede it in Hinglish word order.
-const directionalEntity = `(?!(?:kitna|kitne|kitni|कितने|कितनी|gaadi|gadi|truck|vehicle|गाड़ी|वाहन|how|count)(?!${boundary}))${entity}`;
+const directionalEntity = `(?!(?:${VEHICLE_COUNT_WORD_PATTERN}|कितने|कितनी|${VEHICLE_WORD_PATTERN}|truck|vehicle|गाड़ी|वाहन|how|count)(?!${boundary}))${entity}`;
 const dateMask = "\uE000";
 const end = `(?=\\s+(?:${stops})(?!${boundary})|\\s*${dateMask}|$|[,?!])`;
 // The generic entity boundary remains narrow. This is used only after an
 // explicit directional suffix and permits reviewed movement predicates.
-const directionalMovementEnd = `(?=\\s+(?:${VEHICLE_COUNT_MOVEMENT_PATTERN})(?!${boundary})|\\s+(?:${stops})(?!${boundary})|\\s*${dateMask}|$|[,?!])`;
+const directionalMovementEnd = `(?=\\s+(?:${VEHICLE_COUNT_MOVEMENT_PATTERN})(?!${boundary})|\\s+abhi\\s+tak\\s+(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})\\s+(?:laga|lagi|load|lode|loaded)(?!${boundary})|\\s+(?:${stops})(?!${boundary})|\\s*${dateMask}|$|[,?!])`;
 function clean(raw: string): string {
   const value = raw.replace(/^["']|["']$/g, "").trim();
   if (!value || value.length > 200 || /[%_\\\p{Cc}\p{Cf}]/u.test(value)) throw new Error("nlu_entity");
@@ -43,7 +48,8 @@ export function extractInternalEntities(input: string): { source: string; fields
   const fields: Record<string, string> = {};
   const unlabelled = (raw: string) => {
     const value = clean(raw);
-    return !new RegExp(`^(?:${stops}|total|open|delivered|cancelled|canceled|billed|us|that|those|all|sab)(?!${boundary})`, "iu").test(value);
+    if (/^kal$/iu.test(value)) return false;
+    return !new RegExp(`^(?:${stops}|abhi\\s+tak|total|open|delivered|cancelled|canceled|billed|us|that|those|all|sab)(?!${boundary})`, "iu").test(value);
   };
   const put = (key: string, value: string) => {
     if (Object.hasOwn(fields, key)) throw new Error("duplicate_entity");
@@ -58,6 +64,12 @@ export function extractInternalEntities(input: string): { source: string; fields
   }
   source = source.replace(token("[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}"), value => { put("vehicleNumber", value.toUpperCase()); return " ".repeat(value.length); });
   source = source.replace(/\b(?:vehicle\s+(\d{4})|(\d{4})\s+(?:gaadi|gadi|vehicle))\b/giu, (whole,a,b) => { put("vehicleNumber",a ?? b); return " ".repeat(whole.length); });
+  // "X ke account mein" is a generic LR reference ONLY inside this complete,
+  // past-tense movement count. It never establishes a party role or billing query.
+  source = source.replace(new RegExp(`^\\s*${entity}\\s+ke\\s+account\\s+mein(?=\\s+${PAST_KAL_MOVEMENT_PATTERN}(?!${boundary}))`, "iu"), (whole, value) => {
+    if (!unlabelled(value) || token(`${RELATIVE_MONTH_PHRASE_PATTERN}|today|yesterday|aaj|kal|(?:january|february|march|april|may|june|july|august|september|october|november|december)\\s+\\d{4}|\\d{4}-\\d{2}-\\d{2}`).test(value)) return whole;
+    put("entitySearch", value); return " ".repeat(whole.length);
+  });
   // An explicit `station` suffix is the only concise physical-route grammar.
   // Keep station snapshots separate from Customer Master city identity.
   const stationName = `([\\p{L}\\p{M}][\\p{L}\\p{M}\\p{N} .&/-]*?)`;
@@ -71,9 +83,16 @@ export function extractInternalEntities(input: string): { source: string; fields
   source = source.replace(new RegExp(`^\\s*(?:from\\s+)?${station}\\s+(?:se|से|to)\\s+(?!(?:kitna|kitne|kitni|how|count|gaadi|gadi|lrs?|vehicles?)(?!${boundary}))${station}(?=\\s|$|[,?!])`, "giu"), (whole, a, b) => {
     put("originCity", a); put("destinationCity", b); return " ".repeat(whole.length);
   });
+  // At the beginning of a directional reference, "ye mahina X" can be either
+  // a date followed by X or the start of a company name. Never drop the prefix.
+  if (/^\s*ye\s+mahina\s+[\p{L}\p{M}][\p{L}\p{M}\p{N} .&/-]*?\s+(?:(?:k|ke)\s+liye|ka\s+(?:kitna|kitni|kitha)\s+(?:(?:gaadi|gadi|gari)\s+)?(?:load|lode|loaded))\b/iu.test(source)) throw new Error("ambiguous_date_entity");
+  // Do not reinterpret a suffix after a completed movement as a company name
+  // beginning with "load hua" (or a trailing fragment of that predicate).
+  if (token(`(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})\\s+(?:load|lode|loaded)\\s+(?:hua|hue|hui)\\s+${entity}\\s+${acceptedDirectionalConjunction}`).test(source)) throw new Error("ambiguous_directional_entity");
   // Mask date phrases only in the scan, retaining them verbatim in the source.
   // This allows '<date> <entity> ke ...' without consuming the date as a name.
-  let scan = source.replace(token(`${RELATIVE_MONTH_PHRASE_PATTERN}|today|yesterday|aaj|आज|beete kal|बीता कल|last (?:mnth|year)|this (?:mnth|year)|(?:pichle|pichhle) saal|is saal|इस साल|(?:पिछले) साल|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}`), s => dateMask.repeat(s.length));
+  const pastKal = token(PAST_KAL_MOVEMENT_PATTERN).test(source);
+  let scan = source.replace(token(`${RELATIVE_MONTH_PHRASE_PATTERN}|today|yesterday|aaj|आज|beete kal|बीता कल|${pastKal ? "kal|" : ""}last (?:mnth|year)|this (?:mnth|year)|(?:pichle|pichhle) saal|is saal|इस साल|(?:पिछले) साल|(?:जनवरी|फरवरी|फ़रवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?: \\d{4})?|\\d{4}-\\d{2}-\\d{2}`), s => dateMask.repeat(s.length));
   // Successful extraction deliberately accepts only the reviewed whitespace
   // grammar below. This broader, token-bounded marker is fallback safety only:
   // plausible separator variants must not be swallowed by generic entitySearch.
@@ -97,6 +116,9 @@ export function extractInternalEntities(input: string): { source: string; fields
   // search. Keep the postposition out of the value sent to the resolver.
   consume(new RegExp(`(?:^|(?<=\\s))${directionalEntity}\\s+${acceptedDirectionalConjunction}${directionalMovementEnd}`, "giu"), v => put("consignee", v));
   consume(new RegExp(`(?:^|(?<=\\s))${directionalEntity}\\s+के\\s+लिए${directionalMovementEnd}`, "giu"), v => put("consignee", v));
+  // The reviewed "X ka kitna [gaadi] load hua" is a distinct, bounded
+  // consignee construction. Generic "X ka" continues to be unresolved.
+  consume(new RegExp(`(?:^|(?<=\\s))${directionalEntity}\\s+ka(?=\\s+(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:(?:${VEHICLE_WORD_PATTERN})\\s+)?(?:load|lode|loaded)\\s+(?:hua|hue|hui)(?!${boundary}))`, "giu"), v => put("consignee", v));
   // A movement explicitly going to an entity establishes destination-side
   // direction before generic X-to-Y route grammar can inspect the phrase.
   consume(new RegExp(`(?<!${boundary})(?:went|go|going)\\s+to\\s+${entity}${end}`, "giu"), v => { if (!unlabelled(v)) return false; put("destinationSearch", v); });

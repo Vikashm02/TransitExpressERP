@@ -18,7 +18,7 @@ const messages = {
   en: {
     scope: "This pilot currently supports LR and POD queries only.",
     year: "Please include the year and repeat the full LR/POD question.",
-    filters: "Please clarify the full LR/POD question with the LR number or filters. I cannot safely resolve all qualifiers, and do not remember earlier messages.",
+    filters: "Please specify your full LR/POD question properly.",
     party_role: "For pending POD, specify consignor or consignee and repeat the full question.",
     total: "Total", missing: "LR not found.", shortened: "Displayed list shortened; more results exist. Please narrow the filters.",
     truncated: "… means a descriptive field was shortened.",
@@ -26,7 +26,7 @@ const messages = {
   hi: {
     scope: "यह पायलट अभी केवल LR और POD के सवालों का समर्थन करता है।",
     year: "कृपया वर्ष सहित पूरा LR/POD सवाल दोबारा लिखें।",
-    filters: "कृपया LR नंबर या सभी फ़िल्टर के साथ सवाल स्पष्ट करें। सभी शर्तें स्पष्ट नहीं हैं; यह पायलट पिछले संदेश याद नहीं रखता।",
+    filters: "कृपया LR/POD का पूरा सवाल स्पष्ट लिखें।",
     party_role: "लंबित POD के लिए consignor या consignee बताकर पूरा सवाल दोबारा लिखें।",
     total: "कुल", missing: "LR नहीं मिला।", shortened: "दिखाई गई सूची छोटी की गई है; और परिणाम हैं। कृपया फ़िल्टर सीमित करें।",
     truncated: "… का अर्थ है विवरण छोटा किया गया है।",
@@ -34,7 +34,7 @@ const messages = {
   hinglish: {
     scope: "Yeh pilot abhi sirf LR aur POD queries support karta hai.",
     year: "Year ke saath poora LR/POD sawal dobara likhein.",
-    filters: "LR number ya saare filters ke saath sawal clear karein. Saari shartein clear nahi hain; yeh pilot pichhle messages yaad nahi rakhta.",
+    filters: "Kripya apna poora LR/POD sawal saaf likhein.",
     party_role: "Pending POD ke liye consignor ya consignee batakar poora sawal dobara likhein.",
     total: "Kul", missing: "LR nahi mila.", shortened: "Dikhayi gayi list chhoti ki gayi hai; aur results hain. Filters narrow karein.",
     truncated: "… ka matlab description chhota kiya gaya hai.",
@@ -204,6 +204,10 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
           ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "originCity", "destinationCity", "transporter", "podState", "vehicleNumber"].some(k => operational.args[k] != null) || operational.args.entryStatus === "draft")) plan = operational;
       // An old party-substring parser must never bypass unresolved-role checks.
       else if (plan.kind === "query" && ["partySearch", "consignor", "consignee", "material"].some(k => plan.args[k] != null)) plan = operational;
+      else if (plan.kind === "out_of_scope" && operational.kind === "clarification" &&
+          (/^\s*\d+\s*$/u.test(text) || /\bkal\b/iu.test(text) ||
+            /^\s*(?:kitna|kitni|kitha)\s+(?:hai|h)\s*[?!.]?\s*$/iu.test(text) ||
+            /\bka\s+(?:kitna|kitni|kitha)\s+hua\s*[?!.]?\s*$/iu.test(text))) plan = operational;
     }
 
     // A bounded server-owned continuation is consulted only when this message

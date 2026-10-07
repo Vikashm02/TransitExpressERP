@@ -86,6 +86,172 @@ function harness(options = {}) {
 }
 
 // Intent tests use explicit expectations, not model-provided "clarify" fixtures.
+const staffPlan = (source) => {
+  const plan = resolveIntent(source, NOW, true);
+  assert.equal(plan.kind, 'query', source);
+  assert.equal(plan.operational, true, source);
+  return plan;
+};
+
+test('staff movement spellings count finalized LR movements by IST LR date', () => {
+  for (const source of ['Aaj kitna lode hua', 'Aaj kitna load hua', 'Aaj kitni gadi load hui', 'Aaj kitna gaadi laga']) {
+    const plan = staffPlan(source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.lrDateFrom, '2026-10-01', source);
+    assert.equal(plan.args.lrDateTo, '2026-10-01', source);
+    assert.equal(plan.args.entryStatus, null, source);
+    assert.equal(plan.args.status, null, source);
+    assert.equal(plan.args.vehicleNumber, null, source);
+  }
+  for (const source of ['Ye mahina kitha gari lode hua', 'Ye mahina kitna gadi load hua', 'Is mahine kitni gaadi load hui']) {
+    const plan = staffPlan(source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.lrDateFrom, '2026-10-01', source);
+    assert.equal(plan.args.lrDateTo, '2026-10-31', source);
+    assert.equal(plan.args.createdAtFrom, null, source);
+    assert.equal(plan.args.entryStatus, null, source);
+    assert.equal(plan.args.status, null, source);
+    assert.equal(plan.language, 'hinglish', source);
+  }
+});
+
+test('staff overall consignee counts establish roles only from reviewed movement constructions', () => {
+  for (const [source, consignee] of [
+    ['Wadi k liye abhi tak kitna gaadi laga', 'Wadi'],
+    ['Acc wadi ka kitna lode hua', 'Acc wadi'],
+    ['Kal Logistics k liye kitni gaadi load hui', 'Kal Logistics'],
+    ['Bill Logistics k liye kitni gaadi load hui', 'Bill Logistics'],
+    ['Another Company ka kitni gaadi loaded hui', 'Another Company'],
+  ]) {
+    const plan = staffPlan(source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args.consignee, consignee, source);
+    assert.equal(plan.args.entitySearch, null, source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.lrDateFrom, null, source);
+    assert.equal(plan.args.lrDateTo, null, source);
+    assert.equal(plan.args.createdAtFrom, null, source);
+    assert.equal(plan.args.entryStatus, null, source);
+    assert.equal(plan.args.status, null, source);
+  }
+  const dated = staffPlan('Aaj Wadi ka kitna gaadi load hua');
+  assert.equal(dated.args.consignee, 'Wadi');
+  assert.equal(dated.args.entitySearch, null);
+  assert.equal(dated.args.lrDateFrom, '2026-10-01');
+  assert.equal(staffPlan('ACC Wadi ka kitna gaadi laga').args.entitySearch, 'ACC Wadi');
+  for (const source of ['Ambuja ka kitna hua', 'ACC Wadi ka kitna hua', 'Wadi k liye abhi tak kitna gaadi laga last month', 'abhi tak kitna gaadi laga',
+    'Ye Mahina Logistics k liye kitna gaadi load hua', 'Ye Mahina Logistics ka kitna lode hua',
+    'Aaj kitna gaadi lode hua Acme k liye', 'kitna load hua']) {
+    assert.equal(resolveIntent(source, NOW, true).kind, 'clarification', source);
+  }
+});
+
+test('staff pending POD and exact-LR POD presence keep separate existing operations', () => {
+  for (const source of ['Total kitna pod pending h', 'Lr pod kitna pending h', 'Total kitna POD pending hai']) {
+    const plan = staffPlan(source);
+    assert.equal(plan.name, 'search_pending_pods', source);
+    assert.equal(plan.args.podState, 'pending', source);
+    assert.equal(plan.args.minPendingDays, 0, source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.lrDateFrom, null, source);
+    assert.equal(plan.args.lrDateTo, null, source);
+    assert.equal(plan.args.entryStatus, null, source);
+  }
+  for (const source of ['Lr 19369 ka pod bna h ki nhi', 'LR19369 ka POD bana hai ya nahi', 'LR 19369 ka pod completed hai kya', 'LR19369 ka POD ban gaya hai kya']) {
+    const plan = staffPlan(source);
+    assert.equal(plan.name, 'get_pod_detail', source);
+    assert.equal(plan.args.lrNumber, 'LR19369', source);
+    assert.equal(plan.args.countOnly, false, source);
+    assert.equal(plan.podDetailField, 'pod_present', source);
+    assert.equal(Object.hasOwn(plan.args, 'podDetailField'), false, source);
+  }
+});
+
+test('staff kal is yesterday only for complete past-tense LR movement counts', () => {
+  const source = 'Shree cement ke account mein kal kitni gadi load Hui hai?';
+  const plan = staffPlan(source);
+  assert.equal(plan.name, 'search_lrs');
+  assert.equal(plan.args.entitySearch, 'Shree cement');
+  assert.equal(plan.args.consignee, null);
+  assert.equal(plan.args.countOnly, true);
+  assert.equal(plan.args.lrDateFrom, '2026-09-30');
+  assert.equal(plan.args.lrDateTo, '2026-09-30');
+  assert.equal(staffPlan('kal kitna gaadi load hua').args.lrDateFrom, '2026-09-30');
+  assert.equal(staffPlan('Sree cement ke account mein kal kitni gadi load hui hai').args.entitySearch, 'Sree cement');
+  for (const ambiguous of ['kal kitna gaadi laga', 'Shree cement ke account mein kal kitni gadi lage', 'kal count LR', 'tomorrow kal kitni gadi load hui', 'September 2026 Shree cement ke account mein kal kitni gadi load hui']) {
+    assert.equal(resolveIntent(ambiguous, NOW, true).kind, 'clarification', ambiguous);
+  }
+});
+
+test('staff incomplete follow-ups do not inherit an earlier successful question', async () => {
+  const h = harness({ env: { WHATSAPP_NLU_ENABLED: 'false' }, operationalRpc: (_name, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
+  assert.equal((await h.run('Aaj kitna lode hua')).status, 'answered');
+  for (const source of ['LR no.', '19369', 'Kitna hai?', 'Is pod completed']) {
+    const answer = await h.run(source);
+    assert.equal(answer.status, 'clarification', source);
+    assert.match(answer.text, /full LR\/POD question|poora LR\/POD sawal/i, source);
+  }
+  assert.equal(h.executions.length, 1);
+  assert.equal(h.requests.length, 0);
+});
+
+test('staff incomplete and unsupported first/last requests do not become trusted queries', async () => {
+  for (const source of ['LR no.', '19369', 'Kitna hai?', 'Is pod completed', 'Ambuja ka kitna hua',
+    'Last LR number created?', 'Last LR serial number kya hai?', 'First LR no. kya hai', 'Last pod update ka serial kya hai']) {
+    const h = harness({ env: { WHATSAPP_NLU_ENABLED: 'false' } });
+    const answer = await h.run(source);
+    assert.notEqual(answer.status, 'answered', source);
+    if (!source.startsWith('Last pod')) assert.equal(answer.status, 'clarification', source);
+    assert.equal(h.executions.length, 0, source);
+    assert.equal(h.requests.length, 0, source);
+  }
+  for (const source of ['Last bill no kya hai?', 'Kitne LR ka bill ban chuka hai', 'LR19600 ka bill bana hai ya nahi']) {
+    const h = harness();
+    assert.equal((await h.run(source)).status, 'out_of_scope', source);
+    assert.equal(h.executions.length, 0, source);
+  }
+});
+
+test('staff new deterministic requests execute one existing trusted operation without NLU', async () => {
+  for (const [source, name, key, value] of [
+    ['Aaj kitna lode hua', 'search_lrs', 'lrDateFrom', '2026-10-01'],
+    ['Ye mahina kitha gari lode hua', 'search_lrs', 'lrDateTo', '2026-10-31'],
+    ['Wadi k liye abhi tak kitna gaadi laga', 'search_lrs', 'consignee', 'Wadi'],
+    ['Acc wadi ka kitna lode hua', 'search_lrs', 'consignee', 'Acc wadi'],
+    ['Total kitna pod pending h', 'search_pending_pods', 'minPendingDays', 0],
+    ['Lr 19369 ka pod bna h ki nhi', 'get_pod_detail', 'lrNumber', 'LR19369'],
+    ['Shree cement ke account mein kal kitni gadi load Hui hai?', 'search_lrs', 'entitySearch', 'Shree cement'],
+  ]) {
+    const h = harness({ operationalRpc: (operation, args) => {
+      assert.equal(operation, name, source);
+      assert.equal(args[key], value, source);
+      return { status: 'ok', result: name === 'get_pod_detail'
+        ? { found: true, lr: detailRow('LR19369'), pod_present: false, pod: null }
+        : listResult(args, [], 0) };
+    } });
+    assert.equal((await h.run(source)).status, 'answered', source);
+    assert.equal(h.executions.length, 1, source);
+    assert.equal(h.requests.length, 0, source);
+  }
+});
+
+test('staff consignee absence or ambiguity is returned by the authorized resolver without choosing a company', async () => {
+  for (const source of ['Wadi k liye abhi tak kitna gaadi laga', 'Acc wadi ka kitna lode hua']) {
+    for (const options of [[], [
+      { role: 'consignee', label: 'ACC Wadi' }, { role: 'consignee', label: 'Other Wadi' },
+    ]]) {
+      const h = harness({ operationalRpc: () => ({ status: 'clarification', issues: [{
+        field: 'consignee', role: 'consignee', reference: 'Wadi', options,
+      }] }) });
+      assert.equal((await h.run(source)).status, 'clarification', source);
+      assert.equal(h.executions.length, 1, source);
+      assert.equal(h.requests.length, 0, source);
+    }
+  }
+});
+
 test('English, Hinglish and Hindi natural requests resolve deterministically', () => {
   const pending = planFor('15 din se pending POD kitne hain?');
   assert.equal(pending.name, 'search_pending_pods');
@@ -2060,6 +2226,39 @@ const operationalNlu = (patch = {}) => hardenedNlu({
   bookingBranch: null, fromStation: null, toStation: null, podState: null,
   entitySearch: null, ...patch,
 });
+test('staff NLU provenance accepts only matching date, role, and operation from reviewed source', () => {
+  const cases = [
+    ['Aaj kitna lode hua', { date: { kind: 'relative', value: 'today' } }],
+    ['Ye mahina kitha gari lode hua', { date: { kind: 'relative', value: 'this_month' } }],
+    ['Wadi k liye abhi tak kitna gaadi laga', { date: null, consignee: 'Wadi' }],
+    ['Acc wadi ka kitna lode hua', { date: null, consignee: 'Acc wadi' }],
+    ['Aaj Wadi ka kitna gaadi load hua', { date: { kind: 'relative', value: 'today' }, consignee: 'Wadi' }],
+    ['Kal Logistics k liye kitni gaadi load hui', { date: null, consignee: 'Kal Logistics' }],
+    ['Bill Logistics k liye kitni gaadi load hui', { date: null, consignee: 'Bill Logistics' }],
+    ['Shree cement ke account mein kal kitni gadi load Hui hai?', {
+      date: { kind: 'relative', value: 'yesterday' }, entitySearch: 'Shree cement',
+    }],
+    ['Total kitna pod pending h', { date: null, operation: 'pending_pod_count' }],
+  ];
+  for (const [source, patch] of cases) {
+    assert.doesNotThrow(() => validateNluInterpretation(operationalNlu(patch), source, NOW, true), source);
+  }
+  assert.throws(() => validateNluInterpretation(operationalNlu({ date: null, consignee: 'Ambuja' }), 'Ambuja ka kitna hua', NOW, true));
+  assert.throws(() => validateNluInterpretation(operationalNlu({ date: null, consignee: 'Logistics' }),
+    'Ye Mahina Logistics k liye kitna gaadi load hua', NOW, true));
+  assert.throws(() => validateNluInterpretation(operationalNlu({ date: null }), 'kitna load hua', NOW, true));
+  assert.throws(() => validateNluInterpretation(operationalNlu({ date: { kind: 'relative', value: 'today' }, consignee: 'lode hua Acme' }),
+    'Aaj kitna gaadi lode hua Acme k liye', NOW, true));
+  assert.throws(() => validateNluInterpretation(operationalNlu({ consignee: 'Wadi' }),
+    'Wadi k liye abhi tak kitna gaadi laga', NOW, true));
+  assert.throws(() => validateNluInterpretation(operationalNlu({ date: { kind: 'relative', value: 'last_month' }, consignee: 'Wadi' }),
+    'Wadi k liye abhi tak kitna gaadi laga last month', NOW, true));
+  assert.throws(() => validateNluInterpretation(operationalNlu({ date: null, consignee: 'Shree cement' }),
+    'Shree cement ke account mein kal kitni gadi load Hui hai?', NOW, true));
+  assert.throws(() => validateNluInterpretation(operationalNlu({ date: { kind: 'relative', value: 'yesterday' } }),
+    'kal kitna gaadi laga', NOW, true));
+});
+
 const operationalCases = [
   ['total kitne drafts hai?', { date: null, entryStatus: 'draft' }],
   ['Last month kitne gaadi lage?', {}],
