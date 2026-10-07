@@ -245,9 +245,14 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       try {
         if (mayUseStageASemanticIntent(text)) {
           const nlu = await interpretStageASemanticIntentNLU(text, language, now, dependencies.fetch ?? fetch, env);
+          if (nlu.outcome === "clarify" || nlu.outcome === "execute" || nlu.outcome === "unsupported") {
+            console.info(`[WhatsApp NLU] stage_a_model_outcome=${nlu.outcome}`);
+          }
           if (nlu.outcome === "unsupported") return { status: "out_of_scope", text: messages[language].scope };
           if (nlu.outcome === "clarify") return { status: "clarification", text: messages[language].filters };
           const compiled = compileStageASemanticIntent(nlu, text, now);
+          if (compiled.ok) console.info("[WhatsApp NLU] stage_a_compile=accepted");
+          else console.info(`[WhatsApp NLU] stage_a_compile=rejected reason=${compiled.reason}`);
           if (!compiled.ok) return { status: "clarification", text: messages[language][compiled.reason] };
           finalPlan = { kind: "query", name: "search_lrs", args: compiled.args, language, operational: true };
         } else {

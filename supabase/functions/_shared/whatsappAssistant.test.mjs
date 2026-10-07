@@ -159,6 +159,54 @@ test('Stage A semantic count compiles flexible English and Roman-Hinglish withou
   }
 });
 
+test('Stage A diagnostics distinguish clarify, accepted execute, rejected execute, and unsupported without sensitive data', async (t) => {
+  const cases = [
+    {
+      label: 'clarify',
+      source: 'how many vehicles for M/S ACC LIMITED WADI WORK (ADANI CEMENT)',
+      output: { version: 'stage_a_v1', outcome: 'clarify', intent: null, countEvidence: null, movementEvidence: null, entityEvidence: null, period: null, clarificationReason: 'insufficient_grounding' },
+      expected: ['[WhatsApp NLU] stage_a_model_outcome=clarify'],
+      forbidden: ['stage_a_compile='],
+    },
+    {
+      label: 'accepted',
+      source: 'how many vehicles for M/S ACC LIMITED WADI WORK (ADANI CEMENT)',
+      output: stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'M/S ACC LIMITED WADI WORK (ADANI CEMENT)' }),
+      expected: ['[WhatsApp NLU] stage_a_model_outcome=execute', '[WhatsApp NLU] stage_a_compile=accepted'],
+      forbidden: ['stage_a_compile=rejected'],
+    },
+    {
+      label: 'rejected',
+      source: 'last month total vehicles for The ACC Wadi',
+      output: stageIntent({ countEvidence: 'total', movementEvidence: 'vehicles', entityEvidence: 'ACC Wadi', period: { kind: 'previous_month', evidence: 'last month' } }),
+      expected: ['[WhatsApp NLU] stage_a_model_outcome=execute', '[WhatsApp NLU] stage_a_compile=rejected reason=filters'],
+      forbidden: ['stage_a_compile=accepted'],
+    },
+    {
+      label: 'unsupported',
+      source: 'how many vehicles for M/S ACC LIMITED WADI WORK (ADANI CEMENT) banana request',
+      output: { version: 'stage_a_v1', outcome: 'unsupported', intent: null, countEvidence: null, movementEvidence: null, entityEvidence: null, period: null, clarificationReason: 'unsupported_capability' },
+      expected: ['[WhatsApp NLU] stage_a_model_outcome=unsupported'],
+      forbidden: ['stage_a_compile='],
+    },
+  ];
+  for (const scenario of cases) {
+    const logs = [];
+    t.mock.method(console, 'info', (...args) => logs.push(args));
+    const h = harness({ env: { WHATSAPP_NLU_ENABLED: 'true' }, stageAOutput: scenario.output });
+    const result = await h.run(scenario.source);
+    assert.ok(['clarification', 'answered', 'out_of_scope'].includes(result.status), scenario.label);
+    const serialized = JSON.stringify(logs);
+    for (const expected of scenario.expected) assert.ok(serialized.includes(expected), `${scenario.label}: ${expected}`);
+    for (const forbidden of scenario.forbidden) assert.ok(!serialized.includes(forbidden), `${scenario.label}: ${forbidden}`);
+    for (const sensitive of [scenario.source, 'M/S ACC LIMITED WADI WORK (ADANI CEMENT)', 'how many', 'vehicles', 'ACC Wadi', 'entityEvidence', 'countEvidence', 'movementEvidence', 'OPENAI_API_KEY', UUID, '+919999999999']) {
+      assert.ok(!serialized.includes(sensitive), `${scenario.label}: leaked ${sensitive}`);
+    }
+    if (scenario.label === 'unsupported') assert.equal(h.executions.length, 0);
+    if (scenario.label === 'clarify' || scenario.label === 'rejected') assert.equal(h.executions.length, 0);
+  }
+});
+
 test('Stage A compiler rejects omitted, shortened, split, injected and multi-request model scope', () => {
   const valid = (source, semantic) => compileStageASemanticIntent(semantic, source, NOW);
   const base = stageIntent({ countEvidence: 'total', movementEvidence: 'vehicles', entityEvidence: 'ACC Wadi', period: { kind: 'previous_month', evidence: 'last month' } });
