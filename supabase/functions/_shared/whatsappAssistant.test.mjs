@@ -252,6 +252,147 @@ test('staff consignee absence or ambiguity is returned by the authorized resolve
   }
 });
 
+// Production regression: the exact authoritative Customer Master label
+// contains a balanced parenthesized group and must remain usable in the
+// already-reviewed directional/consignee constructions only.
+const FULL_ACC_LABEL = 'M/S ACC LIMITED WADI WORK (ADANI CEMENT)';
+
+test('full Customer Master label with balanced parentheses is extracted only by reviewed consignee constructions', () => {
+  const extracted = extractInternalEntities(`${FULL_ACC_LABEL} k liye abhi tak kitna gaadi laga`);
+  assert.deepEqual(extracted.fields, { consignee: FULL_ACC_LABEL });
+  assert.equal(extracted.source.trim(), 'abhi tak kitna gaadi laga');
+  for (const source of [
+    `${FULL_ACC_LABEL} k liye abhi tak kitna gaadi laga`,
+    `${FULL_ACC_LABEL} ke liye abhi tak kitni gadi lagi`,
+    `${FULL_ACC_LABEL} ka kitna gaadi load hua`,
+  ]) {
+    const plan = staffPlan(source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args.consignee, FULL_ACC_LABEL, source);
+    assert.equal(plan.args.entitySearch, null, source);
+    assert.equal(plan.args.partySearch, null, source);
+    assert.equal(plan.args.consignor, null, source);
+    assert.equal(plan.args.countOnly, true, source);
+    assert.equal(plan.args.lrDateFrom, null, source);
+    assert.equal(plan.args.lrDateTo, null, source);
+    assert.equal(plan.args.createdAtFrom, null, source);
+    assert.equal(plan.args.createdAtTo, null, source);
+    // Default finalized, non-cancelled semantics are unchanged.
+    assert.equal(plan.args.entryStatus, null, source);
+    assert.equal(plan.args.status, null, source);
+  }
+});
+
+test('malformed parentheses, date mixing and generic ka never become trusted full-label queries', () => {
+  for (const source of [
+    'M/S ACC LIMITED WADI WORK (ADANI CEMENT k liye abhi tak kitna gaadi laga',
+    'M/S ACC LIMITED WADI WORK ADANI CEMENT) k liye abhi tak kitna gaadi laga',
+    'ACC ((Wadi)) k liye abhi tak kitna gaadi laga',
+    'ACC () k liye abhi tak kitna gaadi laga',
+    'ACC ( ) k liye abhi tak kitna gaadi laga',
+    `${FULL_ACC_LABEL} k liye abhi tak kitna gaadi laga last month`,
+    `${FULL_ACC_LABEL} ka kitna hua`,
+    'Ambuja ka kitna hua',
+    'abhi tak kitna gaadi laga',
+  ]) {
+    assert.equal(resolveIntent(source, NOW, true).kind, 'clarification', source);
+  }
+  for (const source of ['ACC ((Wadi)) k liye abhi tak kitna gaadi laga', 'ACC () k liye abhi tak kitna gaadi laga',
+    'M/S ACC LIMITED WADI WORK ADANI CEMENT) k liye abhi tak kitna gaadi laga']) {
+    assert.deepEqual(extractInternalEntities(source).fields, {}, source);
+  }
+  // "ka ... laga" is not the reviewed bounded ka construction; it must not
+  // newly establish a consignee merely because the name is now parseable.
+  const laga = resolveIntent(`${FULL_ACC_LABEL} ka kitna gaadi laga`, NOW, true);
+  assert.ok(laga.kind !== 'query' || laga.args.consignee == null);
+});
+
+test('quoted full label with balanced parentheses is extracted exactly like the unquoted label', () => {
+  for (const quote of ['"', "'"]) {
+    const source = `${quote}${FULL_ACC_LABEL}${quote} k liye abhi tak kitna gaadi laga`;
+    const extracted = extractInternalEntities(source);
+    assert.deepEqual(extracted.fields, { consignee: FULL_ACC_LABEL }, source);
+    assert.equal(extracted.source.trim(), 'abhi tak kitna gaadi laga', source);
+    const plan = staffPlan(source);
+    assert.equal(plan.name, 'search_lrs', source);
+    assert.equal(plan.args.consignee, FULL_ACC_LABEL, source);
+    assert.equal(plan.args.entitySearch, null, source);
+    assert.equal(plan.args.partySearch, null, source);
+    assert.equal(plan.args.countOnly, true, source);
+  }
+});
+
+test('quoted malformed parentheses never become trusted consignee queries nor partially match inside', () => {
+  for (const quote of ['"', "'"]) {
+    for (const name of ['ACC (Wadi', 'ACC Wadi)', 'ACC ((Wadi))', 'ACC ()', 'ACC ( )',
+      'Foo ACC (Wadi', 'Foo ACC Wadi) Bar', 'Foo (ACC ()) Bar', 'M/S ACC LIMITED WADI WORK (ADANI CEMENT']) {
+      for (const suffix of ['k liye abhi tak kitna gaadi laga', 'ke liye abhi tak kitni gadi lagi']) {
+        const source = `${quote}${name}${quote} ${suffix}`;
+        assert.throws(() => extractInternalEntities(source), /unsafe_directional_parentheses/, source);
+        const resolved = resolveIntent(source, NOW, true);
+        assert.equal(resolved.kind, 'clarification', source);
+      }
+      const ka = `${quote}${name}${quote} ka kitna gaadi load hua`;
+      assert.throws(() => extractInternalEntities(ka), /unsafe_directional_parentheses/, ka);
+      assert.notEqual(resolveIntent(ka, NOW, true).kind, 'query', ka);
+    }
+  }
+});
+
+test('date/name ordering guards also cover balanced-parenthesis company names', () => {
+  for (const [source, message] of [
+    ['Ye mahina ACC (Wadi) k liye kitna gaadi load hua', 'ambiguous_date_entity'],
+    ['Ye Mahina Logistics (Wadi) ka kitna lode hua', 'ambiguous_date_entity'],
+    ['kitna gaadi load hua ACC (Wadi) k liye', 'ambiguous_directional_entity'],
+    ['Aaj kitna gaadi lode hua Acme (Wadi) k liye', 'ambiguous_directional_entity'],
+  ]) {
+    assert.throws(() => extractInternalEntities(source), { message }, source);
+    assert.equal(resolveIntent(source, NOW, true).kind, 'clarification', source);
+  }
+});
+
+test('full-label consignee count executes one trusted operation and the resolver fails closed', async () => {
+  const source = `${FULL_ACC_LABEL} k liye abhi tak kitna gaadi laga`;
+  const h = harness({ operationalRpc: (operation, args) => {
+    assert.equal(operation, 'search_lrs');
+    assert.equal(args.consignee, FULL_ACC_LABEL);
+    assert.equal(args.entitySearch, null);
+    assert.equal(args.countOnly, true);
+    assert.equal(args.lrDateFrom, null);
+    return { status: 'ok', result: listResult(args, [], 7) };
+  } });
+  const answered = await h.run(source);
+  assert.equal(answered.status, 'answered');
+  assert.match(answered.text, /Consignee: M\/S ACC LIMITED WADI WORK \(ADANI CEMENT\)\nKul: 7 LR \/ gaadi/);
+  assert.equal(h.executions.length, 1);
+  assert.equal(h.requests.length, 0);
+  for (const options of [[], [
+    { role: 'consignee', label: FULL_ACC_LABEL }, { role: 'consignee', label: 'M/S ACC LIMITED - WADI' },
+  ]]) {
+    const resolver = harness({ operationalRpc: () => ({ status: 'clarification', issues: [{
+      field: 'consignee', role: 'consignee', reference: FULL_ACC_LABEL, options,
+    }] }) });
+    const result = await resolver.run(source);
+    assert.equal(result.status, 'clarification');
+    assert.doesNotMatch(result.text, /Total:|Kul:/);
+    assert.equal(resolver.executions.length, 1);
+    assert.equal(resolver.requests.length, 0);
+  }
+});
+
+test('bare 1 after a full-name clarification does not inherit the earlier question', async () => {
+  const h = harness({ env: { WHATSAPP_NLU_ENABLED: 'false' }, operationalRpc: () => ({ status: 'clarification', issues: [{
+    field: 'consignee', role: 'consignee', reference: 'Wadi', options: [
+      { role: 'consignee', label: FULL_ACC_LABEL }, { role: 'consignee', label: 'M/S ACC LIMITED - WADI' },
+    ],
+  }] }) });
+  assert.equal((await h.run('Wadi k liye abhi tak kitna gaadi laga')).status, 'clarification');
+  const reply = await h.run('1');
+  assert.notEqual(reply.status, 'answered');
+  assert.equal(h.executions.length, 1);
+  assert.equal(h.requests.length, 0);
+});
+
 test('English, Hinglish and Hindi natural requests resolve deterministically', () => {
   const pending = planFor('15 din se pending POD kitne hain?');
   assert.equal(pending.name, 'search_pending_pods');

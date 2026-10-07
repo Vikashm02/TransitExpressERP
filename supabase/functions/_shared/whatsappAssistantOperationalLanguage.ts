@@ -30,9 +30,42 @@ const labels: Record<string, string> = {
 };
 const stops = `k|ke|ka|ki|liye|mein|me|se|to|for|in|on|from|के|का|की|में|से|तक|lrs?|pods?|gaadi|gadi|gari|truck|vehicle|kitne|kitni|kitna|kitha|how|count|show|list|dikhao|batao|pending|present|drafts?|final|status|created|creation|last|this|today|yesterday|consignor|consignee|material|party|branch|booking|source|destination|transporter|vendor|कितने|कितनी|गाड़ी`;
 const entity = `("[^"\\r\\n]+"|'[^'\\r\\n]+'|[\\p{L}\\p{M}\\p{N}][\\p{L}\\p{M}\\p{N} .&/-]*?)`;
+// Company names in the reviewed directional/consignee constructions only may
+// contain balanced, single-level, non-empty parenthesized groups, as in
+// Customer Master labels such as "X WORK (Y CEMENT)". Unbalanced, nested or
+// empty groups never match, so they remain unconsumed and fail closed. The
+// generic `entity` grammar above deliberately stays unchanged.
+const nameChars = `\\p{L}\\p{M}\\p{N} .&/-`;
+const nameGroup = `\\([${nameChars}]*[\\p{L}\\p{M}\\p{N}][${nameChars}]*\\)`;
+const directionalNameTail = `(?:[${nameChars}]|${nameGroup})*?`;
+// Quoted names obey the same parenthesis contract: any character except the
+// quote, a line break or a parenthesis, plus balanced single-level non-empty
+// groups. Quote characters cannot appear in an unquoted name, so a malformed
+// quoted name cannot be partially matched from inside either.
+const quotedGroup = (q: string) => `\\((?=[^${q}()\\r\\n]*[\\p{L}\\p{M}\\p{N}])[^${q}()\\r\\n]*\\)`;
+const quotedName = (q: string) => `${q}(?:[^${q}()\\r\\n]|${quotedGroup(q)})+${q}`;
+const directionalName = `(${quotedName('"')}|${quotedName("'")}|[\\p{L}\\p{M}\\p{N}]${directionalNameTail})`;
+const quotedDirectionalSuffix = `(?=\\s+(?:(?:${acceptedDirectionalConjunction})|ka\\s+(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:(?:${VEHICLE_WORD_PATTERN})\\s+)?(?:load|lode|loaded)\\s+(?:hua|hue|hui)))`;
+function hasSafeDirectionalParentheses(value: string): boolean {
+  let inGroup = false;
+  let groupHasLetterOrDigit = false;
+  for (const char of value) {
+    if (char === "(") {
+      if (inGroup) return false;
+      inGroup = true;
+      groupHasLetterOrDigit = false;
+    } else if (char === ")") {
+      if (!inGroup || !groupHasLetterOrDigit) return false;
+      inGroup = false;
+    } else if (inGroup && /[\p{L}\p{N}]/u.test(char)) {
+      groupHasLetterOrDigit = true;
+    }
+  }
+  return !inGroup;
+}
 // A suffix directional span must begin at a plausible entity, not at the
 // count phrase that can naturally precede it in Hinglish word order.
-const directionalEntity = `(?!(?:${VEHICLE_COUNT_WORD_PATTERN}|कितने|कितनी|${VEHICLE_WORD_PATTERN}|truck|vehicle|गाड़ी|वाहन|how|count)(?!${boundary}))${entity}`;
+const directionalEntity = `(?!(?:${VEHICLE_COUNT_WORD_PATTERN}|कितने|कितनी|${VEHICLE_WORD_PATTERN}|truck|vehicle|गाड़ी|वाहन|how|count)(?!${boundary}))${directionalName}`;
 const dateMask = "\uE000";
 const end = `(?=\\s+(?:${stops})(?!${boundary})|\\s*${dateMask}|$|[,?!])`;
 // The generic entity boundary remains narrow. This is used only after an
@@ -46,6 +79,14 @@ function clean(raw: string): string {
 export function extractInternalEntities(input: string): { source: string; fields: Record<string, string> } {
   let source = input;
   const fields: Record<string, string> = {};
+  // Do this before any generic extraction. If a quoted directional candidate
+  // has malformed parentheses, it must not fall through and be reinterpreted
+  // as a smaller generic entity (notably for the reviewed `ka ... load hua` form).
+  const quotedDirectionalCandidate = new RegExp(`(?:"([^"\\r\\n]*)"|'([^'\\r\\n]*)')${quotedDirectionalSuffix}`, "giu");
+  for (const match of source.matchAll(quotedDirectionalCandidate)) {
+    const value = match[1] ?? match[2];
+    if (!hasSafeDirectionalParentheses(value)) throw new Error("unsafe_directional_parentheses");
+  }
   const unlabelled = (raw: string) => {
     const value = clean(raw);
     if (/^kal$/iu.test(value)) return false;
@@ -85,10 +126,11 @@ export function extractInternalEntities(input: string): { source: string; fields
   });
   // At the beginning of a directional reference, "ye mahina X" can be either
   // a date followed by X or the start of a company name. Never drop the prefix.
-  if (/^\s*ye\s+mahina\s+[\p{L}\p{M}][\p{L}\p{M}\p{N} .&/-]*?\s+(?:(?:k|ke)\s+liye|ka\s+(?:kitna|kitni|kitha)\s+(?:(?:gaadi|gadi|gari)\s+)?(?:load|lode|loaded))\b/iu.test(source)) throw new Error("ambiguous_date_entity");
+  // Guards use the same directional company-name syntax as the extraction below.
+  if (new RegExp(`^\\s*ye\\s+mahina\\s+[\\p{L}\\p{M}]${directionalNameTail}\\s+(?:(?:k|ke)\\s+liye|ka\\s+(?:kitna|kitni|kitha)\\s+(?:(?:gaadi|gadi|gari)\\s+)?(?:load|lode|loaded))\\b`, "iu").test(source)) throw new Error("ambiguous_date_entity");
   // Do not reinterpret a suffix after a completed movement as a company name
   // beginning with "load hua" (or a trailing fragment of that predicate).
-  if (token(`(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})\\s+(?:load|lode|loaded)\\s+(?:hua|hue|hui)\\s+${entity}\\s+${acceptedDirectionalConjunction}`).test(source)) throw new Error("ambiguous_directional_entity");
+  if (token(`(?:${VEHICLE_COUNT_WORD_PATTERN})\\s+(?:${VEHICLE_WORD_PATTERN})\\s+(?:load|lode|loaded)\\s+(?:hua|hue|hui)\\s+${directionalName}\\s+${acceptedDirectionalConjunction}`).test(source)) throw new Error("ambiguous_directional_entity");
   // Mask date phrases only in the scan, retaining them verbatim in the source.
   // This allows '<date> <entity> ke ...' without consuming the date as a name.
   const pastKal = token(PAST_KAL_MOVEMENT_PATTERN).test(source);
