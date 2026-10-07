@@ -91,6 +91,49 @@ export const nluIntentSchema = {
     }
   }
 } as const;
+
+export type StageAPeriodKind = "today" | "yesterday" | "current_month" | "previous_month" | "explicit_day";
+export type StageASemanticIntent = {
+  version: "stage_a_v1";
+  outcome: "execute" | "clarify" | "unsupported";
+  intent: "lr_vehicle_count" | null;
+  countEvidence: string | null;
+  movementEvidence: string | null;
+  entityEvidence: string | null;
+  period: { kind: StageAPeriodKind; evidence: string } | null;
+  clarificationReason: "insufficient_grounding" | "ambiguous_period" | "multiple_requests" | "unsupported_capability" | null;
+};
+
+const stageAEvidence = { type: ["string", "null"], minLength: 1, maxLength: 200 } as const;
+export const stageASemanticIntentSchema = {
+  type: "function",
+  name: "interpret_whatsapp_stage_a",
+  description: "Interpret only one source-grounded LR/vehicle movement count request. Copy evidence exactly from the user message. Return clarification or unsupported when uncertain.",
+  strict: true,
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["version", "outcome", "intent", "countEvidence", "movementEvidence", "entityEvidence", "period", "clarificationReason"],
+    properties: {
+      version: { type: "string", enum: ["stage_a_v1"] },
+      outcome: { type: "string", enum: ["execute", "clarify", "unsupported"] },
+      intent: { type: ["string", "null"], enum: [null, "lr_vehicle_count"] },
+      countEvidence: stageAEvidence,
+      movementEvidence: stageAEvidence,
+      entityEvidence: stageAEvidence,
+      period: {
+        anyOf: [
+          { type: "null" },
+          { type: "object", additionalProperties: false, required: ["kind", "evidence"], properties: {
+            kind: { type: "string", enum: ["today", "yesterday", "current_month", "previous_month", "explicit_day"] },
+            evidence: { type: "string", minLength: 1, maxLength: 80 },
+          } },
+        ],
+      },
+      clarificationReason: { type: ["string", "null"], enum: [null, "insufficient_grounding", "ambiguous_period", "multiple_requests", "unsupported_capability"] },
+    },
+  },
+} as const;
 const text = (maxLength: number) => ({ type: ["string", "null"], minLength: 1, maxLength });
 const date = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" };
 const timestamp = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" };

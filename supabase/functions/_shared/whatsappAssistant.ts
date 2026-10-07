@@ -1,7 +1,8 @@
 import { externalDefinition, validateExternalArguments, sanitizeExternalResult, type WhatsappExternalAssistantTools } from "./whatsappExternalAssistantTools.ts";
 import type { WhatsappAssistantTools } from "./whatsappAssistantTools.ts";
 import { displayText, object, sanitizeResult, sanitizeOperationalResult, internalToolDefinitions, validateOperationalArguments, validateStoredOperationalArguments, toolDefinitions, validateArguments, type ObjectValue, MODELS } from "./whatsappAssistantSchemas.ts";
-import { detectLanguage, matchesPlan, matchesOperationalPlan, resolveIntent, type QueryPlan, interpretIntentNLU, validateNluInterpretation, buildQueryPlanFromNlu } from "./whatsappAssistantIntent.ts";
+import { detectLanguage, matchesPlan, matchesOperationalPlan, resolveIntent, type QueryPlan, interpretIntentNLU, validateNluInterpretation, buildQueryPlanFromNlu, interpretStageASemanticIntentNLU } from "./whatsappAssistantIntent.ts";
+import { compileStageASemanticIntent, mayUseStageASemanticIntent } from "./whatsappAssistantSemanticIntent.ts";
 
 export const LIMITS = Object.freeze({ input: 2000, responseBytes: 65536, outputTokens: 1200, toolExecutions: 1, deadlineMs: 30000, reply: 3500 });
 type Dependencies = {
@@ -242,10 +243,20 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       finalPlan = plan;
     } else if (nluEnabled && (plan.kind === "clarification" || plan.kind === "out_of_scope")) {
       try {
-        const nlu = await interpretIntentNLU(text, language, now, dependencies.fetch ?? fetch, env);
-        if (nlu.needsClarification) throw new Error(`nlu_clarification:${nlu.clarificationCategory}`);
-        validateNluInterpretation(nlu, text, now, true);
-        finalPlan = buildQueryPlanFromNlu(nlu, now, true);
+        if (mayUseStageASemanticIntent(text)) {
+          const nlu = await interpretStageASemanticIntentNLU(text, language, now, dependencies.fetch ?? fetch, env);
+          if (nlu.outcome === "unsupported") return { status: "out_of_scope", text: messages[language].scope };
+          if (nlu.outcome === "clarify") return { status: "clarification", text: messages[language].filters };
+          const compiled = compileStageASemanticIntent(nlu, text, now);
+          if (!compiled.ok) return { status: "clarification", text: messages[language][compiled.reason] };
+          finalPlan = { kind: "query", name: "search_lrs", args: compiled.args, language, operational: true };
+        } else {
+          // Keep pre-existing bounded NLU capabilities outside Stage A intact.
+          const nlu = await interpretIntentNLU(text, language, now, dependencies.fetch ?? fetch, env);
+          if (nlu.needsClarification) throw new Error(`nlu_clarification:${nlu.clarificationCategory}`);
+          validateNluInterpretation(nlu, text, now, true);
+          finalPlan = buildQueryPlanFromNlu(nlu, now, true);
+        }
         nluValidatedPlan = true;
       } catch (e) {
         const nluError = e instanceof Error ? e.message : "non_error";
