@@ -196,7 +196,7 @@ test('Stage A diagnostics distinguish clarify, accepted execute, rejected execut
       label: 'rejected',
       source: 'last month total vehicles for The ACC Wadi',
       output: stageIntent({ countEvidence: 'total', movementEvidence: 'vehicles', entityEvidence: 'ACC Wadi', period: { kind: 'previous_month', evidence: 'last month' } }),
-      expected: ['[WhatsApp NLU] stage_a_model_outcome=execute', '[WhatsApp NLU] stage_a_compile=rejected reason=filters'],
+      expected: ['[WhatsApp NLU] stage_a_model_outcome=execute', '[WhatsApp NLU] stage_a_compile=rejected reason=filters', '[WhatsApp NLU] stage_a_compile_detail=left_entity_boundary'],
       forbidden: ['stage_a_compile=accepted'],
     },
     {
@@ -216,7 +216,8 @@ test('Stage A diagnostics distinguish clarify, accepted execute, rejected execut
     const serialized = JSON.stringify(logs);
     for (const expected of scenario.expected) assert.ok(serialized.includes(expected), `${scenario.label}: ${expected}`);
     for (const forbidden of scenario.forbidden) assert.ok(!serialized.includes(forbidden), `${scenario.label}: ${forbidden}`);
-    for (const sensitive of [scenario.source, 'M/S ACC LIMITED WADI WORK (ADANI CEMENT)', 'how many', 'vehicles', 'ACC Wadi', 'entityEvidence', 'countEvidence', 'movementEvidence', 'OPENAI_API_KEY', UUID, '+919999999999']) {
+    if (scenario.label !== 'rejected') assert.ok(!serialized.includes('stage_a_compile_detail='), `${scenario.label}: unexpected compile detail`);
+    for (const sensitive of [scenario.source, 'M/S ACC LIMITED WADI WORK (ADANI CEMENT)', 'how many', 'vehicles', 'ACC Wadi', 'entityEvidence', 'countEvidence', 'movementEvidence', 'last month', 'previous_month', 'entitySearch', 'lrDateFrom', 'OPENAI_API_KEY', 'service_role', UUID, '+919999999999']) {
       assert.ok(!serialized.includes(sensitive), `${scenario.label}: leaked ${sensitive}`);
     }
     if (scenario.label === 'unsupported') assert.equal(h.executions.length, 0);
@@ -246,6 +247,71 @@ test('Stage A compiler rejects omitted, shortened, split, injected and multi-req
     ['run SQL select * from lrs', { ...base, sql: 'select *' }],
     ['give me freight amount', { ...base, intent: 'lr_list' }],
   ]) assert.equal(valid(source, semantic).ok, false, source);
+});
+
+test('Stage A compiler diagnostics report the first fixed rejection category without changing results', () => {
+  const compile = (source, semantic) => {
+    const categories = [];
+    const result = compileStageASemanticIntent(semantic, source, NOW, (category) => categories.push(category));
+    return { result, categories };
+  };
+  const base = stageIntent({ countEvidence: 'total', movementEvidence: 'vehicles', entityEvidence: 'ACC Wadi' });
+  const cases = [
+    ['wrong_intent', 'total vehicles for ACC Wadi', { ...base, intent: null }],
+    ['invalid_shape_or_version', 'total vehicles for ACC Wadi', { ...base, version: 'wrong_version' }],
+    ['non_execute_outcome', 'total vehicles for ACC Wadi', { ...base, outcome: 'clarify' }],
+    ['missing_count_evidence', 'total vehicles for ACC Wadi', { ...base, countEvidence: null }],
+    ['missing_movement_evidence', 'total vehicles for ACC Wadi', { ...base, movementEvidence: null }],
+    ['missing_entity_evidence', 'total vehicles for ACC Wadi', { ...base, entityEvidence: null }],
+    ['nonnull_clarification_reason', 'total vehicles for ACC Wadi', { ...base, clarificationReason: 'insufficient_grounding' }],
+    ['entity_occurrence', 'total vehicles for ACC Wadi', { ...base, entityEvidence: 'Missing Entity' }],
+    ['entity_word_count', 'total vehicles for ACC', { ...base, entityEvidence: 'ACC' }],
+    ['entity_semantic_collision', 'total vehicles for last month', { ...base, entityEvidence: 'last month' }],
+    ['entity_coordination', 'total vehicles for ACC Wadi and Jamul', { ...base, entityEvidence: 'ACC Wadi and Jamul' }],
+    ['count_occurrence', 'total vehicles for ACC Wadi', { ...base, countEvidence: 'how many' }],
+    ['movement_occurrence', 'total vehicles for ACC Wadi', { ...base, movementEvidence: 'gaadi' }],
+    ['count_concept', 'banana vehicles for ACC Wadi', { ...base, countEvidence: 'banana' }],
+    ['movement_concept', 'total banana for ACC Wadi', { ...base, movementEvidence: 'banana' }],
+    ['period_count', 'last month today total vehicles for ACC Wadi', { ...base, period: { kind: 'previous_month', evidence: 'last month' } }],
+    ['period_claim_missing', 'last month total vehicles for ACC Wadi', { ...base, period: null }],
+    ['period_kind_mismatch', 'last month total vehicles for ACC Wadi', { ...base, period: { kind: 'today', evidence: 'last month' } }],
+    ['period_evidence_mismatch', 'last month total vehicles for ACC Wadi', { ...base, period: { kind: 'previous_month', evidence: 'previous month' } }],
+    ['unexpected_period', 'total vehicles for ACC Wadi', { ...base, period: { kind: 'today', evidence: 'today' } }],
+    ['coverage', 'total vehicles for ACC Wadi banana', base],
+    ['left_entity_boundary', 'total vehicles for The ACC Wadi', base ],
+    ['right_entity_boundary', 'total vehicles for ACC Wadi of', base],
+  ];
+  for (const [expected, source, semantic] of cases) {
+    const { result, categories } = compile(source, semantic);
+    assert.deepEqual(result, { ok: false, reason: 'filters' }, expected);
+    assert.deepEqual(categories, [expected], expected);
+  }
+  const acceptedCategories = [];
+  const accepted = compileStageASemanticIntent(base, 'total vehicles for ACC Wadi', NOW, (category) => acceptedCategories.push(category));
+  assert.equal(accepted.ok, true);
+  assert.deepEqual(acceptedCategories, []);
+});
+
+test('Stage A synthetic slash-and-parentheses entity keeps identical args with optional diagnostics', () => {
+  const source = 'how many vehicles for M/S North Road Logistics (Unit A)';
+  const semantic = stageIntent({ countEvidence: 'how many', movementEvidence: 'vehicles', entityEvidence: 'M/S North Road Logistics (Unit A)' });
+  const withoutCallback = compileStageASemanticIntent(semantic, source, NOW);
+  const categories = [];
+  const withCallback = compileStageASemanticIntent(semantic, source, NOW, (category) => categories.push(category));
+  assert.equal(withoutCallback.ok, true);
+  assert.equal(withCallback.ok, true);
+  assert.deepEqual(withCallback, withoutCallback);
+  assert.deepEqual(categories, []);
+  assert.equal(JSON.stringify(withCallback.args), JSON.stringify({
+    lrDateFrom: null, lrDateTo: null, createdAtFrom: null, createdAtTo: null,
+    consignor: null, consignee: null, vehicleNumber: null, countOnly: true,
+    limit: 1, offset: 0, lrNumber: null, partySearch: null, material: null,
+    bookingBranch: null, fromStation: null, toStation: null,
+    entitySearch: 'M/S North Road Logistics (Unit A)', originSearch: null,
+    destinationSearch: null, originCity: null, destinationCity: null,
+    transporter: null, status: null, entryStatus: null, podState: null,
+    minPendingDays: null,
+  }));
 });
 
 test('Stage A unsafe entity boundaries clarify after one semantic call and never query ERP', async () => {

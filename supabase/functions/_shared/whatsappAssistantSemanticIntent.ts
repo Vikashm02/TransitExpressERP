@@ -3,6 +3,15 @@ import { type ObjectValue, type StageAPeriodKind, type StageASemanticIntent, val
 export type StageACompileResult =
   | { ok: true; args: ObjectValue }
   | { ok: false; reason: "filters" | "year" };
+export type StageACompileDiagnostic =
+  | "invalid_shape_or_version" | "non_execute_outcome" | "wrong_intent"
+  | "missing_count_evidence" | "missing_movement_evidence" | "missing_entity_evidence"
+  | "nonnull_clarification_reason" | "entity_occurrence" | "entity_word_count"
+  | "entity_semantic_collision" | "entity_coordination" | "count_occurrence"
+  | "movement_occurrence" | "count_concept" | "movement_concept" | "period_count"
+  | "period_claim_missing" | "period_kind_mismatch" | "period_evidence_mismatch"
+  | "unexpected_period" | "coverage" | "left_entity_boundary" | "right_entity_boundary"
+  | "operational_args";
 
 const DAY_MS = 86_400_000;
 const GLUE = new Set(["for", "to", "in", "of", "the", "ka", "ki", "ke", "k", "liye", "me", "mein", "se", "ko"]);
@@ -126,35 +135,48 @@ export function mayUseStageASemanticIntent(message: string): boolean {
 
 /** The semantic model proposes only source text and enums. This compiler owns
  * all executable arguments and rejects any omission or unexplained content. */
-export function compileStageASemanticIntent(raw: unknown, message: string, now: Date): StageACompileResult {
+export function compileStageASemanticIntent(raw: unknown, message: string, now: Date, onDiagnostic?: (category: StageACompileDiagnostic) => void): StageACompileResult {
+  const reject = (category: StageACompileDiagnostic): StageACompileResult => { onDiagnostic?.(category); return { ok: false, reason: "filters" }; };
   const nlu = raw as StageASemanticIntent;
-  if (!nlu || typeof nlu !== "object" || nlu.version !== "stage_a_v1") return { ok: false, reason: "filters" };
-  if (nlu.outcome !== "execute") return { ok: false, reason: "filters" };
-  if (nlu.intent !== "lr_vehicle_count" || !nlu.countEvidence || !nlu.movementEvidence || !nlu.entityEvidence || nlu.clarificationReason !== null) return { ok: false, reason: "filters" };
+  if (!nlu || typeof nlu !== "object" || nlu.version !== "stage_a_v1") return reject("invalid_shape_or_version");
+  if (nlu.outcome !== "execute") return reject("non_execute_outcome");
+  if (nlu.intent !== "lr_vehicle_count") return reject("wrong_intent");
+  if (!nlu.countEvidence) return reject("missing_count_evidence");
+  if (!nlu.movementEvidence) return reject("missing_movement_evidence");
+  if (!nlu.entityEvidence) return reject("missing_entity_evidence");
+  if (nlu.clarificationReason !== null) return reject("nonnull_clarification_reason");
   const source = message.normalize("NFC").trim();
   const entityHits = occurrences(source, nlu.entityEvidence);
-  if (entityHits.length !== 1 || words(nlu.entityEvidence).length < 2 || matchesConcept(nlu.entityEvidence, semanticTerms) || hasUnprotectedCoordination(nlu.entityEvidence)) return { ok: false, reason: "filters" };
+  if (entityHits.length !== 1) return reject("entity_occurrence");
+  if (words(nlu.entityEvidence).length < 2) return reject("entity_word_count");
+  if (matchesConcept(nlu.entityEvidence, semanticTerms)) return reject("entity_semantic_collision");
+  if (hasUnprotectedCoordination(nlu.entityEvidence)) return reject("entity_coordination");
   const entity: [number, number] = [entityHits[0], entityHits[0] + nlu.entityEvidence.length];
   const outside = (evidence: string): [number, number] | null => {
     const hits = occurrences(source, evidence).filter(start => start + evidence.length <= entity[0] || start >= entity[1]);
     return hits.length === 1 ? [hits[0], hits[0] + evidence.length] : null;
   };
   const count = outside(nlu.countEvidence), movement = outside(nlu.movementEvidence);
-  if (!count || !movement || !matchesConcept(nlu.countEvidence, COUNT) || !matchesConcept(nlu.movementEvidence, MOVEMENT)) return { ok: false, reason: "filters" };
+  if (!count) return reject("count_occurrence");
+  if (!movement) return reject("movement_occurrence");
+  if (!matchesConcept(nlu.countEvidence, COUNT)) return reject("count_concept");
+  if (!matchesConcept(nlu.movementEvidence, MOVEMENT)) return reject("movement_concept");
   const periods = periodMatches(source, entity);
   let range: [string, string] | null = null, periodSpan: [number, number] | null = null;
-  if (periods.length > 1) return { ok: false, reason: "filters" };
+  if (periods.length > 1) return reject("period_count");
   if (periods.length === 1) {
     const claimed = nlu.period;
     const found = periods[0];
-    if (!claimed || claimed.kind !== found.kind || claimed.evidence !== found.evidence) return { ok: false, reason: "filters" };
+    if (!claimed) return reject("period_claim_missing");
+    if (claimed.kind !== found.kind) return reject("period_kind_mismatch");
+    if (claimed.evidence !== found.evidence) return reject("period_evidence_mismatch");
     range = dateRange(found.kind, found.evidence, now);
     if (!range) return { ok: false, reason: "year" };
     periodSpan = [found.start, found.end];
-  } else if (nlu.period !== null) return { ok: false, reason: "filters" };
+  } else if (nlu.period !== null) return reject("unexpected_period");
   const spans: [number, number][] = [entity, count, movement];
   if (periodSpan) spans.push(periodSpan);
-  if (!completeCoverage(source, spans)) return { ok: false, reason: "filters" };
+  if (!completeCoverage(source, spans)) return reject("coverage");
   const nonEntitySpans = spans.filter(([start, end]) => start !== entity[0] || end !== entity[1]).sort((a, b) => a[0] - b[0]);
   const before = [...nonEntitySpans].reverse().find(([, end]) => end <= entity[0]);
   const after = nonEntitySpans.find(([start]) => start >= entity[1]);
@@ -163,11 +185,12 @@ export function compileStageASemanticIntent(raw: unknown, message: string, now: 
   // words from a longer company reference or silently dropping "The"/"of".
   const leftGap = source.slice(before?.[1] ?? 0, entity[0]);
   const rightGap = source.slice(entity[1], after?.[0] ?? source.length);
-  if ((entity[0] !== 0 && !isEntityBoundaryGap(leftGap)) || (entity[1] !== source.length && !isEntityBoundaryGap(rightGap))) return { ok: false, reason: "filters" };
+  if (entity[0] !== 0 && !isEntityBoundaryGap(leftGap)) return reject("left_entity_boundary");
+  if (entity[1] !== source.length && !isEntityBoundaryGap(rightGap)) return reject("right_entity_boundary");
   try {
     const args = denseArgs(source.slice(...entity), range);
     validateOperationalArguments("search_lrs", args);
     return { ok: true, args };
   }
-  catch { return { ok: false, reason: "filters" }; }
+  catch { return reject("operational_args"); }
 }

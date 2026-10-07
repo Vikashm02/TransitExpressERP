@@ -250,7 +250,7 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
           }
           if (nlu.outcome === "unsupported") return { status: "out_of_scope", text: messages[language].scope };
           if (nlu.outcome === "clarify") return { status: "clarification", text: messages[language].filters };
-          const compiled = compileStageASemanticIntent(nlu, text, now);
+          const compiled = compileStageASemanticIntent(nlu, text, now, (category) => console.info(`[WhatsApp NLU] stage_a_compile_detail=${category}`));
           if (compiled.ok) console.info("[WhatsApp NLU] stage_a_compile=accepted");
           else console.info(`[WhatsApp NLU] stage_a_compile=rejected reason=${compiled.reason}`);
           if (!compiled.ok) return { status: "clarification", text: messages[language][compiled.reason] };
