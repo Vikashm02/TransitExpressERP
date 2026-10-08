@@ -173,6 +173,10 @@ test('Stage A prompt states generic complete entity boundaries without productio
   assert.match(instructions, /parenthesized business\/unit\/location qualifiers/i);
   assert.match(instructions, /last month.*today.*yesterday/s);
   assert.match(instructions, /M\/S North Road Logistics \(Unit A\)/);
+  assert.match(instructions, /outcome "execute", intent "lr_vehicle_count"/);
+  assert.match(instructions, /If outcome is "execute", intent must be "lr_vehicle_count"/);
+  assert.match(instructions, /if intent is not "lr_vehicle_count", do not return outcome "execute"/i);
+  assert.match(instructions, /For "clarify" or "unsupported", intent must be null/);
   assert.doesNotMatch(instructions, /M\/S ACC LIMITED WADI WORK \(ADANI CEMENT\)/);
 });
 
