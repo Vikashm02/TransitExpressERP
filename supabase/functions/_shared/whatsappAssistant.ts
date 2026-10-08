@@ -14,6 +14,22 @@ type Dependencies = {
   now?: () => Date;
 };
 export type AssistantResult = { status: "disabled" | "answered" | "clarification" | "out_of_scope" | "unavailable"; text: string };
+function canPromoteDeterministicLrList(ordinary: QueryPlan, operational: QueryPlan): boolean {
+  if (ordinary.kind !== "query" || operational.kind !== "query" || ordinary.name !== "search_lrs" || operational.name !== "search_lrs") return false;
+  if (ordinary.operational || !operational.operational || ordinary.args.countOnly !== false) return false;
+  if (ordinary.args.lrDateFrom == null || ordinary.args.lrDateTo == null || ordinary.args.createdAtFrom != null || ordinary.args.createdAtTo != null) return false;
+  try { validateOperationalArguments("search_lrs", operational.args); } catch { return false; }
+  const keys = new Set([...Object.keys(ordinary.args), ...Object.keys(operational.args)]);
+  for (const key of keys) {
+    const ordinaryValue = ordinary.args[key];
+    const operationalValue = operational.args[key];
+    // Internal plans add only nullable operational filter slots; a non-null
+    // value in one plan must still match exactly.
+    if (ordinaryValue === undefined && operationalValue === null) continue;
+    if (ordinaryValue !== operationalValue) return false;
+  }
+  return true;
+}
 const envDefault = (name: string): string | undefined => (globalThis as unknown as { Deno?: { env: { get(name: string): string | undefined } } }).Deno?.env.get(name);
 const messages = {
   en: {
@@ -224,8 +240,8 @@ export async function runWhatsappAssistant(text: string, dependencies: Dependenc
       const operational = resolveIntent(text, now, true);
       // Keep established deterministic behavior for requests needing no expanded
       // capability. Any source entity must use the authorized resolver path.
-      if (operational.kind === "query" && (plan.kind !== "query" ||
-          ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "originCity", "destinationCity", "transporter", "podState", "vehicleNumber"].some(k => operational.args[k] != null) || operational.args.entryStatus === "draft")) plan = operational;
+      if (canPromoteDeterministicLrList(plan, operational) || (operational.kind === "query" && (plan.kind !== "query" ||
+          ["consignor", "consignee", "partySearch", "material", "bookingBranch", "fromStation", "toStation", "entitySearch", "originSearch", "destinationSearch", "originCity", "destinationCity", "transporter", "podState", "vehicleNumber"].some(k => operational.args[k] != null) || operational.args.entryStatus === "draft"))) plan = operational;
       // An old party-substring parser must never bypass unresolved-role checks.
       else if (plan.kind === "query" && ["partySearch", "consignor", "consignee", "material"].some(k => plan.args[k] != null)) plan = operational;
       else if (plan.kind === "out_of_scope" && operational.kind === "clarification" &&

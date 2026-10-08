@@ -3598,6 +3598,31 @@ test('deterministic internal operational plans bypass OpenAI execution and use t
   }
 });
 
+test('date-filtered deterministic LR lists promote to the internal operational RPC without model execution', async () => {
+  for (const [source, from, to, now] of [
+    ['Show LRs today', '2026-10-01', '2026-10-01', NOW],
+    ['Show LRs yesterday', '2026-09-30', '2026-09-30', NOW],
+    ['Show LRs today', '2026-10-01', '2026-10-01', new Date('2026-10-01T18:29:59Z')],
+    ['Show LRs today', '2026-10-02', '2026-10-02', new Date('2026-10-01T18:30:00Z')],
+  ]) {
+    let seen;
+    const h = nluHarness([], { now: () => now, operationalRpc: (name, args) => {
+      seen = { name, args };
+      return { status: 'ok', result: listResult(args, [], 0) };
+    }});
+    const result = await h.run(source);
+    assert.equal(result.status, 'answered', source);
+    assert.equal(h.requests.length, 0, source);
+    assert.equal(h.executions.length, 1, source);
+    assert.equal(seen.name, 'search_lrs', source);
+    assert.equal(seen.args.countOnly, false, source);
+    assert.equal(seen.args.lrDateFrom, from, source);
+    assert.equal(seen.args.lrDateTo, to, source);
+    assert.equal(seen.args.createdAtFrom, null, source);
+    assert.equal(seen.args.createdAtTo, null, source);
+  }
+});
+
 test('deterministic internal operational plans preserve party/draft behavior and fail closed leftovers', async () => {
   for (const source of ['3M Pune se ACC Wadi last month kitni gaadi lagi?', 'How many draft LRs are there?']) {
     const h = nluHarness([], { operationalRpc: (_name, args) => ({ status: 'ok', result: listResult(args, [], 0) }) });
