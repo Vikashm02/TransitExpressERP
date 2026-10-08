@@ -134,6 +134,77 @@ export const stageASemanticIntentSchema = {
     },
   },
 } as const;
+
+// Versioned proposal-only contract for the expanded semantic interpreter. It
+// deliberately contains source evidence beside every executable semantic
+// value; the server compiler remains the only component allowed to build RPC
+// arguments. Keep the root a strict object for Responses Structured Outputs.
+export type StageAV2Operation = SemanticOp;
+export type StageAV2SemanticIntent = {
+  version: "stage_a_v2";
+  outcome: "execute" | "clarify" | "unsupported";
+  operation: SemanticOp | null;
+  language: "en" | "hi" | "hinglish";
+  lrNumber: string | null; lrNumberEvidence: string | null;
+  lrDate: SemanticDate | null; lrDateEvidence: string | null;
+  createdDate: SemanticDate | null; createdDateEvidence: string | null;
+  partySearch: string | null; partySearchEvidence: string | null;
+  consignor: string | null; consignorEvidence: string | null;
+  consignee: string | null; consigneeEvidence: string | null;
+  vehicleNumber: string | null; vehicleNumberEvidence: string | null;
+  material: string | null; materialEvidence: string | null;
+  bookingBranch: string | null; bookingBranchEvidence: string | null;
+  fromStation: string | null; fromStationEvidence: string | null;
+  toStation: string | null; toStationEvidence: string | null;
+  transporter: string | null; transporterEvidence: string | null;
+  status: "Open" | "In Transit" | "Delivered" | "Billed" | "Cancelled" | null;
+  statusEvidence: string | null;
+  entryStatus: "draft" | "final" | null; entryStatusEvidence: string | null;
+  podState: "present" | "pending" | null; podStateEvidence: string | null;
+  minPendingDays: number | null; minPendingDaysEvidence: string | null;
+  operationEvidence: string | null;
+  clarificationReason: "insufficient_grounding" | "ambiguous_date" | "multiple_requests" | "unsupported_operation" | "unsupported_filter" | "ambiguous_entity" | "missing_lr_number" | null;
+};
+
+const stageAV2Evidence = { type: ["string", "null"], minLength: 1, maxLength: 200 } as const;
+const stageAV2RequiredEvidence = { type: "string", minLength: 1, maxLength: 200 } as const;
+const stageAV2Date = {
+  anyOf: [
+    { type: "null" },
+    { type: "object", additionalProperties: false, required: ["kind", "value", "evidence"], properties: {
+      kind: { type: "string", enum: ["relative"] }, value: { type: "string", enum: ["today", "yesterday", "this_month", "last_month", "this_year", "last_year"] }, evidence: stageAV2RequiredEvidence,
+    } },
+    { type: "object", additionalProperties: false, required: ["kind", "month", "evidence"], properties: {
+      kind: { type: "string", enum: ["month"] }, month: { type: "integer", minimum: 1, maximum: 12 }, evidence: stageAV2RequiredEvidence,
+    } },
+    { type: "object", additionalProperties: false, required: ["kind", "month", "year", "evidence"], properties: {
+      kind: { type: "string", enum: ["month_year"] }, month: { type: "integer", minimum: 1, maximum: 12 }, year: { type: "integer", minimum: 2000, maximum: 2199 }, evidence: stageAV2RequiredEvidence,
+    } },
+    { type: "object", additionalProperties: false, required: ["kind", "from", "to", "evidence"], properties: {
+      kind: { type: "string", enum: ["exact"] }, from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, to: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, evidence: stageAV2RequiredEvidence,
+    } },
+  ],
+} as const;
+const stageAV2Properties = {
+  version: { type: "string", enum: ["stage_a_v2"] }, outcome: { type: "string", enum: ["execute", "clarify", "unsupported"] },
+  operation: { type: ["string", "null"], enum: [null, "lr_detail", "lr_count", "lr_list", "pod_detail", "pending_pod_count", "pending_pod_list"] },
+  language: { type: "string", enum: ["en", "hi", "hinglish"] },
+  lrNumber: { type: ["string", "null"], minLength: 3, maxLength: 80, pattern: "^LR\\d+$" }, lrNumberEvidence: stageAV2Evidence,
+  lrDate: stageAV2Date, lrDateEvidence: stageAV2Evidence, createdDate: stageAV2Date, createdDateEvidence: stageAV2Evidence,
+  partySearch: { type: ["string", "null"], maxLength: 200 }, partySearchEvidence: stageAV2Evidence, consignor: { type: ["string", "null"], maxLength: 200 }, consignorEvidence: stageAV2Evidence, consignee: { type: ["string", "null"], maxLength: 200 }, consigneeEvidence: stageAV2Evidence,
+  vehicleNumber: { type: ["string", "null"], maxLength: 80 }, vehicleNumberEvidence: stageAV2Evidence, material: { type: ["string", "null"], maxLength: 200 }, materialEvidence: stageAV2Evidence,
+  bookingBranch: { type: ["string", "null"], maxLength: 200 }, bookingBranchEvidence: stageAV2Evidence, fromStation: { type: ["string", "null"], maxLength: 200 }, fromStationEvidence: stageAV2Evidence, toStation: { type: ["string", "null"], maxLength: 200 }, toStationEvidence: stageAV2Evidence, transporter: { type: ["string", "null"], maxLength: 200 }, transporterEvidence: stageAV2Evidence,
+  status: { type: ["string", "null"], enum: [null, "Open", "In Transit", "Delivered", "Billed", "Cancelled"] }, statusEvidence: stageAV2Evidence,
+  entryStatus: { type: ["string", "null"], enum: [null, "draft", "final"] }, entryStatusEvidence: stageAV2Evidence,
+  podState: { type: ["string", "null"], enum: [null, "present", "pending"] }, podStateEvidence: stageAV2Evidence,
+  minPendingDays: { type: ["integer", "null"], minimum: 0, maximum: 36500 }, minPendingDaysEvidence: stageAV2Evidence,
+  operationEvidence: stageAV2Evidence,
+  clarificationReason: { type: ["string", "null"], enum: [null, "insufficient_grounding", "ambiguous_date", "multiple_requests", "unsupported_operation", "unsupported_filter", "ambiguous_entity", "missing_lr_number"] },
+} as const;
+export const stageAV2SemanticIntentSchema = {
+  type: "function", name: "interpret_whatsapp_stage_a_v2", description: "Propose one source-grounded LR/POD operation; never return executable RPC arguments.", strict: true,
+  parameters: { type: "object", additionalProperties: false, required: Object.keys(stageAV2Properties), properties: stageAV2Properties },
+} as const;
 const text = (maxLength: number) => ({ type: ["string", "null"], minLength: 1, maxLength });
 const date = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" };
 const timestamp = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" };
