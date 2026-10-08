@@ -2302,6 +2302,18 @@ test('Stage-A v2 runtime is internal-only and executes one compiled creation-dat
   assert.equal(external.requests.length, 0);
 });
 
+test('Stage-A v2 instructions explain creation-date execution with a complete schema example', async () => {
+  const h = harness({ env:{ WHATSAPP_NLU_V2_ENABLED:'true' }, stageAV2Output: stageV2Intent({ createdDate:{kind:'relative',value:'today',evidence:'today'}, createdDateEvidence:'today' }) });
+  await h.run('How many LRs were created today?');
+  const request = h.requests.find(({ request }) => request.tool_choice?.name === 'interpret_whatsapp_stage_a_v2')?.request;
+  const instructions = String(request?.instructions ?? '');
+  assert.match(instructions, /createdDate, never lrDate/i);
+  assert.match(instructions, /Questions asking how many LRs were created during a period are lr_count/i);
+  assert.match(instructions, /"outcome":"execute".*"operation":"lr_count".*"createdDate":\{"kind":"relative","value":"today","evidence":"today"\}/);
+  assert.match(instructions, /"lrDate":null/);
+  assert.match(instructions, /"clarificationReason":null/);
+});
+
 test('Stage-A v2 compiler rejection performs no ERP query and no legacy fallback', async () => {
   const bad = stageV2Intent({ operation:'sql_query' });
   const h = harness({ env:{ WHATSAPP_NLU_V2_ENABLED:'true' }, stageAV2Output: bad, operationalRpc: () => { throw new Error('must not execute'); } });
