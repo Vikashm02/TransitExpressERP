@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/supabaseFetchAll";
 import type { Bill } from "@/components/billing/billing.schema";
 import { getBillingParty, type BillingPartyRecord } from "./billingParty.service";
 import { getLRs, updateLR, type LRRecord } from "./lr.service";
@@ -85,14 +86,16 @@ function fromRow(row: BillRow): BillRecord {
 ========================================================== */
 
 export async function getBills(): Promise<BillRecord[]> {
-  const { data, error } = await supabase
-    .from(BILLS_TABLE)
-    .select("*, billing_parties(name), bill_lrs(count)")
-    .order("created_at", { ascending: false });
+  const data = await fetchAllPages((from, to) =>
+    supabase
+      .from(BILLS_TABLE)
+      .select("*, billing_parties(name), bill_lrs(count)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+  );
 
-  if (error) throw error;
-
-  return (data ?? []).map((row) => fromRow(row as unknown as BillRow));
+  return data.map((row) => fromRow(row as unknown as BillRow));
 }
 
 /* ==========================================================

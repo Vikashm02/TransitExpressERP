@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/supabaseFetchAll";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { Material } from "@/components/material/material.schema";
 
@@ -59,19 +60,20 @@ async function generateMaterialCode(): Promise<string> {
 ========================================================== */
 
 export async function getMaterials(options: { includeInactive?: boolean } = {}): Promise<MaterialRecord[]> {
-  let query = supabase
-    .from(TABLE)
-    .select("*")
-    .is("canonical_material_id", null)
-    .order("created_at", { ascending: false });
+  const data = await fetchAllPages((from, to) => {
+    let query = supabase
+      .from(TABLE)
+      .select("*")
+      .is("canonical_material_id", null)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
 
-  if (!options.includeInactive) query = query.eq("status", "Active");
+    if (!options.includeInactive) query = query.eq("status", "Active");
 
-  const { data, error } = await query;
+    return query.range(from, to);
+  });
 
-  if (error) throw error;
-
-  return (data ?? []).map(fromRow);
+  return data.map(fromRow);
 }
 
 /**
