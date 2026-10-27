@@ -15,6 +15,7 @@ import { prepareLrForDraftForm } from "@/lib/draftPersistence";
 import { useDebouncedAutosave } from "@/hooks/useDebouncedAutosave";
 import { normalizeLrTextFields } from "./lrTextNormalize";
 import { isLegacyMaterialEnrichment } from "./partyIdentity";
+import { isPoNumberMissingFromMaster, poNotInMasterMessage } from "./poMasterRequirement";
 import { getActiveLrPurchaseOrders } from "@/components/services/purchaseOrder.service";
 import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
 import { toast } from "sonner";
@@ -389,6 +390,14 @@ export default function LRDialog({
 
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
+      return;
+    }
+
+    // A typed PO number must already be an Active PO in PO Master; the LR
+    // must never create a PO on its own (see poMasterRequirement.ts).
+    const isNewOrDraft = !isEditing || isDraftEntry(lr?.entryStatus) || isDraftLrNumber(lr?.lrNumber);
+    if (isPoNumberMissingFromMaster(values, lr, isNewOrDraft)) {
+      toast.error(poNotInMasterMessage(values.poNumber ?? ""), { duration: 12000 });
       return;
     }
 

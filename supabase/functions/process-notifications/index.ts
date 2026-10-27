@@ -30,6 +30,15 @@ const EXACT_EVENT_NAVIGATION_RULES = new Set([
   "pod.created",
   "pod.updated",
 ]);
+// PO usage alarms (80/90/95/100%, migrations 074 + 117). Each event is sent on
+// its own to every approved staff member through the bell inbox, browser push,
+// Android push and email — not only to users with a browser push subscription.
+const PO_USAGE_RULES = new Set([
+  "po.usage_80",
+  "po.usage_90",
+  "po.usage_95",
+  "po.usage_100",
+]);
 
 type ServiceAccount = { project_id: string; client_email: string; private_key: string };
 type NativeDevice = { id: string; user_id: string; fcm_token: string };
@@ -141,7 +150,9 @@ Deno.serve(async (req) => {
       const ruleKey = String(event.rule_key);
       // DC/POD notifications navigate to one specific record. Keep each such
       // event intact even when scheduled/quiet-hour processing has a batch.
-      const key = EXACT_EVENT_NAVIGATION_RULES.has(ruleKey) ? `${ruleKey}:${String(event.id)}` : ruleKey;
+      const key = EXACT_EVENT_NAVIGATION_RULES.has(ruleKey) || PO_USAGE_RULES.has(ruleKey)
+        ? `${ruleKey}:${String(event.id)}`
+        : ruleKey;
       const list = groups.get(key) ?? [];
       list.push(event);
       groups.set(key, list);
@@ -154,6 +165,21 @@ Deno.serve(async (req) => {
       const ruleKey = String(group[0].rule_key);
       const ids = group.map((e) => Number(e.id));
       await admin.from("notification_events").update({ status: "processing" }).in("id", ids);
+
+      if (PO_USAGE_RULES.has(ruleKey)) {
+        const outcome = await deliverPoUsageAlert(admin, group[0], subscriptions);
+        await admin
+          .from("notification_events")
+          .update({
+            status: outcome.ok ? "sent" : "failed",
+            processed_at: new Date().toISOString(),
+            error_message: outcome.ok ? null : outcome.error,
+          })
+          .in("id", ids);
+        if (outcome.ok) processed += group.length;
+        else failed += group.length;
+        continue;
+      }
 
       let title = String(group[0].title);
       let bodyText = String(group[0].body ?? "");
@@ -323,8 +349,85 @@ function isPublishableOrAnonKey(apiKey: string): boolean {
   return false;
 }
 
+/**
+ * PO usage alarm: bell inbox for every approved, unlocked staff member is the
+ * guaranteed channel (event counts as sent once it lands there); browser push,
+ * Android push and email are best-effort on top. Never deletes anything.
+ */
+async function deliverPoUsageAlert(
+  admin: ReturnType<typeof createClient<any, "public", any>>,
+  event: Record<string, unknown>,
+  subscriptions: Array<Record<string, unknown>>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: users, error: usersError } = await admin
+    .from("app_users")
+    .select("id, email, role, approval_status, is_locked");
+  if (usersError) return { ok: false, error: "Could not load staff list for PO alert" };
+
+  const audience = ((users ?? []) as Array<Record<string, unknown>>).filter((u) =>
+    u.is_locked !== true &&
+    (u.approval_status === "approved" || u.role === "creator" || u.role === "admin")
+  );
+  if (audience.length === 0) return { ok: false, error: "No approved staff to notify" };
+
+  const userIds = audience.map((u) => String(u.id));
+  const title = String(event.title);
+  const bodyText = String(event.body ?? "");
+  const href = String(event.href ?? "/purchase-orders");
+
+  const { error: inboxError } = await admin.from("notification_inbox").insert(
+    userIds.map((userId) => ({ user_id: userId, event_id: Number(event.id), title, body: bodyText, href }))
+  );
+  if (inboxError) return { ok: false, error: "Could not add PO alert to the notification bell" };
+
+  const audienceSet = new Set(userIds);
+  const payload = JSON.stringify({ title, body: bodyText, href });
+  for (const sub of subscriptions) {
+    if (!audienceSet.has(String(sub.user_id))) continue;
+    try {
+      await webpush.sendNotification(
+        { endpoint: String(sub.endpoint), keys: { p256dh: String(sub.p256dh), auth: String(sub.auth) } },
+        payload
+      );
+    } catch (err) {
+      console.error("[notifications] PO alert browser push failed", err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  await deliverNativeAndroid(admin, event, userIds);
+
+  const emails = Array.from(new Set(
+    audience.map((u) => String(u.email ?? "").trim()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+  ));
+  await sendPoUsageEmails(emails, title, `${bodyText}\n\nOpen PO Master: ${href}\n\nThis is an automatic alert from Transit Express ERP.`);
+
+  return { ok: true };
+}
+
+/** One email per recipient (no shared To list) via Resend's batch endpoint. */
+async function sendPoUsageEmails(to: string[], subject: string, text: string): Promise<void> {
+  const apiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  const from = Deno.env.get("REPORT_EMAIL_FROM") ?? "";
+  if (!apiKey || !from || to.length === 0) {
+    console.error("[notifications] PO alert email skipped", { reason: !apiKey || !from ? "email_not_configured" : "no_recipients" });
+    return;
+  }
+  for (let i = 0; i < to.length; i += 100) {
+    try {
+      const res = await fetch("https://api.resend.com/emails/batch", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(to.slice(i, i + 100).map((address) => ({ from, to: [address], subject, text }))),
+      });
+      if (!res.ok) console.error("[notifications] PO alert email failed", { status: res.status });
+    } catch {
+      console.error("[notifications] PO alert email outcome unknown");
+    }
+  }
+}
+
 async function deliverNativeAndroid(
-  admin: ReturnType<typeof createClient>,
+  admin: ReturnType<typeof createClient<any, "public", any>>,
   event: Record<string, unknown>,
   userIds: string[]
 ): Promise<void> {
@@ -379,6 +482,7 @@ async function deliverNativeAndroid(
                   channel_id: "transjit_erp_alerts_v1",
                   sound: "transjit_koyal_notification",
                   default_vibrate_timings: true,
+                  large_icon: "transjit_logo",
                 },
               },
             },

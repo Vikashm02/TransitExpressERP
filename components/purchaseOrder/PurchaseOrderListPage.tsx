@@ -98,8 +98,12 @@ export default function PurchaseOrderListPage() {
     } finally { setSaving(false); }
   }
 
+  // Landing order: highest usage % first so POs closest to (or over) their
+  // allotted weight are seen immediately; ties by used weight, then newest.
+  const usagePercent = (r: PurchaseOrderRecord) => purchaseOrderUsage(r.allottedWeight, r.usedWeight).percent;
   const filtered = rows.filter((r) => (!status || r.status === status)
-    && `${r.poNumber} ${r.billingPartyName} ${r.consignor} ${r.consignee} ${r.materialName}`.toLowerCase().includes(search.trim().toLowerCase()));
+    && `${r.poNumber} ${r.billingPartyName} ${r.consignor} ${r.consignee} ${r.materialName}`.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => usagePercent(b) - usagePercent(a) || b.usedWeight - a.usedWeight || b.id - a.id);
   const columns: DataTableColumn<PurchaseOrderRecord>[] = [
     { key: "poNumber", header: "PO Number", sortable: true },
     { key: "billingPartyName", header: "Billing Party", sortable: true },
@@ -110,12 +114,17 @@ export default function PurchaseOrderListPage() {
     { key: "allottedWeight", header: "Allotted (MT)", render: (r) => weight(r.allottedWeight), sortable: true },
     { key: "usedWeight", header: "Used (MT)", render: (r) => weight(r.usedWeight), sortable: true },
     { key: "remaining", header: "Remaining / Excess (MT)", render: (r) => {
+      if (!(r.allottedWeight > 0)) return "Allotted weight not set";
       const u = purchaseOrderUsage(r.allottedWeight, r.usedWeight);
       return u.exceeded > 0 ? `${weight(u.exceeded)} over allotted` : weight(u.remaining);
     } },
-    { key: "usage", header: "Usage", render: (r) => {
+    { key: "usage", header: "Usage", sortable: true, sortAccessor: usagePercent, render: (r) => {
+      // Without an allotted weight there is no limit, so usage % and alerts cannot work.
+      if (!(r.allottedWeight > 0)) return "Not measurable · set allotted weight to enable alerts";
       const u = purchaseOrderUsage(r.allottedWeight, r.usedWeight);
-      return `${u.percent.toFixed(1)}%${u.warning === "red" ? " · High usage" : u.warning === "yellow" ? " · Near limit" : ""}`;
+      const label = u.percent > 100 ? " · Limit exceeded" : u.percent >= 95 ? " · Critical"
+        : u.warning === "red" ? " · High usage" : u.warning === "yellow" ? " · Near limit" : "";
+      return `${u.percent.toFixed(1)}%${label}`;
     } },
     { key: "status", header: "Status", type: "status", sortable: true },
   ];
@@ -124,7 +133,7 @@ export default function PurchaseOrderListPage() {
     <PageHeader title="PO Master" buttonText="Add PO" showAddButton={canCreate}
       onAdd={() => void showForm(null)}
       subtitle="Loading weight from final, non-cancelled LRs. Active / Inactive is always set manually." />
-    <p className="text-sm text-muted-foreground">Yellow: 80–90% used. Red: above 90%. Exceeding the allotted weight does not close the PO.</p>
+    <p className="text-sm text-muted-foreground">Sorted by usage, highest first. Yellow: 80–90% used. Red: above 90%. Exceeding the allotted weight does not close the PO.</p>
     <SearchToolbar search={search} onSearchChange={setSearch} placeholder="Search PO number or billing party..."
       onRefresh={refresh} filters={[{ key: "status", label: "Status", value: status, placeholder: "All statuses",
         options: ["Active", "Inactive"].map((s) => ({ label: s, value: s })), onChange: setStatus }]} />

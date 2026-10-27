@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/supabaseFetchAll";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type {
   LorryExpense,
@@ -76,14 +77,16 @@ function fromRow(row: Record<string, unknown>): LorryExpenseRecord {
 }
 
 export async function getLorryExpenses(): Promise<LorryExpenseRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select("*")
-    .order("created_at", { ascending: false });
+  const data = await fetchAllPages((from, to) =>
+    supabase
+      .from(TABLE)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+  );
 
-  if (error) throw error;
-
-  return (data ?? []).map(fromRow);
+  return data.map(fromRow);
 }
 
 /** `lrId` is the live `lrs.id` uuid string (`lorry_expenses.lr_id` is uuid). */
@@ -101,16 +104,18 @@ export async function getLorryExpenseByLrId(lrId: string): Promise<LorryExpenseR
 
 /** Distinct non-empty broker names from saved Financials rows (DB-backed suggestions). */
 export async function getBrokerNameSuggestions(): Promise<string[]> {
-  const { data, error } = await supabase.from(TABLE).select("broker_name");
-  if (error) throw error;
-  return uniqueNonEmpty((data ?? []).map((row) => String(row.broker_name ?? "")));
+  const data = await fetchAllPages((from, to) =>
+    supabase.from(TABLE).select("id, broker_name").order("id", { ascending: true }).range(from, to)
+  );
+  return uniqueNonEmpty(data.map((row) => String(row.broker_name ?? "")));
 }
 
 /** Distinct non-empty beneficiary names from saved Financials rows. */
 export async function getBeneficiaryNameSuggestions(): Promise<string[]> {
-  const { data, error } = await supabase.from(TABLE).select("beneficiary_name");
-  if (error) throw error;
-  return uniqueNonEmpty((data ?? []).map((row) => String(row.beneficiary_name ?? "")));
+  const data = await fetchAllPages((from, to) =>
+    supabase.from(TABLE).select("id, beneficiary_name").order("id", { ascending: true }).range(from, to)
+  );
+  return uniqueNonEmpty(data.map((row) => String(row.beneficiary_name ?? "")));
 }
 
 function uniqueNonEmpty(values: string[]): string[] {

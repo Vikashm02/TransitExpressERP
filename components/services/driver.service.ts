@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/supabaseFetchAll";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
 import type { Driver } from "@/components/driver/driver.schema";
 
@@ -62,14 +63,16 @@ function fromRow(row: Record<string, unknown>): DriverRecord {
 ========================================================== */
 
 export async function getDrivers(): Promise<DriverRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select("*")
-    .order("created_at", { ascending: false });
+  const data = await fetchAllPages((from, to) =>
+    supabase
+      .from(TABLE)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+  );
 
-  if (error) throw error;
-
-  return (data ?? []).map(fromRow);
+  return data.map(fromRow);
 }
 
 /* ==========================================================

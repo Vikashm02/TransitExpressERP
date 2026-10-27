@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/supabaseFetchAll";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields } from "@/lib/caseMapping";
 import type { Pod } from "@/components/pod/pod.schema";
 import { emitNotificationEvent } from "@/components/services/notification.service";
@@ -66,14 +67,16 @@ function fromRow(row: Record<string, unknown>): PodRecord {
 ========================================================== */
 
 export async function getPods(): Promise<PodRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select("*")
-    .order("created_at", { ascending: false });
+  const data = await fetchAllPages((from, to) =>
+    supabase
+      .from(TABLE)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+  );
 
-  if (error) throw error;
-
-  return (data ?? []).map(fromRow);
+  return data.map(fromRow);
 }
 
 /**
@@ -87,11 +90,11 @@ export type PodLrIndexRow = {
 };
 
 export async function getPodLrIndex(): Promise<PodLrIndexRow[]> {
-  const { data, error } = await supabase.from(TABLE).select("id, lr_number");
+  const data = await fetchAllPages((from, to) =>
+    supabase.from(TABLE).select("id, lr_number").order("id", { ascending: true }).range(from, to)
+  );
 
-  if (error) throw error;
-
-  return (data ?? []).map((row) => ({
+  return data.map((row) => ({
     id: row.id as number,
     lrNumber: String((row as { lr_number?: unknown }).lr_number ?? "").trim(),
   })).filter((row) => row.lrNumber.length > 0);

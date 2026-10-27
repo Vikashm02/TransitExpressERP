@@ -150,12 +150,14 @@ test('legacy finalized first Material selection preserves inactive PO link and s
 
 test('legacy enrichment save does not query Active POs and submits original link', async () => {
   const { isLegacyMaterialEnrichment } = await import('../components/lr/partyIdentity.ts');
+  const { isPoNumberMissingFromMaster, poNotInMasterMessage } = await import('../components/lr/poMasterRequirement.ts');
   const selected = selectLrMaterial(legacy, { id: 10, materialName: 'Material A', unit: 'MT' });
   const saved = [];
   const save = handler('components/lr/LRDialog.tsx', 'handleSave', {
     lr: legacy, values: selected, isEditing: true, readOnly: false, checkingPo: false,
     loading: false, replacementSaving: false, requireMaterialDescription: false,
     validateLR: () => ({}), isDraftEntry: s => s === 'draft', isDraftLrNumber: () => false,
+    isPoNumberMissingFromMaster, poNotInMasterMessage,
     isLegacyMaterialEnrichment, setCheckingPo: () => {}, setErrors: () => {},
     getActiveLrPurchaseOrders: () => assert.fail('historical PO must not require Active eligibility'),
     onSubmit: async v => saved.push(v), toast: { error: () => assert.fail('save failed') },

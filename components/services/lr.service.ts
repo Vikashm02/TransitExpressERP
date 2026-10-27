@@ -1,5 +1,6 @@
 import { partyIdentityColumns, readPartyIdentity } from "@/components/lr/partyIdentity";
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/supabaseFetchAll";
 import { emitNotificationEvent } from "@/components/services/notification.service";
 import { objectToCamelCase, objectToSnakeCase, omitServerFields, toSnakeCase } from "@/lib/caseMapping";
 import { calculateLR } from "@/lib/calculations/lrCalculations";
@@ -264,14 +265,16 @@ function fromRow(row: Record<string, unknown>): LRRecord {
 ========================================================== */
 
 export async function getLRs(): Promise<LRRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select("*")
-    .order("created_at", { ascending: false });
+  const data = await fetchAllPages((from, to) =>
+    supabase
+      .from(TABLE)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+  );
 
-  if (error) throw error;
-
-  return (data ?? []).map(fromRow);
+  return data.map(fromRow);
 }
 
 /* ==========================================================

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllPages } from "@/lib/supabaseFetchAll";
 import { computeGstAmount } from "@/lib/gstOptions";
 import type { DebitNote } from "@/components/debitNote/debitNote.schema";
 import type { BillingPartyRecord } from "./billingParty.service";
@@ -82,14 +83,16 @@ export async function generateDebitNoteNumber(billingParty: BillingPartyRecord):
 ========================================================== */
 
 export async function getDebitNotes(): Promise<DebitNoteRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select("*, billing_parties(name)")
-    .order("note_date", { ascending: false });
+  const data = await fetchAllPages((from, to) =>
+    supabase
+      .from(TABLE)
+      .select("*, billing_parties(name)")
+      .order("note_date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to)
+  );
 
-  if (error) throw error;
-
-  return (data ?? []).map((row) => fromRow(row as unknown as DebitNoteRow));
+  return data.map((row) => fromRow(row as unknown as DebitNoteRow));
 }
 
 /* ==========================================================
