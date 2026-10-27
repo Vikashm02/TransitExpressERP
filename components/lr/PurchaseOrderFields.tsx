@@ -102,7 +102,7 @@ export default function PurchaseOrderFields({
 
   const hint = readOnly ? undefined : loading ? "Loading active POs..." : failed ? "PO lookup unavailable. Existing PO details are preserved."
     : options.length > 1 ? "Multiple active POs found. Choose the correct PO."
-    : !options.length && lr.customer && lr.consignor && lr.consigneeId ? "No active PO found for this Billing Party, Consignor, Consignee and Material." : undefined;
+    : !options.length && lr.customer && lr.consignor && lr.consigneeId ? "No active PO found for this Billing Party, Consignor, Consignee and Material. Add the PO in PO Master first; a PO number that is not in PO Master cannot be saved." : undefined;
   const selectedIsActive = options.some((p) => p.id === lr.purchaseOrderId);
   const selectedPO = options.find((p) => p.id === lr.purchaseOrderId);
   const poMasterDiffers = selectedPO && (selectedPO.poNumber !== lr.poNumber || selectedPO.issueDate !== lr.poDate);
