@@ -68,10 +68,12 @@ test("Android app creates the PO channel with the bundled sound (version 8)", ()
   assert.ok(readFileSync(new URL("../android/app/src/main/res/raw/transjit_po_urgent_beeps.wav", import.meta.url)).length > 1000);
 });
 
-test("DC created uses the Bubble pop channel; DC updated and POD keep koyal", () => {
+test("DC created and POD created use Bubble pop; DC and POD updated keep koyal", () => {
   const activity = read("android/app/src/main/java/in/transjitexpresserp/mobile/MainActivity.java");
   assert.match(sender, /DC_CREATED_ANDROID_CHANNEL = \{ id: "transjit_dc_created_v1", sound: "transjit_dc_bubble_pop" \}/);
-  assert.match(sender, /if \(ruleKey === "dc\.created"\) return DC_CREATED_ANDROID_CHANNEL;\s*return DEFAULT_ANDROID_CHANNEL;/);
+  assert.match(sender, /if \(ruleKey === "dc\.created"\) return DC_CREATED_ANDROID_CHANNEL;\s*if \(ruleKey === "pod\.created"\) return POD_CREATED_ANDROID_CHANNEL;\s*return DEFAULT_ANDROID_CHANNEL;/);
+  assert.match(sender, /POD_CREATED_ANDROID_CHANNEL = \{ id: "transjit_pod_created_v1", sound: "transjit_dc_bubble_pop" \}/);
+  assert.match(activity, /POD_CREATED_CHANNEL_ID = "transjit_pod_created_v1"/);
   assert.match(activity, /DC_CREATED_CHANNEL_ID = "transjit_dc_created_v1"/);
   assert.match(activity, /R\.raw\.transjit_dc_bubble_pop/);
   assert.ok(readFileSync(new URL("../android/app/src/main/res/raw/transjit_dc_bubble_pop.wav", import.meta.url)).length > 1000);

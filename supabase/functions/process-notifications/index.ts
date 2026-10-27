@@ -29,9 +29,12 @@ const DEFAULT_ANDROID_CHANNEL = { id: "transjit_erp_alerts_v1", sound: "transjit
 const PO_ALERTS_ANDROID_CHANNEL = { id: "transjit_po_alerts_v1", sound: "transjit_po_urgent_beeps" };
 // New Delivery Challan uses the Bubble pop tone (MainActivity.DC_CREATED_CHANNEL_ID, app versionCode 8+).
 const DC_CREATED_ANDROID_CHANNEL = { id: "transjit_dc_created_v1", sound: "transjit_dc_bubble_pop" };
+// New POD uses the same Bubble pop tone on its own channel (MainActivity.POD_CREATED_CHANNEL_ID).
+const POD_CREATED_ANDROID_CHANNEL = { id: "transjit_pod_created_v1", sound: "transjit_dc_bubble_pop" };
 
 function androidChannelForRule(ruleKey: string): { id: string; sound: string } {
   if (ruleKey === "dc.created") return DC_CREATED_ANDROID_CHANNEL;
+  if (ruleKey === "pod.created") return POD_CREATED_ANDROID_CHANNEL;
   return DEFAULT_ANDROID_CHANNEL;
 }
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";

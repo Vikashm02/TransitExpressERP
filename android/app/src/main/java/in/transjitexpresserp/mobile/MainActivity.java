@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     /** Channel IDs must match the *_ANDROID_CHANNEL constants in supabase/functions/process-notifications. */
     static final String PO_ALERTS_CHANNEL_ID = "transjit_po_alerts_v1";
     static final String DC_CREATED_CHANNEL_ID = "transjit_dc_created_v1";
+    static final String POD_CREATED_CHANNEL_ID = "transjit_pod_created_v1";
 
     private FloatingShortcutController floatingShortcutControls;
 
@@ -63,6 +64,14 @@ public class MainActivity extends BridgeActivity {
             DC_CREATED_CHANNEL_ID,
             "Delivery Challan created",
             "Alerts when a new Delivery Challan is created.",
+            R.raw.transjit_dc_bubble_pop,
+            new long[] {0, 80}
+        );
+        // New POD: same Bubble pop tone, own channel so it can be adjusted separately.
+        createAlertChannel(
+            POD_CREATED_CHANNEL_ID,
+            "POD created",
+            "Alerts when a new Proof of Delivery is created.",
             R.raw.transjit_dc_bubble_pop,
             new long[] {0, 80}
         );
