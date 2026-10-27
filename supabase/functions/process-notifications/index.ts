@@ -27,6 +27,13 @@ const DEFAULT_ANDROID_CHANNEL = { id: "transjit_erp_alerts_v1", sound: "transjit
 // PO usage alarms use the Urgent beeps tone. Must match MainActivity.PO_ALERTS_CHANNEL_ID
 // (app versionCode 8+). Older apps without this channel show the alert with the phone's default sound.
 const PO_ALERTS_ANDROID_CHANNEL = { id: "transjit_po_alerts_v1", sound: "transjit_po_urgent_beeps" };
+// New Delivery Challan uses the Bubble pop tone (MainActivity.DC_CREATED_CHANNEL_ID, app versionCode 8+).
+const DC_CREATED_ANDROID_CHANNEL = { id: "transjit_dc_created_v1", sound: "transjit_dc_bubble_pop" };
+
+function androidChannelForRule(ruleKey: string): { id: string; sound: string } {
+  if (ruleKey === "dc.created") return DC_CREATED_ANDROID_CHANNEL;
+  return DEFAULT_ANDROID_CHANNEL;
+}
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const EXACT_EVENT_NAVIGATION_RULES = new Set([
@@ -215,7 +222,7 @@ Deno.serve(async (req) => {
       // only users who already own a browser push subscription are eligible.
       // It is best-effort and never affects generic browser/inbox event status.
       if (EXACT_EVENT_NAVIGATION_RULES.has(ruleKey) && userIds.length > 0) {
-        await deliverNativeAndroid(admin, group[0], userIds);
+        await deliverNativeAndroid(admin, group[0], userIds, androidChannelForRule(ruleKey));
       }
 
       const payload = JSON.stringify({ title, body: bodyText, href });
