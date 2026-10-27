@@ -482,7 +482,6 @@ async function deliverNativeAndroid(
                   channel_id: "transjit_erp_alerts_v1",
                   sound: "transjit_koyal_notification",
                   default_vibrate_timings: true,
-                  large_icon: "transjit_logo",
                 },
               },
             },
