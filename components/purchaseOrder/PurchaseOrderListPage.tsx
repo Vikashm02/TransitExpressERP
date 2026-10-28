@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { downloadCsv } from "@/lib/csvExport";
+import { exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +21,22 @@ import { purchaseOrderUsage, purchaseOrderWarningClass } from "@/lib/purchaseOrd
 import { purchaseOrderSchema, type PurchaseOrder } from "./purchaseOrder.schema";
 import { getPurchaseOrders, getPurchaseOrderParties, getPurchaseOrderCustomers, getPurchaseOrderMaterials, savePurchaseOrder,
   type PurchaseOrderRecord, type PurchaseOrderParty } from "@/components/services/purchaseOrder.service";
+
+/** Export = PO form fields in form order, then the usage figures shown on the page. */
+const PO_EXPORT_COLUMNS: ExportColumn<PurchaseOrderRecord>[] = [
+  { header: "Billing Party", value: (r) => r.billingPartyName },
+  { header: "Consignor", value: (r) => r.consignor },
+  { header: "Consignee", value: (r) => r.consignee },
+  { header: "Material", value: (r) => r.materialName },
+  { header: "PO Number", value: (r) => r.poNumber },
+  { header: "Issue Date", value: (r) => r.issueDate },
+  { header: "Allotted Weight (MT)", value: (r) => (r.allottedWeight > 0 ? r.allottedWeight : "Not set") },
+  { header: "Status", value: (r) => r.status },
+  { header: "Used (MT)", value: (r) => r.usedWeight },
+  { header: "Remaining (MT)", value: (r) => (r.allottedWeight > 0 ? Math.max(0, purchaseOrderUsage(r.allottedWeight, r.usedWeight).remaining) : "") },
+  { header: "Excess (MT)", value: (r) => (r.allottedWeight > 0 ? purchaseOrderUsage(r.allottedWeight, r.usedWeight).exceeded : "") },
+  { header: "Usage %", value: (r) => (r.allottedWeight > 0 ? Number(purchaseOrderUsage(r.allottedWeight, r.usedWeight).percent.toFixed(1)) : "") },
+];
 
 const empty: PurchaseOrder = { billingPartyId: 0, materialId: null, consignor: "", consigneeId: 0, poNumber: "", issueDate: "", allottedWeight: 0, status: "Active" };
 const weight = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 3 });
@@ -138,21 +154,7 @@ export default function PurchaseOrderListPage() {
     <p className="text-sm text-muted-foreground">Sorted by usage, highest first. Yellow: 80–90% used. Red: above 90%. Exceeding the allotted weight does not close the PO.</p>
     <SearchToolbar search={search} onSearchChange={setSearch} placeholder="Search PO number, party, consignor, consignee, material..."
       onRefresh={refresh}
-      onExport={() =>
-        downloadCsv(
-          `purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`,
-          ["PO Number", "Billing Party", "Consignor", "Consignee", "Material", "Issue Date", "Allotted (MT)",
-            "Used (MT)", "Remaining (MT)", "Excess (MT)", "Usage %", "Status"],
-          filtered.map((r) => {
-            const u = purchaseOrderUsage(r.allottedWeight, r.usedWeight);
-            const hasLimit = r.allottedWeight > 0;
-            return [r.poNumber, r.billingPartyName, r.consignor, r.consignee, r.materialName, r.issueDate,
-              hasLimit ? r.allottedWeight : "Not set", r.usedWeight,
-              hasLimit ? Math.max(0, u.remaining) : "", hasLimit ? u.exceeded : "",
-              hasLimit ? Number(u.percent.toFixed(1)) : "", r.status];
-          })
-        )
-      }
+      onExport={() => exportCsv("purchase-orders", PO_EXPORT_COLUMNS, filtered)}
       filters={[{ key: "status", label: "Status", value: status, placeholder: "All statuses",
         options: ["Active", "Inactive"].map((s) => ({ label: s, value: s })), onChange: setStatus }]} />
     {loadError ? <p role="alert" className="text-sm text-destructive">Unable to load PO data. Refresh or contact your administrator; displayed data may be outdated.</p> : null}

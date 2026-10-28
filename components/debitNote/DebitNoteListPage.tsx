@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -25,6 +26,19 @@ import {
 import { getBillingParty } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const DEBIT_NOTE_EXPORT_COLUMNS: ExportColumn<DebitNoteRecord>[] = [
+  { header: "Debit Note Number", value: (r) => r.debitNoteNumber },
+  { header: "Billing Party", value: (r) => r.billingPartyName },
+  { header: "Date", value: (r) => r.noteDate },
+  { header: "Amount", value: (r) => r.amount },
+  { header: "GST (%)", value: (r) => r.gstPercentage },
+  { header: "GST Amount", value: (r) => r.gstAmount },
+  { header: "Total Amount", value: (r) => r.totalAmount },
+  { header: "Remarks", value: (r) => r.remarks },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -137,29 +151,9 @@ export default function DebitNoteListPage() {
   }
 
   function handleExport() {
-    const headers = ["Debit Note No.", "Date", "Billing Party", "Amount", "GST", "Total"];
-
-    const rows = filteredDebitNotes.map((note) => [
-      note.debitNoteNumber,
-      note.noteDate,
-      note.billingPartyName,
-      note.amount,
-      note.gstPercentage,
-      note.totalAmount,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "debit-notes.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("debit-notes", DEBIT_NOTE_EXPORT_COLUMNS, filteredDebitNotes);
   }
+
 
   async function handleDownloadTemplate() {
     try {

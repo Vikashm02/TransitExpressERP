@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -29,6 +30,19 @@ import { getCompany, saveCompany } from "@/components/services/company.service";
 import { getLRs, updateLR } from "@/components/services/lr.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const BILL_EXPORT_COLUMNS: ExportColumn<BillRecord>[] = [
+  { header: "Billing Party", value: (r) => r.billingPartyName },
+  { header: "PO Number", value: (r) => r.poNumber },
+  { header: "Bill Number", value: (r) => r.billNumber },
+  { header: "Bill Date", value: (r) => r.billDate },
+  { header: "No. of LRs", value: (r) => r.lrCount },
+  { header: "Total Weight", value: (r) => r.totalWeight },
+  { header: "Total Freight", value: (r) => r.totalFreight },
+  { header: "Grand Total", value: (r) => r.grandTotal },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -199,30 +213,9 @@ export default function BillingListPage() {
   }
 
   function handleExport() {
-    const headers = ["Bill Number", "Bill Date", "Billing Party", "No. of LRs", "Total Amount"];
-
-    const rows = filteredBills.map((bill) => [
-      bill.billNumber,
-      bill.billDate,
-      bill.billingPartyName,
-      bill.lrCount,
-      bill.grandTotal,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "bills.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("bills", BILL_EXPORT_COLUMNS, filteredBills);
   }
+
 
   async function handleDownloadTemplate() {
     try {

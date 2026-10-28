@@ -83,14 +83,15 @@ test("every page with a search bar uses the shared search helper", () => {
 });
 
 test("every Export button exports the filtered rows", () => {
-  const filteredNames = /(filtered[A-Za-z]*|visibleStaff)\.map\(/;
+  const filteredNames = /(filtered[A-Za-z]*|visibleStaff)\.map\(|exportCsv\([\s\S]*?\b(filtered[A-Za-z]*)\)/;
   for (const page of listPages()) {
     const src = read(page);
     if (!src.includes("<SearchToolbar")) continue;
     assert.match(src, /onExport=/, `${page} has a working Export`);
     const exportStart = src.search(/function handleExport|onExport=\{\(\) =>/);
+    // Long column lists can sit between the start and the rows argument.
     assert.ok(exportStart > -1, page);
-    assert.match(src.slice(exportStart, exportStart + 2500), filteredNames, `${page} exports filtered rows`);
+    assert.match(src.slice(exportStart, exportStart + 6000), filteredNames, `${page} exports filtered rows`);
   }
 });
 

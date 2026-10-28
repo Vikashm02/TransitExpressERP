@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getStaffUsers } from "@/components/services/appUser.service";
+import { createdColumns, exportCsv, staffNameResolver, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -24,6 +26,26 @@ import {
 } from "@/components/services/deliveryChallan.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const DELIVERY_CHALLAN_EXPORT_COLUMNS: ExportColumn<DeliveryChallanRecord>[] = [
+  { header: "LR Number", value: (r) => r.lrNumber },
+  { header: "LR Date", value: (r) => r.lrDate },
+  { header: "Consignor", value: (r) => r.consignor },
+  { header: "Consignor GST", value: (r) => r.consignorGst },
+  { header: "Consignor Address", value: (r) => r.consignorAddress },
+  { header: "By", value: (r) => r.byName },
+  { header: "Consignee", value: (r) => r.consignee },
+  { header: "Consignee GST", value: (r) => r.consigneeGst },
+  { header: "Consignee Address", value: (r) => r.consigneeAddress },
+  { header: "PO Number", value: (r) => r.poNumber },
+  { header: "PO Date", value: (r) => r.poDate },
+  { header: "Description", value: (r) => r.description },
+  { header: "QTY (Actual Weight)", value: (r) => r.qty },
+  { header: "Vehicle No", value: (r) => r.vehicleNumber },
+  { header: "HSN", value: (r) => r.hsn },
+
+];
 
 const PAGE_SIZE = 10;
 
@@ -235,48 +257,16 @@ export default function DeliveryChallanListPage() {
   }
 
   function handleExport() {
-    const headers = [
-      "LR Number",
-      "LR Date",
-      "Dispatch From",
-      "Dispatch To",
-      "By",
-      "Vehicle No",
-      "QTY",
-      "PO No",
-      "PO Date",
-      "HSN",
-      "Description",
-    ];
-
-    const rows = filtered.map((row) => [
-      row.lrNumber,
-      row.lrDate,
-      row.consignor,
-      row.consignee,
-      row.byName,
-      row.vehicleNumber,
-      Number(row.qty).toFixed(3),
-      row.poNumber,
-      row.poDate,
-      row.hsn,
-      row.description,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "delivery-challans.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    void (async () => {
+      const staff = await getStaffUsers().catch(() => []);
+      const createdBy = staffNameResolver(staff);
+      exportCsv("delivery-challans", [
+        ...DELIVERY_CHALLAN_EXPORT_COLUMNS,
+        ...createdColumns<DeliveryChallanRecord>((r) => createdBy(r.createdBy), (r) => r.created_at),
+      ], filtered);
+    })();
   }
+
 
   return (
     <div className="space-y-6">

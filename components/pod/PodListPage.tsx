@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createdColumns, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -30,6 +31,8 @@ import { getLRs, updateLR, type LRRecord } from "@/components/services/lr.servic
 import { getStaffUsers, type AppUserProfile } from "@/components/services/appUser.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
+
+
 
 const PAGE_SIZE = 10;
 
@@ -246,38 +249,23 @@ export default function PodListPage() {
   }
 
   function handleExport() {
-    const headers = [
-      "LR Number",
-      "Consignee",
-      "POD Date",
-      "Unloading Weight",
-      "Unloading Date",
-      "POD Uploaded",
-    ];
-
-    const rows = filteredPods.map((pod) => [
-      pod.lrNumber,
-      pod.consignee,
-      pod.podDate,
-      pod.unloadingWeight,
-      pod.unloadingDate,
-      pod.proofUrl ? "Yes" : "No",
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "pods.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    const lrByNumber = new Map(lrs.map((lr) => [lr.lrNumber, lr]));
+    exportCsv("pods", [
+      { header: "LR Number", value: (r) => r.lrNumber },
+      { header: "Consignor", value: (r) => lrByNumber.get(r.lrNumber)?.consignor },
+      { header: "Consignee", value: (r) => r.consignee },
+      { header: "Vehicle Number", value: (r) => lrByNumber.get(r.lrNumber)?.vehicleNumber },
+      { header: "Driver Name", value: (r) => lrByNumber.get(r.lrNumber)?.driverName },
+      { header: "From", value: (r) => lrByNumber.get(r.lrNumber)?.from },
+      { header: "To", value: (r) => lrByNumber.get(r.lrNumber)?.to },
+      { header: "POD Date", value: (r) => r.podDate },
+      { header: "Unloading Weight", value: (r) => r.unloadingWeight },
+      { header: "Unloading Date", value: (r) => r.unloadingDate },
+      { header: "Proof of POD (link)", value: (r) => r.proofUrl },
+      ...createdColumns<PodListRow>((r) => (r.createdBy ? r.createdByName : ""), (r) => r.created_at),
+    ] satisfies ExportColumn<PodListRow>[], filteredPods);
   }
+
 
   async function handleDownloadTemplate() {
     try {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -23,6 +24,19 @@ import {
   type CustomerRecord,
 } from "@/components/services/customer.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const CUSTOMER_EXPORT_COLUMNS: ExportColumn<CustomerRecord>[] = [
+  { header: "Customer Code", value: (r) => r.code },
+  { header: "Customer Name", value: (r) => r.name },
+  { header: "GST Number", value: (r) => r.gst },
+  { header: "Mobile Number", value: (r) => r.mobile },
+  { header: "Email", value: (r) => r.email },
+  { header: "City", value: (r) => r.city },
+  { header: "Status", value: (r) => r.status },
+  { header: "Address", value: (r) => r.address },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -171,32 +185,9 @@ export default function CustomerListPage() {
   }
 
   function handleExport() {
-    const headers = ["Code", "Name", "GST", "Mobile", "Email", "City", "Address", "Status"];
-    const rows = filteredCustomers.map((customer) => [
-      customer.code,
-      customer.name,
-      customer.gst,
-      customer.mobile,
-      customer.email,
-      customer.city,
-      customer.address,
-      customer.status,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "customers.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("customers", CUSTOMER_EXPORT_COLUMNS, filteredCustomers);
   }
+
 
   async function handleDownloadTemplate() {
     try {
