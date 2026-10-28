@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 
 type ButtonVariant = VariantProps<typeof buttonVariants>["variant"];
 
+const ALL_FILTER_VALUE = "__all__";
+
 export interface SearchToolbarFilter {
   key: string;
   label: string;
@@ -119,20 +121,29 @@ export default function SearchToolbar({
 
           {filters && filters.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {filters.map((filter) => (
+              {filters.map((filter) => {
+                // "All" is a real option so a chosen filter can be cleared, and
+                // `items` lets the trigger show labels instead of raw values.
+                const allLabel = filter.placeholder ?? `All ${filter.label}`;
+                return (
                 <Select
                   key={filter.key}
-                  value={filter.value === "" ? undefined : filter.value}
-                  onValueChange={(value) => filter.onChange((value as string) ?? "")}
+                  value={filter.value === "" ? ALL_FILTER_VALUE : filter.value}
+                  items={[{ value: ALL_FILTER_VALUE, label: allLabel }, ...filter.options]}
+                  onValueChange={(value) =>
+                    filter.onChange(value == null || value === ALL_FILTER_VALUE ? "" : String(value))
+                  }
                 >
                   <SelectTrigger
                     size="sm"
                     className="w-auto min-w-32"
+                    aria-label={filter.label}
                   >
-                    <SelectValue placeholder={filter.placeholder ?? filter.label} />
+                    <SelectValue placeholder={allLabel} />
                   </SelectTrigger>
 
                   <SelectContent>
+                    <SelectItem value={ALL_FILTER_VALUE}>{allLabel}</SelectItem>
                     {filter.options.map((option) => (
                       <SelectItem
                         key={option.value}
@@ -143,7 +154,8 @@ export default function SearchToolbar({
                     ))}
                   </SelectContent>
                 </Select>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

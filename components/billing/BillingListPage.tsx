@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, FileText, Receipt, Upload } from "lucide-react";
@@ -79,9 +80,7 @@ export default function BillingListPage() {
     return bills.filter((bill) => {
       if (!query) return true;
 
-      return [bill.billNumber, bill.billingPartyName]
-        .filter(Boolean)
-        .some((field) => field.toLowerCase().includes(query));
+      return matchesListSearch(query, [bill.billNumber, bill.billDate, bill.billingPartyName, bill.lrCount, bill.grandTotal]);
     });
   }, [bills, search]);
 
@@ -264,7 +263,7 @@ export default function BillingListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by bill number or billing party..."
+        placeholder="Search bill no., date, billing party, amount..."
         onRefresh={loadBills}
         onExport={handleExport}
         actions={[

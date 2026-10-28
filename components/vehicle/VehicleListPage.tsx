@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
@@ -71,9 +72,20 @@ export default function VehicleListPage() {
       const matchesSearch =
         !query ||
         vehicleNumberMatchesQuery(vehicle.vehicleNumber, query) ||
-        [vehicle.ownerName, vehicle.mobile, vehicle.rcNumber, vehicle.chassisNumber]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query.toLowerCase()));
+        matchesListSearch(query, [
+          vehicle.vehicleNumber,
+          vehicle.vehicleType,
+          vehicle.transporter,
+          vehicle.driverName,
+          vehicle.driverMobile,
+          vehicle.ownerName,
+          vehicle.ownerType,
+          vehicle.capacity,
+          vehicle.mobile,
+          vehicle.rcNumber,
+          vehicle.chassisNumber,
+          vehicle.status,
+        ]);
 
       const matchesStatus = !statusFilter || vehicle.status === statusFilter;
 
@@ -223,7 +235,7 @@ export default function VehicleListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by vehicle number, owner, mobile, RC or chassis number..."
+        placeholder="Search vehicle no., type, transporter, driver, owner, mobile, status..."
         onRefresh={loadVehicles}
         onExport={handleExport}
         actions={[

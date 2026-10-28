@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
@@ -61,9 +62,7 @@ export default function TransporterListPage() {
     return transporters.filter((transporter) => {
       const matchesSearch =
         !query ||
-        [transporter.transporterName, transporter.contactPerson, transporter.mobile, transporter.gstin]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+        matchesListSearch(query, [transporter.code, transporter.transporterName, transporter.transporterType, transporter.contactPerson, transporter.mobile, transporter.gstin, transporter.paymentTerm, transporter.status]);
 
       const matchesStatus = !statusFilter || transporter.status === statusFilter;
 
@@ -209,7 +208,7 @@ export default function TransporterListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by transporter name, contact person, mobile or GSTIN..."
+        placeholder="Search code, name, type, contact, mobile, GSTIN, status..."
         onRefresh={loadTransporters}
         onExport={handleExport}
         filters={[

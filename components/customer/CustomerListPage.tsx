@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
@@ -70,9 +71,7 @@ export default function CustomerListPage() {
     return customers.filter((customer) => {
       const matchesSearch =
         !query ||
-        [customer.name, customer.code, customer.city, customer.mobile, customer.gst]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+        matchesListSearch(query, [customer.name, customer.code, customer.city, customer.mobile, customer.gst, customer.status]);
 
       const matchesStatus = !statusFilter || customer.status === statusFilter;
 
@@ -220,7 +219,7 @@ export default function CustomerListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by name, code, city, mobile or GST..."
+        placeholder="Search name, code, GST, mobile, city, status..."
         onRefresh={loadCustomers}
         onExport={handleExport}
         actions={[

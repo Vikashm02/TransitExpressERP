@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
@@ -71,9 +72,7 @@ export default function BillingPartyListPage() {
     return billingParties.filter((billingParty) => {
       const matchesSearch =
         !query ||
-        [billingParty.name, billingParty.code, billingParty.city, billingParty.mobile, billingParty.gst]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+        matchesListSearch(query, [billingParty.name, billingParty.code, billingParty.city, billingParty.mobile, billingParty.gst, billingParty.status]);
 
       const matchesStatus = !statusFilter || billingParty.status === statusFilter;
 
@@ -221,7 +220,7 @@ export default function BillingPartyListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by name, code, city, mobile or GST..."
+        placeholder="Search name, code, GST, mobile, city, status..."
         onRefresh={loadBillingParties}
         onExport={handleExport}
         actions={[

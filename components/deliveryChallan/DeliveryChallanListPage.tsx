@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -149,17 +150,7 @@ export default function DeliveryChallanListPage() {
     if (!query) return challans;
 
     return challans.filter((row) =>
-      [
-        row.lrNumber,
-        row.consignor,
-        row.consignee,
-        row.vehicleNumber,
-        row.poNumber,
-        row.hsn,
-        row.byName,
-      ]
-        .filter(Boolean)
-        .some((field) => field.toLowerCase().includes(query))
+      matchesListSearch(query, [row.lrNumber, row.lrDate, row.consignor, row.consignee, row.vehicleNumber, row.qty, row.poNumber, row.hsn, row.byName])
     );
   }, [challans, search]);
 
@@ -299,7 +290,7 @@ export default function DeliveryChallanListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by LR, party, vehicle, PO, HSN..."
+        placeholder="Search LR no., date, party, vehicle, qty, PO, HSN..."
         onRefresh={loadData}
         onExport={handleExport}
       />

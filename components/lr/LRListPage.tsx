@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -81,6 +82,8 @@ const PAGE_SIZE = 10;
 
 /** Status filter sentinel — matches entry_status draft, not lr.status. */
 const DRAFT_STATUS_FILTER = "__draft__";
+const POD_CREATED_FILTER = "__pod_created__";
+const POD_PENDING_FILTER = "__pod_pending__";
 
 type LrDialogMode = "create" | "view" | "edit";
 
@@ -114,6 +117,7 @@ function LRListPageContent() {
   const [statusFilter, setStatusFilter] = useState("");
   const [freightTypeFilter, setFreightTypeFilter] = useState("");
   const [createdByFilter, setCreatedByFilter] = useState("");
+  const [podFilter, setPodFilter] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<LrDialogMode>("create");
@@ -307,9 +311,20 @@ function LRListPageContent() {
     return lrs.filter((lr) => {
       const matchesSearch =
         !query ||
-        [lr.lrNumber, lr.consignor, lr.consignee, lr.vehicleNumber]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+        matchesListSearch(query, [
+          lr.lrNumber,
+          lr.lrDate,
+          lr.customer,
+          lr.consignor,
+          lr.consignee,
+          lr.material,
+          lr.vehicleNumber,
+          lr.from,
+          lr.to,
+          lr.status,
+          lr.poNumber,
+          lr.createdBy ? resolveAssignedName(lr.createdBy) : "",
+        ]);
 
       const matchesStatus =
         !statusFilter ||
@@ -318,10 +333,17 @@ function LRListPageContent() {
           : lr.status === statusFilter);
       const matchesFreightType = !freightTypeFilter || lr.freightType === freightTypeFilter;
       const matchesCreatedBy = !createdByFilter || lr.createdBy === createdByFilter;
+      // Same rule as the "POD Created / POD Pending" chip in LRTable.
+      const lrKey = lr.lrNumber?.trim() ?? "";
+      const hasPod = Boolean(lrKey && podIdByLrNumber.has(lrKey));
+      const matchesPod =
+        !podFilter || (podFilter === POD_CREATED_FILTER ? hasPod : !hasPod);
 
-      return matchesSearch && matchesStatus && matchesFreightType && matchesCreatedBy;
+      return matchesSearch && matchesStatus && matchesFreightType && matchesCreatedBy && matchesPod;
     });
-  }, [lrs, search, statusFilter, freightTypeFilter, createdByFilter]);
+    // resolveAssignedName reads `staff`, so the list re-filters when staff names load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lrs, search, statusFilter, freightTypeFilter, createdByFilter, podFilter, podIdByLrNumber, staff]);
 
   const stats = useMemo(() => {
     const open = lrs.filter((lr) => lr.status === "Open" || lr.status === "In Transit").length;
@@ -1089,7 +1111,7 @@ function LRListPageContent() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by LR number, consignor, consignee or vehicle number..."
+        placeholder="Search LR no., date, party, consignor, consignee, material, vehicle, route, PO..."
         onRefresh={loadLRs}
         onExport={handleExport}
         actions={[
@@ -1120,6 +1142,17 @@ function LRListPageContent() {
               })),
             ],
             onChange: setStatusFilter,
+          },
+          {
+            key: "pod",
+            label: "POD",
+            value: podFilter,
+            placeholder: "All POD",
+            options: [
+              { label: "POD Created", value: POD_CREATED_FILTER },
+              { label: "POD Pending", value: POD_PENDING_FILTER },
+            ],
+            onChange: setPodFilter,
           },
           {
             key: "freightType",

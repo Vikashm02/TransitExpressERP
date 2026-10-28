@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -135,9 +136,7 @@ export default function PodListPage() {
     return podRows.filter((pod) => {
       if (!query) return true;
 
-      return [pod.lrNumber, pod.consignee]
-        .filter(Boolean)
-        .some((field) => field.toLowerCase().includes(query));
+      return matchesListSearch(query, [pod.lrNumber, pod.consignee, pod.podDate, pod.unloadingDate, pod.unloadingWeight, pod.createdByName]);
     });
   }, [podRows, search]);
 
@@ -302,7 +301,7 @@ export default function PodListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by LR number or consignee..."
+        placeholder="Search LR no., consignee, POD date, weight, created by..."
         onRefresh={loadData}
         onExport={handleExport}
         actions={[

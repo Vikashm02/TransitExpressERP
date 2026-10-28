@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { downloadCsv } from "@/lib/csvExport";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
@@ -64,9 +66,7 @@ export default function AsnListPage() {
     if (!query) return asns;
 
     return asns.filter((row) =>
-      [row.asnNumber, row.lrNumber, row.vehicleNumber]
-        .filter(Boolean)
-        .some((field) => field.toLowerCase().includes(query))
+      matchesListSearch(query, [row.asnNumber, row.asnDate, row.lrNumber, row.vehicleNumber, row.expectedTimeOfArrival])
     );
   }, [asns, search]);
 
@@ -160,8 +160,15 @@ export default function AsnListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by ASN number, LR number, vehicle..."
+        placeholder="Search ASN no., date, LR no., vehicle, arrival..."
         onRefresh={loadData}
+        onExport={() =>
+          downloadCsv(
+            `asn-${new Date().toISOString().slice(0, 10)}.csv`,
+            ["ASN Number", "ASN Date", "LR Number", "Vehicle Number", "Expected Arrival"],
+            filtered.map((row) => [row.asnNumber, row.asnDate, row.lrNumber, row.vehicleNumber, row.expectedTimeOfArrival])
+          )
+        }
       />
 
       <AsnTable
