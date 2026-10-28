@@ -51,21 +51,38 @@ export default function StaffPermissionsDialog({
   const [fullAccess, setFullAccess] = useState(false);
   const [actionsMap, setActionsMap] = useState<PermissionActionsMap>({});
   const [loading, setLoading] = useState(false);
+  /** True when this user's current permissions could not be loaded; saving is
+   * blocked so an empty or previous user's map is never written over theirs. */
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open || !user) return;
 
+    let cancelled = false;
     setFullAccess(user.fullAccess);
+    // Never show (or save) the previously opened user's permissions.
+    setActionsMap({});
+    setLoadFailed(false);
     setLoading(true);
 
     getUserPermissionActions(user.id)
-      .then(setActionsMap)
+      .then((map) => {
+        if (!cancelled) setActionsMap(map);
+      })
       .catch((error) => {
         console.error(error);
-        toast.error("Unable to load this user's permissions.");
+        if (cancelled) return;
+        setLoadFailed(true);
+        toast.error(getUserFacingError(error, "Unable to load this user's permissions."));
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, user]);
 
   function toggleAction(key: PermissionKey, action: PermissionAction) {
@@ -88,7 +105,7 @@ export default function StaffPermissionsDialog({
   }
 
   async function handleSave() {
-    if (!user) return;
+    if (!user || loading || loadFailed) return;
 
     try {
       setSaving(true);
@@ -158,6 +175,11 @@ export default function StaffPermissionsDialog({
           <div className={`space-y-4 ${fullAccess ? "pointer-events-none opacity-50" : ""}`}>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : loadFailed ? (
+              <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                This person&apos;s current permissions could not be loaded, so saving is turned off
+                to protect them. Close this window and open Edit Permissions again.
+              </p>
             ) : (
               PERMISSION_MODULES.map((module) => {
                 const actions: ModuleActions = actionsMap[module.key] ?? EMPTY_MODULE_ACTIONS;
@@ -201,7 +223,7 @@ export default function StaffPermissionsDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving || loading}>
+          <Button onClick={handleSave} disabled={saving || loading || loadFailed}>
             {saving ? "Saving..." : "Save Permissions"}
           </Button>
         </DialogFooter>

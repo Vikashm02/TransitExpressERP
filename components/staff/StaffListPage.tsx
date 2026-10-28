@@ -3,9 +3,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
-import { ShieldAlert, UserCog } from "lucide-react";
+import {
+  Clock,
+  Crown,
+  Ellipsis,
+  Info,
+  Lock,
+  LoaderCircle,
+  RotateCw,
+  Search,
+  ShieldAlert,
+  UserCheck,
+  UserCog,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
-import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
+import DataTable, {
+  type DataTableAction,
+  type DataTableColumn,
+} from "@/components/common/DataTable";
+import PageHeader from "@/components/ui/PageHeader";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
@@ -68,6 +90,9 @@ export default function StaffListPage() {
   const [managerByStaffId, setManagerByStaffId] = useState<Record<string, string>>(
     {}
   );
+  /** UI-only: roster search text and status filter (no data effect). */
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StaffStatusFilter>("all");
 
   const actorRole = profile?.role ?? "staff";
   const actorId = profile?.id ?? "";
@@ -370,6 +395,102 @@ export default function StaffListPage() {
 
   const tier1Options = staff.filter((u) => u.role === "admin");
 
+  // Same actions, labels, handlers and visibility rules as before; they are
+  // now grouped in a per-row "Manage" menu instead of a long button strip.
+  const staffActions: StaffActionGroup[] = [
+    {
+      title: "Approval",
+      actions: [
+        {
+          label: "Approve",
+          onClick: (row) => handleSetApproval(row, "approved"),
+          hidden: (row) =>
+            !canManage(row) || row.approvalStatus === "approved",
+        },
+        {
+          label: "Reject",
+          variant: "destructive",
+          onClick: (row) => handleSetApproval(row, "rejected"),
+          hidden: (row) =>
+            !canManage(row) || row.approvalStatus === "rejected",
+        },
+      ],
+    },
+    {
+      title: "Role and permissions",
+      actions: [
+        {
+          label: "Make Tier 1",
+          onClick: handleToggleRole,
+          // Creator-only; promote Tier 2 → Tier 1. Never offered to Tier 1.
+          hidden: (row) =>
+            !isCreator || !canManage(row) || row.role !== "staff",
+        },
+        {
+          label: "Make Tier 2",
+          onClick: handleToggleRole,
+          // Creator-only; demote Tier 1 → Tier 2.
+          hidden: (row) =>
+            !isCreator || !canManage(row) || row.role !== "admin",
+        },
+        {
+          label: "Edit Permissions",
+          onClick: handleEditPermissions,
+          hidden: (row) => !canManage(row) || row.role !== "staff",
+        },
+      ],
+    },
+    {
+      title: "Sign-in",
+      actions: [
+        {
+          label: "Unlock",
+          onClick: (row) => handleToggleLock(row),
+          hidden: (row) => !canManage(row) || !row.isLocked,
+        },
+        {
+          label: "Lock",
+          variant: "destructive",
+          onClick: (row) => handleToggleLock(row),
+          hidden: (row) => !canManage(row) || row.isLocked,
+        },
+      ],
+    },
+    {
+      // WhatsApp Assistant access management is Creator-only. Enable/Change
+      // follow M114 eligibility (account_ineligible / overrides excluded);
+      // Disable remains available for cleanup of an active mapping.
+      title: "WhatsApp Assistant",
+      actions: [
+        {
+          label: "Enable WhatsApp",
+          onClick: (row) => handleOpenWhatsappDialog(row, "enable"),
+          hidden: (row) =>
+            !canManageWhatsapp || !canManage(row) || row.role === "creator" || row.id === actorId ||
+            !canEnableWhatsappAccess(whatsappRuleInput(row)),
+        },
+        {
+          label: "Change WhatsApp",
+          onClick: (row) => handleOpenWhatsappDialog(row, "change"),
+          hidden: (row) =>
+            !canManageWhatsapp || !canManage(row) || row.role === "creator" || row.id === actorId ||
+            !canChangeWhatsappAccess(whatsappRuleInput(row)),
+        },
+        {
+          label: "Disable WhatsApp",
+          variant: "destructive",
+          onClick: (row) => {
+            setWhatsappDisableTarget(row);
+            setWhatsappDisableOpen(true);
+          },
+          hidden: (row) =>
+            !canManageWhatsapp || !canManage(row) || row.role === "creator" || row.id === actorId ||
+            !canDisableWhatsappAccess(whatsappRuleInput(row)),
+        },
+      ],
+    },
+  ];
+
   const whatsappColumn: DataTableColumn<AppUserProfile> | null = canManageWhatsapp
     ? {
         key: "whatsapp",
@@ -410,20 +531,37 @@ export default function StaffListPage() {
     : null;
 
   const columns: DataTableColumn<AppUserProfile>[] = [
-    { key: "displayName", header: "Name", sortable: true, className: "font-medium" },
-    { key: "email", header: "Email", sortable: true },
+    {
+      key: "displayName",
+      header: "Staff member",
+      sortable: true,
+      render: (row) => (
+        <span className="flex min-w-0 items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+          >
+            {initials(row.displayName || row.email)}
+          </span>
+          <span className="block min-w-0">
+            <span className="block truncate font-medium text-foreground">
+              {row.displayName || "Unnamed"}
+              {row.id === actorId && (
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">(you)</span>
+              )}
+            </span>
+            <span className="block truncate text-xs font-normal text-muted-foreground">{row.email}</span>
+          </span>
+        </span>
+      ),
+    },
     {
       key: "role",
       header: "Tier",
       sortable: true,
-      render: (row) => (
-        <StatusBadge
-          status={
-            row.role === "creator" || row.role === "admin" ? "Active" : "Pending"
-          }
-          label={organizationalRoleLabel(row.role)}
-        />
-      ),
+      sortAccessor: (row) => TIER_ORDER[row.role] ?? 9,
+      mobile: "top",
+      render: (row) => <TierBadge role={row.role} label={organizationalRoleLabel(row.role)} />,
     },
     {
       key: "manager",
@@ -438,7 +576,7 @@ export default function StaffListPage() {
         if (!isCreator) {
           const manager = staff.find((u) => u.id === currentManagerId);
           return (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-sm text-muted-foreground">
               {manager?.displayName ?? "Unassigned"}
             </span>
           );
@@ -446,7 +584,7 @@ export default function StaffListPage() {
 
         return (
           <select
-            className="max-w-[11rem] rounded-md border border-border bg-background px-2 py-1 text-xs"
+            className="h-8 w-full max-w-[12rem] rounded-md border border-input bg-background px-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-60"
             value={currentManagerId}
             disabled={updatingId === row.id}
             onChange={(event) => {
@@ -466,15 +604,18 @@ export default function StaffListPage() {
     },
     {
       key: "approvalStatus",
-      header: "Approval",
+      header: "Account",
       sortable: true,
       render: (row) => (
-        <StatusBadge
-          status={row.approvalStatus}
-          label={
-            row.approvalStatus.charAt(0).toUpperCase() + row.approvalStatus.slice(1)
-          }
-        />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge
+            status={row.approvalStatus}
+            label={
+              row.approvalStatus.charAt(0).toUpperCase() + row.approvalStatus.slice(1)
+            }
+          />
+          {row.isLocked && <StatusBadge status="Error" label="Locked" />}
+        </div>
       ),
     },
     {
@@ -489,124 +630,137 @@ export default function StaffListPage() {
           <StatusBadge status="Pending" label="Restricted" />
         ),
     },
+    ...(whatsappColumn ? [whatsappColumn] : []),
     {
-      key: "isLocked",
-      header: "Locked",
-      sortable: true,
+      key: "manage",
+      header: <span className="sr-only">Manage</span>,
+      align: "right",
+      mobile: "actions",
       render: (row) => (
-        <StatusBadge
-          status={row.isLocked ? "Error" : "Active"}
-          label={row.isLocked ? "Locked" : "Active"}
+        <StaffRowActions
+          row={row}
+          groups={staffActions}
+          busy={updatingId === row.id}
         />
       ),
     },
-    ...(whatsappColumn ? [whatsappColumn] : []),
   ];
+
+  const counts = {
+    all: staff.length,
+    pending: staff.filter((u) => u.approvalStatus === "pending").length,
+    approved: staff.filter((u) => u.approvalStatus === "approved").length,
+    rejected: staff.filter((u) => u.approvalStatus === "rejected").length,
+    locked: staff.filter((u) => u.isLocked).length,
+  };
+  const tier1Count = staff.filter((u) => u.role === "admin").length;
+
+  const query = search.trim().toLowerCase();
+  const visibleStaff = staff.filter((u) => {
+    if (statusFilter === "locked" ? !u.isLocked : statusFilter !== "all" && u.approvalStatus !== statusFilter) {
+      return false;
+    }
+    if (!query) return true;
+    return `${u.displayName} ${u.email} ${organizationalRoleLabel(u.role)}`.toLowerCase().includes(query);
+  });
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          Staff
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        title="Staff"
+        buttonText=""
+        showAddButton={false}
+        subtitle={
+          isCreator
+            ? "Approve sign-ups, set tiers and permissions, assign managers, and control sign-in access."
+            : "Approve Tier 2 sign-ups, edit their permissions, and control their sign-in access."
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryTile icon={Users} label="Total staff" value={counts.all} active={statusFilter === "all"} onClick={() => setStatusFilter("all")} loading={loading} />
+        <SummaryTile icon={Clock} label="Waiting for approval" value={counts.pending} tone="warning" active={statusFilter === "pending"} onClick={() => setStatusFilter("pending")} loading={loading} />
+        <SummaryTile icon={Lock} label="Locked" value={counts.locked} tone="danger" active={statusFilter === "locked"} onClick={() => setStatusFilter("locked")} loading={loading} />
+        <SummaryTile icon={Crown} label="Tier 1 managers" value={tier1Count} loading={loading} />
+      </div>
+
+      {!loading && counts.pending > 0 && statusFilter !== "pending" && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="flex items-center gap-3">
+            <UserCheck className="h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+            <p className="text-sm text-amber-900 dark:text-amber-100">
+              {counts.pending === 1
+                ? "1 new sign-up is waiting for your approval."
+                : `${counts.pending} new sign-ups are waiting for your approval.`}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setStatusFilter("pending")}>
+            Review sign-ups
+          </Button>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by name, email or tier..."
+              aria-label="Search staff"
+              className="h-9 pl-9"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as StaffStatusFilter)}
+            aria-label="Filter staff by status"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 sm:w-60"
+          >
+            <option value="all">All staff ({counts.all})</option>
+            <option value="pending">Waiting for approval ({counts.pending})</option>
+            <option value="approved">Approved ({counts.approved})</option>
+            <option value="rejected">Rejected ({counts.rejected})</option>
+            <option value="locked">Locked ({counts.locked})</option>
+          </select>
+          <Button variant="outline" className="h-9 gap-2" onClick={() => void loadStaff()} disabled={loading}>
+            <RotateCw className={cn("h-4 w-4", loading && "animate-spin")} aria-hidden="true" />
+            Refresh
+          </Button>
+        </div>
+
+        <DataTable
+          columns={columns}
+          data={visibleStaff}
+          loading={loading}
+          rowKey={(row) => row.id}
+          emptyTitle={staff.length === 0 ? "No staff accounts yet" : "No staff match this search"}
+          emptyDescription={
+            staff.length === 0 ? undefined : "Try a different name, or clear the status filter."
+          }
+          emptyIcon={UserCog}
+          getRowClassName={(row) =>
+            row.approvalStatus === "pending"
+              ? "bg-amber-50/60 dark:bg-amber-500/5"
+              : row.isLocked
+                ? "bg-muted/40"
+                : undefined
+          }
+        />
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <p>
           {isCreator
             ? "Creator can manage Tier 1 and Tier 2, and assign Tier 2 staff to a Tier 1 manager. Creator designation is not available here."
             : "Tier 1 can manage Tier 2 staff only. Manager assignments are set by the Creator."}{" "}
-          LR ownership reassignment happens from the LR Entry table.
+          You cannot change your own role, approval status, or lock status from
+          here. Creator cannot be modified from this page. LR ownership
+          reassignment happens from the LR Entry table.
         </p>
       </div>
-
-      <DataTable
-        columns={columns}
-        data={staff}
-        loading={loading}
-        rowKey={(row) => row.id}
-        emptyTitle="No staff accounts yet"
-        emptyIcon={UserCog}
-        actions={[
-          {
-            label: "Approve",
-            onClick: (row) => handleSetApproval(row, "approved"),
-            hidden: (row) =>
-              !canManage(row) || row.approvalStatus === "approved",
-          },
-          {
-            label: "Reject",
-            variant: "destructive",
-            onClick: (row) => handleSetApproval(row, "rejected"),
-            hidden: (row) =>
-              !canManage(row) || row.approvalStatus === "rejected",
-          },
-          {
-            label: "Make Tier 1",
-            onClick: handleToggleRole,
-            // Creator-only; promote Tier 2 → Tier 1. Never offered to Tier 1.
-            hidden: (row) =>
-              !isCreator || !canManage(row) || row.role !== "staff",
-          },
-          {
-            label: "Make Tier 2",
-            onClick: handleToggleRole,
-            // Creator-only; demote Tier 1 → Tier 2.
-            hidden: (row) =>
-              !isCreator || !canManage(row) || row.role !== "admin",
-          },
-          {
-            label: "Edit Permissions",
-            onClick: handleEditPermissions,
-            hidden: (row) => !canManage(row) || row.role !== "staff",
-          },
-          {
-            label: "Unlock",
-            onClick: (row) => handleToggleLock(row),
-            hidden: (row) => !canManage(row) || !row.isLocked,
-          },
-          {
-            label: "Lock",
-            variant: "destructive",
-            onClick: (row) => handleToggleLock(row),
-            hidden: (row) => !canManage(row) || row.isLocked,
-          },
-          // WhatsApp Assistant access management is Creator-only. Enable/Change
-          // follow M114 eligibility (account_ineligible / overrides excluded);
-          // Disable remains available for cleanup of an active mapping.
-          {
-            label: "Enable WhatsApp",
-            onClick: (row) => handleOpenWhatsappDialog(row, "enable"),
-            hidden: (row) =>
-              !canManageWhatsapp || !canManage(row) || row.role === "creator" || row.id === actorId ||
-              !canEnableWhatsappAccess(whatsappRuleInput(row)),
-          },
-          {
-            label: "Change WhatsApp",
-            onClick: (row) => handleOpenWhatsappDialog(row, "change"),
-            hidden: (row) =>
-              !canManageWhatsapp || !canManage(row) || row.role === "creator" || row.id === actorId ||
-              !canChangeWhatsappAccess(whatsappRuleInput(row)),
-          },
-          {
-            label: "Disable WhatsApp",
-            variant: "destructive",
-            onClick: (row) => {
-              setWhatsappDisableTarget(row);
-              setWhatsappDisableOpen(true);
-            },
-            hidden: (row) =>
-              !canManageWhatsapp || !canManage(row) || row.role === "creator" || row.id === actorId ||
-              !canDisableWhatsappAccess(whatsappRuleInput(row)),
-          },
-        ]}
-      />
-
-      <p className="text-xs text-muted-foreground">
-        You cannot change your own role, approval status, or lock status from
-        here. Creator cannot be modified from this page.
-      </p>
-
-      {updatingId && (
-        <p className="text-xs text-muted-foreground">Updating...</p>
-      )}
 
       <StaffPermissionsDialog
         user={permissionsUser}
@@ -633,6 +787,183 @@ export default function StaffListPage() {
         loading={updatingId === whatsappDisableTarget?.id}
         onConfirm={handleDisableWhatsapp}
       />
+    </div>
+  );
+}
+
+/* ==========================================================
+   Presentation helpers (layout only — no data access)
+========================================================== */
+
+type StaffStatusFilter = "all" | "pending" | "approved" | "rejected" | "locked";
+
+interface StaffActionGroup {
+  title: string;
+  actions: DataTableAction<AppUserProfile>[];
+}
+
+const TIER_ORDER: Record<string, number> = { creator: 0, admin: 1, staff: 2 };
+
+function initials(name: string): string {
+  const parts = name.trim().split(/[\s@._-]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+function TierBadge({ role, label }: { role: string; label: string }) {
+  const tone =
+    role === "creator"
+      ? "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200"
+      : role === "admin"
+        ? "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
+        : "border-border bg-muted/60 text-muted-foreground";
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium", tone)}>
+      {role === "creator" && <Crown className="h-3 w-3" aria-hidden="true" />}
+      {label}
+    </span>
+  );
+}
+
+function SummaryTile({
+  icon: Icon,
+  label,
+  value,
+  tone = "default",
+  active = false,
+  loading = false,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  tone?: "default" | "warning" | "danger";
+  active?: boolean;
+  loading?: boolean;
+  onClick?: () => void;
+}) {
+  const iconTone =
+    tone === "warning"
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+      : tone === "danger"
+        ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
+        : "bg-primary/10 text-primary";
+  const content = (
+    <>
+      <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", iconTone)}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 text-left">
+        <span className="block text-xs leading-snug text-muted-foreground">{label}</span>
+        <span className="block text-xl font-semibold tabular-nums text-foreground">
+          {loading ? "–" : value}
+        </span>
+      </span>
+    </>
+  );
+  const base = "flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-xs transition-colors";
+  if (!onClick) return <div className={base}>{content}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        base,
+        "outline-none hover:border-primary/40 hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring/40",
+        active && "border-primary/60 ring-1 ring-primary/30"
+      )}
+    >
+      {content}
+    </button>
+  );
+}
+
+/** Per-row actions: quick Approve for pending sign-ups, everything else in a
+ * grouped "Manage" menu. Visibility comes from each action's own `hidden`. */
+function StaffRowActions({
+  row,
+  groups,
+  busy,
+}: {
+  row: AppUserProfile;
+  groups: StaffActionGroup[];
+  busy: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const visibleGroups = groups
+    .map((group) => ({ ...group, actions: group.actions.filter((a) => !a.hidden?.(row)) }))
+    .filter((group) => group.actions.length > 0);
+
+  if (busy) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        Updating...
+      </span>
+    );
+  }
+  if (visibleGroups.length === 0) {
+    return <span className="text-xs text-muted-foreground">No actions</span>;
+  }
+
+  const approve =
+    row.approvalStatus === "pending"
+      ? visibleGroups.flatMap((g) => g.actions).find((a) => a.label === "Approve")
+      : undefined;
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      {approve && (
+        <Button size="sm" className="h-8 gap-1.5" onClick={() => approve.onClick(row)}>
+          <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+          Approve
+        </Button>
+      )}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              aria-label={`Manage ${row.displayName}`}
+            />
+          }
+        >
+          <Ellipsis className="h-4 w-4" aria-hidden="true" />
+          Manage
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-60 gap-1 p-1.5">
+          {visibleGroups.map((group, index) => (
+            <div key={group.title} className={cn(index > 0 && "mt-1 border-t border-border pt-1")}>
+              <p className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {group.title}
+              </p>
+              {group.actions.map((action) => {
+                const destructive = action.variant === "destructive";
+                return (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      action.onClick(row);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent",
+                      destructive ? "text-destructive" : "text-foreground"
+                    )}
+                  >
+                    {action.label}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
