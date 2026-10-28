@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, FileMinus2, IndianRupee, Upload } from "lucide-react";
@@ -65,9 +66,7 @@ export default function CreditNoteListPage() {
 
     return creditNotes.filter((note) => {
       if (!query) return true;
-      return [note.creditNoteNumber, note.billingPartyName]
-        .filter(Boolean)
-        .some((field) => field.toLowerCase().includes(query));
+      return matchesListSearch(query, [note.creditNoteNumber, note.noteDate, note.billingPartyName, note.amount, note.deduction, note.netAmount]);
     });
   }, [creditNotes, search]);
 
@@ -201,7 +200,7 @@ export default function CreditNoteListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by credit note number or billing party..."
+        placeholder="Search credit note no., date, billing party, amount..."
         onRefresh={loadCreditNotes}
         onExport={handleExport}
         actions={[

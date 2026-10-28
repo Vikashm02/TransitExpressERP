@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, Upload } from "lucide-react";
@@ -66,9 +67,7 @@ export default function MaterialListPage() {
     return materials.filter((material) => {
       const matchesSearch =
         !query ||
-        [material.code, material.materialName, material.category, material.hsnCode]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+        matchesListSearch(query, [material.code, material.materialName, material.category, material.hsnCode, material.status]);
 
       const matchesStatus = !statusFilter || material.status === statusFilter;
 
@@ -189,7 +188,7 @@ export default function MaterialListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by material code, name, category or HSN code..."
+        placeholder="Search material code, name, category, HSN, status..."
         onRefresh={loadMaterials}
         onExport={handleExport}
         actions={[

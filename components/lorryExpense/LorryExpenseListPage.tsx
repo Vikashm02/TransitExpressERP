@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { downloadCsv } from "@/lib/csvExport";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, IndianRupee, Upload, Wallet } from "lucide-react";
@@ -183,9 +185,7 @@ export default function LorryExpenseListPage() {
         return false;
       }
       if (!query) return true;
-      return [row.lrNumber, row.consignor, row.consignee, row.vehicleNumber, row.brokerName, row.beneficiaryName]
-        .filter(Boolean)
-        .some((field) => field.toLowerCase().includes(query));
+      return matchesListSearch(query, [row.lrNumber, row.lrDate, row.consignor, row.consignee, row.vehicleNumber, row.brokerName, row.beneficiaryName, row.expenseStatus, row.lorryHireAmount, row.totalExpenses, row.balancePayable]);
     });
   }, [rows, search, fromDate, toDate, brokerFilter, beneficiaryFilter, expenseStatusFilter]);
 
@@ -526,8 +526,22 @@ export default function LorryExpenseListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by LR number, consignor, consignee, vehicle, broker or beneficiary..."
+        placeholder="Search LR no., date, party, vehicle, broker, beneficiary, amount..."
         onRefresh={loadData}
+        onExport={() =>
+          downloadCsv(
+            `financials-${new Date().toISOString().slice(0, 10)}.csv`,
+            [
+              "LR Number", "LR Date", "Consignor", "Consignee", "Vehicle Number", "Expense Status", "Broker",
+              "Beneficiary", "Lorry Hire", "Total Expenses", "Total Paid", "Balance Payable", "Profit / Loss",
+            ],
+            filteredRows.map((row) => [
+              row.lrNumber, row.lrDate, row.consignor, row.consignee, row.vehicleNumber, row.expenseStatus,
+              row.brokerName, row.beneficiaryName, row.lorryHireAmount, row.totalExpenses, row.totalPaid,
+              row.balancePayable, row.profitLoss,
+            ])
+          )
+        }
         actions={[
           {
             key: "download-template",

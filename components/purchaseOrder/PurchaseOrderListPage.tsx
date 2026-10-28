@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { downloadCsv } from "@/lib/csvExport";
+import { matchesListSearch } from "@/lib/listSearch";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -102,7 +104,7 @@ export default function PurchaseOrderListPage() {
   // allotted weight are seen immediately; ties by used weight, then newest.
   const usagePercent = (r: PurchaseOrderRecord) => purchaseOrderUsage(r.allottedWeight, r.usedWeight).percent;
   const filtered = rows.filter((r) => (!status || r.status === status)
-    && `${r.poNumber} ${r.billingPartyName} ${r.consignor} ${r.consignee} ${r.materialName}`.toLowerCase().includes(search.trim().toLowerCase()))
+    && matchesListSearch(search, [r.poNumber, r.billingPartyName, r.consignor, r.consignee, r.materialName, r.issueDate, r.allottedWeight, r.usedWeight, r.status]))
     .sort((a, b) => usagePercent(b) - usagePercent(a) || b.usedWeight - a.usedWeight || b.id - a.id);
   const columns: DataTableColumn<PurchaseOrderRecord>[] = [
     { key: "poNumber", header: "PO Number", sortable: true },
@@ -134,8 +136,24 @@ export default function PurchaseOrderListPage() {
       onAdd={() => void showForm(null)}
       subtitle="Loading weight from final, non-cancelled LRs. Active / Inactive is always set manually." />
     <p className="text-sm text-muted-foreground">Sorted by usage, highest first. Yellow: 80–90% used. Red: above 90%. Exceeding the allotted weight does not close the PO.</p>
-    <SearchToolbar search={search} onSearchChange={setSearch} placeholder="Search PO number or billing party..."
-      onRefresh={refresh} filters={[{ key: "status", label: "Status", value: status, placeholder: "All statuses",
+    <SearchToolbar search={search} onSearchChange={setSearch} placeholder="Search PO number, party, consignor, consignee, material..."
+      onRefresh={refresh}
+      onExport={() =>
+        downloadCsv(
+          `purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`,
+          ["PO Number", "Billing Party", "Consignor", "Consignee", "Material", "Issue Date", "Allotted (MT)",
+            "Used (MT)", "Remaining (MT)", "Excess (MT)", "Usage %", "Status"],
+          filtered.map((r) => {
+            const u = purchaseOrderUsage(r.allottedWeight, r.usedWeight);
+            const hasLimit = r.allottedWeight > 0;
+            return [r.poNumber, r.billingPartyName, r.consignor, r.consignee, r.materialName, r.issueDate,
+              hasLimit ? r.allottedWeight : "Not set", r.usedWeight,
+              hasLimit ? Math.max(0, u.remaining) : "", hasLimit ? u.exceeded : "",
+              hasLimit ? Number(u.percent.toFixed(1)) : "", r.status];
+          })
+        )
+      }
+      filters={[{ key: "status", label: "Status", value: status, placeholder: "All statuses",
         options: ["Active", "Inactive"].map((s) => ({ label: s, value: s })), onChange: setStatus }]} />
     {loadError ? <p role="alert" className="text-sm text-destructive">Unable to load PO data. Refresh or contact your administrator; displayed data may be outdated.</p> : null}
     <DataTable columns={columns} data={filtered} rowKey={(r) => r.id} loading={loading} pageSize={10}

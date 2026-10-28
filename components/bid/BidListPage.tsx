@@ -1,6 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { downloadCsv } from "@/lib/csvExport";
+import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -135,17 +137,7 @@ function BidListPageInner() {
 
       const matchesSearch =
         !query ||
-        [
-          bid.bidReference,
-          bid.billingPartyName,
-          bid.consignorName,
-          bid.consigneeName,
-          bid.materialName,
-          bid.pickupLocation,
-          bid.dropoffLocation,
-        ]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+        matchesListSearch(query, [bid.bidReference, bid.billingPartyName, bid.consignorName, bid.consigneeName, bid.materialName, bid.materialDescription, bid.pickupLocation, bid.dropoffLocation, bid.status, bid.vehicleType, bid.bidRate, bid.closesAt]);
 
       const matchesParty = !partyFilter || String(bid.billingPartyId) === partyFilter;
       const matchesStatus = !statusFilter || bid.status === statusFilter;
@@ -287,6 +279,22 @@ function BidListPageInner() {
             : "Search by bid ref, party, route or material..."
         }
         onRefresh={loadAll}
+        onExport={() =>
+          downloadCsv(
+            `bids-${new Date().toISOString().slice(0, 10)}.csv`,
+            [
+              "Bid Reference", "Status", "Billing Party", "Consignor", "Consignee", "Pickup", "Drop-off",
+              "Material", "Material Description", "Vehicle Type", "Total Quantity (MT)", "Expected Load (MT)",
+              "Market Vehicle Quote", "Bid Rate", "Rate Basis", "Closes At",
+            ],
+            filteredBids.map((bid) => [
+              bid.bidReference, bid.status, bid.billingPartyName, bid.consignorName, bid.consigneeName,
+              bid.pickupLocation, bid.dropoffLocation, bid.materialName, bid.materialDescription, bid.vehicleType,
+              bid.totalQuantityMT || "", bid.expectedLoadMT || "", bid.marketVehicleQuote || "",
+              bid.bidRate || "", bid.bidRateBasis ?? "", bid.closesAt ?? "",
+            ])
+          )
+        }
         filters={[
           {
             key: "party",

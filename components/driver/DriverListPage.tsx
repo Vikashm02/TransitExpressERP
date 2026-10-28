@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 
@@ -61,9 +62,7 @@ export default function DriverListPage() {
     return drivers.filter((driver) => {
       const matchesSearch =
         !query ||
-        [driver.driverName, driver.mobile, driver.licenseNumber, driver.aadhaarNumber]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(query));
+        matchesListSearch(query, [driver.driverName, driver.mobile, driver.licenseNumber, driver.aadhaarNumber, driver.driverType, driver.status]);
 
       const matchesStatus = !statusFilter || driver.status === statusFilter;
 
@@ -205,7 +204,7 @@ export default function DriverListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by driver name, mobile, license or Aadhaar number..."
+        placeholder="Search driver name, mobile, license, type, status..."
         onRefresh={loadDrivers}
         onExport={handleExport}
         filters={[

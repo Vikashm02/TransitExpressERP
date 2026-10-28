@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
 import { FileDown, FilePlus2, IndianRupee, Upload } from "lucide-react";
@@ -65,9 +66,7 @@ export default function DebitNoteListPage() {
 
     return debitNotes.filter((note) => {
       if (!query) return true;
-      return [note.debitNoteNumber, note.billingPartyName]
-        .filter(Boolean)
-        .some((field) => field.toLowerCase().includes(query));
+      return matchesListSearch(query, [note.debitNoteNumber, note.noteDate, note.billingPartyName, note.amount, note.gstPercentage, note.totalAmount]);
     });
   }, [debitNotes, search]);
 
@@ -201,7 +200,7 @@ export default function DebitNoteListPage() {
       <SearchToolbar
         search={search}
         onSearchChange={setSearch}
-        placeholder="Search by debit note number or billing party..."
+        placeholder="Search debit note no., date, billing party, amount..."
         onRefresh={loadDebitNotes}
         onExport={handleExport}
         actions={[
