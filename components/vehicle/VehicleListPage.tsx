@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -24,6 +25,36 @@ import {
 } from "@/components/services/vehicle.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { vehicleNumberMatchesQuery } from "@/lib/vehicleNumber";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const VEHICLE_EXPORT_COLUMNS: ExportColumn<VehicleRecord>[] = [
+  { header: "Vehicle Number", value: (r) => r.vehicleNumber },
+  { header: "RC Number", value: (r) => r.rcNumber },
+  { header: "Vehicle Type", value: (r) => r.vehicleType },
+  { header: "Owner Type", value: (r) => r.ownerType },
+  { header: "Owner Name", value: (r) => r.ownerName },
+  { header: "Mobile Number", value: (r) => r.mobile },
+  { header: "Transporter", value: (r) => r.transporter },
+  { header: "Driver Name", value: (r) => r.driverName },
+  { header: "Driver Mobile", value: (r) => r.driverMobile },
+  { header: "Capacity", value: (r) => r.capacity },
+  { header: "Capacity Unit", value: (r) => r.capacityUnit },
+  { header: "Hire Rate", value: (r) => r.hireRate },
+  { header: "Hire Type", value: (r) => r.hireType },
+  { header: "Chassis Number", value: (r) => r.chassisNumber },
+  { header: "Engine Number", value: (r) => r.engineNumber },
+  { header: "Insurance Number", value: (r) => r.insuranceNumber },
+  { header: "Insurance Expiry", value: (r) => r.insuranceExpiry },
+  { header: "Permit Number", value: (r) => r.permitNumber },
+  { header: "Permit Expiry", value: (r) => r.permitExpiry },
+  { header: "Fitness Number", value: (r) => r.fitnessNumber },
+  { header: "Fitness Expiry", value: (r) => r.fitnessExpiry },
+  { header: "PUC Number", value: (r) => r.pucNumber },
+  { header: "PUC Expiry", value: (r) => r.pucExpiry },
+  { header: "Status", value: (r) => r.status },
+  { header: "Remarks", value: (r) => r.remarks },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -149,70 +180,9 @@ export default function VehicleListPage() {
   }
 
   function handleExport() {
-    const headers = [
-      "Vehicle Number",
-      "RC Number",
-      "Vehicle Type",
-      "Owner Name",
-      "Owner Type",
-      "Mobile",
-      "Capacity",
-      "Capacity Unit",
-      "Hire Rate",
-      "Hire Type",
-      "Chassis Number",
-      "Engine Number",
-      "Insurance Number",
-      "Insurance Expiry",
-      "Permit Number",
-      "Permit Expiry",
-      "Fitness Number",
-      "Fitness Expiry",
-      "PUC Number",
-      "PUC Expiry",
-      "Remarks",
-      "Status",
-    ];
-
-    const rows = filteredVehicles.map((vehicle) => [
-      vehicle.vehicleNumber,
-      vehicle.rcNumber,
-      vehicle.vehicleType,
-      vehicle.ownerName,
-      vehicle.ownerType,
-      vehicle.mobile,
-      vehicle.capacity,
-      vehicle.capacityUnit,
-      vehicle.hireRate,
-      vehicle.hireType,
-      vehicle.chassisNumber,
-      vehicle.engineNumber,
-      vehicle.insuranceNumber,
-      vehicle.insuranceExpiry,
-      vehicle.permitNumber,
-      vehicle.permitExpiry,
-      vehicle.fitnessNumber,
-      vehicle.fitnessExpiry,
-      vehicle.pucNumber,
-      vehicle.pucExpiry,
-      vehicle.remarks,
-      vehicle.status,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "vehicles.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("vehicles", VEHICLE_EXPORT_COLUMNS, filteredVehicles);
   }
+
 
   async function handleDownloadTemplate() {
     try {

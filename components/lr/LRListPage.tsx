@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createdColumns, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -77,6 +78,46 @@ import ConsigneeIntelligenceDrawer, {
 import MaterialIntelligenceDrawer, {
   type MaterialIntelligenceTarget,
 } from "@/components/materialIntelligence/MaterialIntelligenceDrawer";
+
+/** Export = LR form fields in form order (Header, Parties, Vehicle, Material,
+ * Dispatch documents incl. PO, Commercial, Remarks). Keep in sync with LRForm. */
+const LR_EXPORT_COLUMNS: ExportColumn<LRRecord>[] = [
+  { header: "LR Number", value: (r) => r.lrNumber },
+  { header: "LR Date", value: (r) => r.lrDate },
+  { header: "Booking Branch", value: (r) => r.bookingBranch },
+  { header: "Billing Party", value: (r) => r.customer },
+  { header: "GST Payable By", value: (r) => r.billingParty },
+  { header: "Consignor", value: (r) => r.consignor },
+  { header: "Consignor GST Number", value: (r) => r.consignorGST },
+  { header: "Consignor Address", value: (r) => r.consignorAddress },
+  { header: "Consignee", value: (r) => r.consignee },
+  { header: "Consignee GST Number", value: (r) => r.consigneeGST },
+  { header: "Consignee Address", value: (r) => r.consigneeAddress },
+  { header: "Vehicle Number", value: (r) => r.vehicleNumber },
+  { header: "Vehicle Type", value: (r) => r.vehicleType },
+  { header: "Transporter", value: (r) => r.transporter },
+  { header: "Driver Name", value: (r) => r.driverName },
+  { header: "Driver Mobile", value: (r) => r.driverMobile },
+  { header: "From", value: (r) => r.from },
+  { header: "To", value: (r) => r.to },
+  { header: "Material", value: (r) => r.material },
+  { header: "Package Type", value: (r) => r.packageType },
+  { header: "Material Description", value: (r) => r.materialDescription },
+  { header: "No. of Packages", value: (r) => r.packages },
+  { header: "Loading Weight (MT)", value: (r) => r.loadingWeight },
+  { header: "Charged Weight (MT)", value: (r) => r.chargedWeight },
+  { header: "PO Number", value: (r) => r.poNumber },
+  { header: "PO Date", value: (r) => r.poDate },
+  { header: "Vendor Code", value: (r) => r.vendorCode },
+  { header: "DC Number / Invoice Number", value: (r) => r.dcNumber },
+  { header: "DC Date / Invoice Date", value: (r) => r.dcDate },
+  { header: "Invoice Value", value: (r) => r.invoiceValue },
+  { header: "E-Way Bill Number", value: (r) => r.ewayBillNumber },
+  { header: "Freight Type", value: (r) => r.freightType },
+  { header: "Remarks", value: (r) => r.remarks },
+  { header: "Internal Remarks", value: (r) => r.internalRemarks },
+  { header: "Status", value: (r) => r.status },
+];
 
 const PAGE_SIZE = 10;
 
@@ -975,88 +1016,19 @@ function LRListPageContent() {
   }
 
   function handleExport() {
-    const headers = [
-      "LR Number",
-      "LR Date",
-      "Booking Branch",
-      "Billing Party",
-      "GST Payable By",
-      "Consignor",
-      "Consignor GST",
-      "Consignee",
-      "Consignee GST",
-      "Vehicle Number",
-      "Vehicle Type",
-      "Transporter",
-      "Driver Name",
-      "Driver Mobile",
-      "From",
-      "To",
-      "Material",
-      "Package Type",
-      "Packages",
-      "Loading Weight",
-      "Unloading Weight",
-      "Charged Weight",
-      "Bill Rate",
-      "Bill Rate Type",
-      "Bill Amount",
-      "Lorry Hire Rate",
-      "Lorry Hire Type",
-      "Lorry Hire Amount",
-      "Freight Type",
-      "Profit Amount",
-      "Status",
-    ];
-
-    const rows = filteredLRs.map((lr) => [
-      lr.lrNumber,
-      lr.lrDate,
-      lr.bookingBranch,
-      lr.customer,
-      lr.billingParty,
-      lr.consignor,
-      lr.consignorGST,
-      lr.consignee,
-      lr.consigneeGST,
-      lr.vehicleNumber,
-      lr.vehicleType,
-      lr.transporter,
-      lr.driverName,
-      lr.driverMobile,
-      lr.from,
-      lr.to,
-      lr.material,
-      lr.packageType,
-      lr.packages,
-      lr.loadingWeight,
-      lr.unloadingWeight,
-      lr.chargedWeight,
-      lr.billRate,
-      lr.billRateType,
-      lr.billAmount,
-      lr.lorryHireRate,
-      lr.lorryHireType,
-      lr.lorryHireAmount,
-      lr.freightType,
-      lr.profitAmount,
-      lr.status,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "lrs.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("lrs", [
+      ...LR_EXPORT_COLUMNS,
+      {
+        header: "POD Status",
+        value: (r) => {
+          const key = r.lrNumber?.trim() ?? "";
+          return key && podIdByLrNumber.has(key) ? "POD Created" : "POD Pending";
+        },
+      },
+      ...createdColumns<LRRecord>((r) => (r.createdBy ? resolveAssignedName(r.createdBy) : ""), (r) => r.created_at),
+    ], filteredLRs);
   }
+
 
   async function handleDownloadTemplate() {
     try {

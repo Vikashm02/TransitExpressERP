@@ -1,7 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { downloadCsv } from "@/lib/csvExport";
+import { createdColumns, exportCsv, staffNameResolver, type ExportColumn } from "@/lib/exportColumns";
+import { getStaffUsers } from "@/components/services/appUser.service";
 import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -38,6 +39,36 @@ import { getMaterials, type MaterialRecord } from "@/components/services/materia
 import { VEHICLE_TYPE_OPTIONS } from "@/components/vehicle/vehicle.schema";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { cn } from "@/lib/utils";
+
+/** Export = Add/Edit form fields in form order (keep in sync with BidForm). */
+const BID_EXPORT_COLUMNS: ExportColumn<BidRecord>[] = [
+  { header: "Bid Reference", value: (r) => r.bidReference },
+  { header: "Bid Hosted By / Billing Party", value: (r) => r.billingPartyName },
+  { header: "Source", value: (r) => r.source },
+  { header: "Status", value: (r) => r.status },
+  { header: "Posted / Open Date & Time", value: (r) => r.postedAt },
+  { header: "Bid Closing Date & Time", value: (r) => r.closesAt },
+  { header: "Notes / Remarks", value: (r) => r.notes },
+  { header: "Consignor (Pickup Party)", value: (r) => r.consignorName },
+  { header: "Pickup Location", value: (r) => r.pickupLocation },
+  { header: "Consignee (Delivery Party)", value: (r) => r.consigneeName },
+  { header: "Drop-off Location", value: (r) => r.dropoffLocation },
+  { header: "Distance (KM)", value: (r) => r.distanceKm || "" },
+  { header: "Transit Time", value: (r) => r.transitTime },
+  { header: "Material Description", value: (r) => r.materialDescription },
+  { header: "Material", value: (r) => r.materialName },
+  { header: "Vehicle Type", value: (r) => r.vehicleType },
+  { header: "Total Bid Quantity (MT)", value: (r) => r.totalQuantityMT || "" },
+  { header: "Expected Load Per Vehicle (MT)", value: (r) => r.expectedLoadMT || "" },
+  { header: "Market Cost Basis", value: (r) => r.marketVehicleCostBasis },
+  { header: "Market Cost (₹)", value: (r) => r.marketVehicleQuote || "" },
+  { header: "Bid Rate Basis", value: (r) => r.bidRateBasis ?? "" },
+  { header: "Our Bid Rate", value: (r) => r.bidRate || "" },
+  { header: "Winning / Closing Rate", value: (r) => r.winningRate ?? "" },
+  { header: "Winning Rate Basis", value: (r) => r.winningRateBasis ?? "" },
+  { header: "Loss Reason", value: (r) => r.lossReason ?? "" },
+  { header: "Result Remarks", value: (r) => r.resultRemarks },
+];
 
 type BidTab = "live" | "history";
 
@@ -280,20 +311,17 @@ function BidListPageInner() {
         }
         onRefresh={loadAll}
         onExport={() =>
-          downloadCsv(
-            `bids-${new Date().toISOString().slice(0, 10)}.csv`,
-            [
-              "Bid Reference", "Status", "Billing Party", "Consignor", "Consignee", "Pickup", "Drop-off",
-              "Material", "Material Description", "Vehicle Type", "Total Quantity (MT)", "Expected Load (MT)",
-              "Market Vehicle Quote", "Bid Rate", "Rate Basis", "Closes At",
-            ],
-            filteredBids.map((bid) => [
-              bid.bidReference, bid.status, bid.billingPartyName, bid.consignorName, bid.consigneeName,
-              bid.pickupLocation, bid.dropoffLocation, bid.materialName, bid.materialDescription, bid.vehicleType,
-              bid.totalQuantityMT || "", bid.expectedLoadMT || "", bid.marketVehicleQuote || "",
-              bid.bidRate || "", bid.bidRateBasis ?? "", bid.closesAt ?? "",
-            ])
-          )
+          void (async () => {
+            const staff = await getStaffUsers().catch(() => []);
+            const createdBy = staffNameResolver(staff);
+            exportCsv("bids", [
+              ...BID_EXPORT_COLUMNS,
+              ...createdColumns<BidRecord>(
+                (r) => createdBy((r as { createdBy?: string | null }).createdBy),
+                (r) => r.created_at
+              ),
+            ], filteredBids);
+          })()
         }
         filters={[
           {

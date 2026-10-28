@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -23,6 +24,23 @@ import {
   type BillingPartyRecord,
 } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const BILLING_PARTY_EXPORT_COLUMNS: ExportColumn<BillingPartyRecord>[] = [
+  { header: "Billing Party Code", value: (r) => r.code },
+  { header: "Billing Party Name", value: (r) => r.name },
+  { header: "GST Number", value: (r) => r.gst },
+  { header: "Mobile Number", value: (r) => r.mobile },
+  { header: "Email", value: (r) => r.email },
+  { header: "City", value: (r) => r.city },
+  { header: "PO Number", value: (r) => r.poNumber },
+  { header: "Concern Person", value: (r) => r.concernPerson },
+  { header: "Short Code", value: (r) => r.shortCode },
+  { header: "Payment Cycle (Days)", value: (r) => r.paymentCycleDays },
+  { header: "Status", value: (r) => r.status },
+  { header: "Address", value: (r) => r.address },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -172,32 +190,9 @@ export default function BillingPartyListPage() {
   }
 
   function handleExport() {
-    const headers = ["Code", "Name", "GST", "Mobile", "Email", "City", "Address", "Status"];
-    const rows = filteredBillingParties.map((billingParty) => [
-      billingParty.code,
-      billingParty.name,
-      billingParty.gst,
-      billingParty.mobile,
-      billingParty.email,
-      billingParty.city,
-      billingParty.address,
-      billingParty.status,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "billing-parties.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("billing-parties", BILLING_PARTY_EXPORT_COLUMNS, filteredBillingParties);
   }
+
 
   async function handleDownloadTemplate() {
     try {

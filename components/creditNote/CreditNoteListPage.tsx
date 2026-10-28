@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -25,6 +26,20 @@ import {
 import { getBillingParty } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const CREDIT_NOTE_EXPORT_COLUMNS: ExportColumn<CreditNoteRecord>[] = [
+  { header: "Credit Note Number", value: (r) => r.creditNoteNumber },
+  { header: "Billing Party", value: (r) => r.billingPartyName },
+  { header: "Date", value: (r) => r.noteDate },
+  { header: "Total Amount Received", value: (r) => r.amount },
+  { header: "Discount / Deduction", value: (r) => r.deduction },
+  { header: "GST (%)", value: (r) => r.gstPercentage },
+  { header: "GST Amount", value: (r) => r.gstAmount },
+  { header: "Net Credit", value: (r) => r.netAmount },
+  { header: "Remarks", value: (r) => r.remarks },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -137,29 +152,9 @@ export default function CreditNoteListPage() {
   }
 
   function handleExport() {
-    const headers = ["Credit Note No.", "Date", "Billing Party", "Amount", "Discount/Deduction", "Net Credit"];
-
-    const rows = filteredCreditNotes.map((note) => [
-      note.creditNoteNumber,
-      note.noteDate,
-      note.billingPartyName,
-      note.amount,
-      note.deduction,
-      note.netAmount,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "credit-notes.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("credit-notes", CREDIT_NOTE_EXPORT_COLUMNS, filteredCreditNotes);
   }
+
 
   async function handleDownloadTemplate() {
     try {

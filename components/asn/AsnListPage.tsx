@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { downloadCsv } from "@/lib/csvExport";
+import { createdColumns, exportCsv, staffNameResolver, type ExportColumn } from "@/lib/exportColumns";
+import { getStaffUsers } from "@/components/services/appUser.service";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -21,6 +22,28 @@ import {
 } from "@/components/services/asn.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { STAFF_EDIT_WINDOW_EXPIRED_MESSAGE, canStaffEditRecord } from "@/lib/editWindow";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const ASN_EXPORT_COLUMNS: ExportColumn<AsnRecord>[] = [
+  { header: "ASN Number", value: (r) => r.asnNumber },
+  { header: "ASN Date", value: (r) => r.asnDate },
+  { header: "LR Number", value: (r) => r.lrNumber },
+  { header: "LR Date", value: (r) => r.lrDate },
+  { header: "Vehicle Number", value: (r) => r.vehicleNumber },
+  { header: "Driver Name", value: (r) => r.driverName },
+  { header: "Driver Contact Number", value: (r) => r.driverContact },
+  { header: "Challan No. / Invoice Number", value: (r) => r.challanInvoiceNumber },
+  { header: "Challan / Invoice Date", value: (r) => r.challanInvoiceDate },
+  { header: "Supplier Net Weight (MT)", value: (r) => r.supplierNetWeight },
+  { header: "Challan Qty (MT)", value: (r) => r.challanQty },
+  { header: "Supplier Tare Weight (MT)", value: (r) => r.supplierTareWeight },
+  { header: "Supplier Gross Weight (MT)", value: (r) => r.supplierGrossWeight },
+  { header: "Expected Time of Arrival", value: (r) => r.expectedTimeOfArrival },
+  { header: "Road Permit", value: (r) => r.roadPermit },
+  { header: "Weightment Slip (link)", value: (r) => r.weightmentSlipUrl },
+  { header: "Challan Copy Slip (link)", value: (r) => r.challanCopySlipUrl },
+  { header: "LR Copy Slip (link)", value: (r) => r.lrCopySlipUrl },
+];
 
 const PAGE_SIZE = 10;
 
@@ -163,11 +186,14 @@ export default function AsnListPage() {
         placeholder="Search ASN no., date, LR no., vehicle, arrival..."
         onRefresh={loadData}
         onExport={() =>
-          downloadCsv(
-            `asn-${new Date().toISOString().slice(0, 10)}.csv`,
-            ["ASN Number", "ASN Date", "LR Number", "Vehicle Number", "Expected Arrival"],
-            filtered.map((row) => [row.asnNumber, row.asnDate, row.lrNumber, row.vehicleNumber, row.expectedTimeOfArrival])
-          )
+          void (async () => {
+            const staff = await getStaffUsers().catch(() => []);
+            const createdBy = staffNameResolver(staff);
+            exportCsv("asn", [
+              ...ASN_EXPORT_COLUMNS,
+              ...createdColumns<AsnRecord>((r) => createdBy(r.createdBy), (r) => r.created_at),
+            ], filtered);
+          })()
         }
       />
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { downloadCsv } from "@/lib/csvExport";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -528,20 +528,54 @@ export default function LorryExpenseListPage() {
         onSearchChange={setSearch}
         placeholder="Search LR no., date, party, vehicle, broker, beneficiary, amount..."
         onRefresh={loadData}
-        onExport={() =>
-          downloadCsv(
-            `financials-${new Date().toISOString().slice(0, 10)}.csv`,
-            [
-              "LR Number", "LR Date", "Consignor", "Consignee", "Vehicle Number", "Expense Status", "Broker",
-              "Beneficiary", "Lorry Hire", "Total Expenses", "Total Paid", "Balance Payable", "Profit / Loss",
-            ],
-            filteredRows.map((row) => [
-              row.lrNumber, row.lrDate, row.consignor, row.consignee, row.vehicleNumber, row.expenseStatus,
-              row.brokerName, row.beneficiaryName, row.lorryHireAmount, row.totalExpenses, row.totalPaid,
-              row.balancePayable, row.profitLoss,
-            ])
-          )
-        }
+        onExport={() => {
+          // Driver, weights and rates shown in the Financials form come from the LR.
+          const lrById = new Map(lrs.map((lr) => [String(lr.id), lr]));
+          const lrOf = (r: LorryExpenseListRow) => lrById.get(String(r.lrId));
+          exportCsv("financials", [
+            { header: "LR Number", value: (r) => r.lrNumber },
+            { header: "LR Date", value: (r) => r.lrDate },
+            { header: "Consignor", value: (r) => r.consignor },
+            { header: "Consignee", value: (r) => r.consignee },
+            { header: "Vehicle Number", value: (r) => r.vehicleNumber },
+            { header: "Driver Name", value: (r) => lrOf(r)?.driverName },
+            { header: "Loading Weight", value: (r) => lrOf(r)?.loadingWeight },
+            { header: "Unloading Weight", value: (r) => lrOf(r)?.unloadingWeight },
+            { header: "Expense Status", value: (r) => r.expenseStatus },
+            { header: "Bill Rate", value: (r) => lrOf(r)?.billRate },
+            { header: "Bill Rate Type", value: (r) => lrOf(r)?.billRateType },
+            { header: "Guaranteed Weight", value: (r) => lrOf(r)?.guaranteedWeight },
+            { header: "Bill Amount", value: (r) => r.billAmount },
+            { header: "Hire Rate", value: (r) => lrOf(r)?.lorryHireRate },
+            { header: "Hire Type", value: (r) => lrOf(r)?.lorryHireType },
+            { header: "Hire Guaranteed Weight", value: (r) => lrOf(r)?.lorryHireGuaranteedWeight },
+            { header: "Hire Amount", value: (r) => r.lorryHireAmount },
+            { header: "Driver Advance 1", value: (r) => r.driverAdvance },
+            { header: "Driver Advance 1 Date", value: (r) => r.driverAdvance1Date },
+            { header: "Driver Advance 2", value: (r) => r.driverAdvance2 },
+            { header: "Driver Advance 2 Date", value: (r) => r.driverAdvance2Date },
+            { header: "Diesel Advance (older entries)", value: (r) => r.dieselAdvance || "" },
+            { header: "Loading Charges", value: (r) => r.loadingCharges },
+            { header: "Unloading Charges", value: (r) => r.unloadingCharges },
+            { header: "Detention Charges", value: (r) => r.detentionCharges },
+            { header: "Hamali", value: (r) => r.hamali },
+            { header: "Commission", value: (r) => r.commission },
+            { header: "Other Expense", value: (r) => r.otherExpense },
+            { header: "Broker Name", value: (r) => r.brokerName },
+            { header: "Beneficiary Name", value: (r) => r.beneficiaryName },
+            { header: "ST Chalan", value: (r) => r.stChalan },
+            { header: "TDS (%)", value: (r) => r.tdsPercentage },
+            { header: "Any Other Deduction", value: (r) => r.otherDeduction },
+            { header: "Final Amount Paid", value: (r) => r.finalAmountPaid },
+            { header: "Balance Paid On", value: (r) => r.balancePaidOn },
+            { header: "Remarks / Notes", value: (r) => r.remarks },
+            { header: "Total Expenses", value: (r) => r.totalExpenses },
+            { header: "Total Paid", value: (r) => r.totalPaid },
+            { header: "Balance Payable", value: (r) => r.balancePayable },
+            { header: "Profit / Loss", value: (r) => r.profitLoss },
+            createdOnColumn<LorryExpenseListRow>((r) => r.created_at),
+          ] satisfies ExportColumn<LorryExpenseListRow>[], filteredRows);
+        }}
         actions={[
           {
             key: "download-template",

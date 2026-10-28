@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -20,6 +21,35 @@ import {
   type DriverRecord,
 } from "@/components/services/driver.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const DRIVER_EXPORT_COLUMNS: ExportColumn<DriverRecord>[] = [
+  { header: "Driver Name", value: (r) => r.driverName },
+  { header: "Driver Type", value: (r) => r.driverType },
+  { header: "Date of Birth", value: (r) => r.dateOfBirth },
+  { header: "Blood Group", value: (r) => r.bloodGroup },
+  { header: "Experience (Years)", value: (r) => r.experienceYears },
+  { header: "Mobile", value: (r) => r.mobile },
+  { header: "Alternate Mobile", value: (r) => r.alternateMobile },
+  { header: "Address", value: (r) => r.address },
+  { header: "Emergency Contact Name", value: (r) => r.emergencyContactName },
+  { header: "Emergency Contact Number", value: (r) => r.emergencyContactNumber },
+  { header: "License Number", value: (r) => r.licenseNumber },
+  { header: "License Type", value: (r) => r.licenseType },
+  { header: "License Issuing State", value: (r) => r.licenseIssuingState },
+  { header: "License Expiry", value: (r) => r.licenseExpiry },
+  { header: "Aadhaar Number", value: (r) => r.aadhaarNumber },
+  { header: "PAN", value: (r) => r.pan },
+  { header: "Date of Joining", value: (r) => r.dateOfJoining },
+  { header: "Preferred Vehicle", value: (r) => r.preferredVehicle },
+  { header: "Bank Name", value: (r) => r.bankName },
+  { header: "Account Number", value: (r) => r.accountNumber },
+  { header: "IFSC", value: (r) => r.ifsc },
+  { header: "Photo (link)", value: (r) => r.photoUrl },
+  { header: "Status", value: (r) => r.status },
+  { header: "Remarks", value: (r) => r.remarks },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -126,72 +156,9 @@ export default function DriverListPage() {
   }
 
   function handleExport() {
-    const headers = [
-      "Driver Name",
-      "Driver Type",
-      "Date of Birth",
-      "Blood Group",
-      "Experience (Years)",
-      "Mobile",
-      "Alternate Mobile",
-      "Address",
-      "Emergency Contact Name",
-      "Emergency Contact Number",
-      "License Number",
-      "License Type",
-      "License Issuing State",
-      "License Expiry",
-      "Aadhaar Number",
-      "PAN",
-      "Date of Joining",
-      "Preferred Vehicle",
-      "Bank Name",
-      "Account Number",
-      "IFSC",
-      "Remarks",
-      "Status",
-    ];
-
-    const rows = filteredDrivers.map((driver) => [
-      driver.driverName,
-      driver.driverType,
-      driver.dateOfBirth,
-      driver.bloodGroup,
-      driver.experienceYears,
-      driver.mobile,
-      driver.alternateMobile,
-      driver.address,
-      driver.emergencyContactName,
-      driver.emergencyContactNumber,
-      driver.licenseNumber,
-      driver.licenseType,
-      driver.licenseIssuingState,
-      driver.licenseExpiry,
-      driver.aadhaarNumber,
-      driver.pan,
-      driver.dateOfJoining,
-      driver.preferredVehicle,
-      driver.bankName,
-      driver.accountNumber,
-      driver.ifsc,
-      driver.remarks,
-      driver.status,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "drivers.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("drivers", DRIVER_EXPORT_COLUMNS, filteredDrivers);
   }
+
 
   return (
     <div className="space-y-6">

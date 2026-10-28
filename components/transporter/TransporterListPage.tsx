@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -20,6 +21,36 @@ import {
   type TransporterRecord,
 } from "@/components/services/transporter.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const TRANSPORTER_EXPORT_COLUMNS: ExportColumn<TransporterRecord>[] = [
+  { header: "Transporter Code", value: (r) => r.code },
+  { header: "Transporter Name", value: (r) => r.transporterName },
+  { header: "Transporter Type", value: (r) => r.transporterType },
+  { header: "GSTIN", value: (r) => r.gstin },
+  { header: "PAN", value: (r) => r.pan },
+  { header: "Contact Person", value: (r) => r.contactPerson },
+  { header: "Mobile", value: (r) => r.mobile },
+  { header: "Alternate Mobile", value: (r) => r.alternateMobile },
+  { header: "Email", value: (r) => r.email },
+  { header: "Website", value: (r) => r.website },
+  { header: "Address", value: (r) => r.address },
+  { header: "City", value: (r) => r.city },
+  { header: "State", value: (r) => r.state },
+  { header: "Pincode", value: (r) => r.pincode },
+  { header: "Account Holder Name", value: (r) => r.accountHolderName },
+  { header: "Bank Name", value: (r) => r.bankName },
+  { header: "Account Number", value: (r) => r.accountNumber },
+  { header: "IFSC", value: (r) => r.ifsc },
+  { header: "UPI ID", value: (r) => r.upiId },
+  { header: "Payment Term", value: (r) => r.paymentTerm },
+  { header: "Credit Days", value: (r) => r.creditDays },
+  { header: "Credit Limit", value: (r) => r.creditLimit },
+  { header: "Preferred Payment Mode", value: (r) => r.preferredPaymentMode },
+  { header: "Status", value: (r) => r.status },
+  { header: "Remarks", value: (r) => r.remarks },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -126,76 +157,9 @@ export default function TransporterListPage() {
   }
 
   function handleExport() {
-    const headers = [
-      "Code",
-      "Transporter Name",
-      "Transporter Type",
-      "GSTIN",
-      "PAN",
-      "Contact Person",
-      "Mobile",
-      "Alternate Mobile",
-      "Email",
-      "Website",
-      "Address",
-      "City",
-      "State",
-      "Pincode",
-      "Account Holder Name",
-      "Bank Name",
-      "Account Number",
-      "IFSC",
-      "UPI ID",
-      "Payment Term",
-      "Credit Days",
-      "Credit Limit",
-      "Preferred Payment Mode",
-      "Remarks",
-      "Status",
-    ];
-
-    const rows = filteredTransporters.map((transporter) => [
-      transporter.code,
-      transporter.transporterName,
-      transporter.transporterType,
-      transporter.gstin,
-      transporter.pan,
-      transporter.contactPerson,
-      transporter.mobile,
-      transporter.alternateMobile,
-      transporter.email,
-      transporter.website,
-      transporter.address,
-      transporter.city,
-      transporter.state,
-      transporter.pincode,
-      transporter.accountHolderName,
-      transporter.bankName,
-      transporter.accountNumber,
-      transporter.ifsc,
-      transporter.upiId,
-      transporter.paymentTerm,
-      transporter.creditDays,
-      transporter.creditLimit,
-      transporter.preferredPaymentMode,
-      transporter.remarks,
-      transporter.status,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "transporters.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("transporters", TRANSPORTER_EXPORT_COLUMNS, filteredTransporters);
   }
+
 
   return (
     <div className="space-y-6">

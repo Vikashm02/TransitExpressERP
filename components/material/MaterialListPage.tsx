@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
@@ -23,6 +24,19 @@ import {
   type MaterialRecord,
 } from "@/components/services/material.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+
+/** Export = Add/Edit form fields in form order (keep in sync with the form). */
+const MATERIAL_EXPORT_COLUMNS: ExportColumn<MaterialRecord>[] = [
+  { header: "Material Code", value: (r) => r.code },
+  { header: "Material Name", value: (r) => r.materialName },
+  { header: "Material Category", value: (r) => r.category },
+  { header: "HSN Code", value: (r) => r.hsnCode },
+  { header: "Unit", value: (r) => r.unit },
+  { header: "GST Percentage", value: (r) => r.gstPercentage },
+  { header: "Status", value: (r) => r.status },
+  { header: "Description / Remarks", value: (r) => r.description },
+  createdOnColumn((r) => r.created_at),
+];
 
 const PAGE_SIZE = 10;
 
@@ -131,42 +145,9 @@ export default function MaterialListPage() {
   }
 
   function handleExport() {
-    const headers = [
-      "Material Code",
-      "Material Name",
-      "Category",
-      "HSN Code",
-      "Unit",
-      "GST Percentage",
-      "Description",
-      "Status",
-    ];
-
-    const rows = filteredMaterials.map((material) => [
-      material.code,
-      material.materialName,
-      material.category,
-      material.hsnCode,
-      material.unit,
-      material.gstPercentage,
-      material.description,
-      material.status,
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "materials.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    exportCsv("materials", MATERIAL_EXPORT_COLUMNS, filteredMaterials);
   }
+
 
   async function handleDownloadTemplate() {
     try {
