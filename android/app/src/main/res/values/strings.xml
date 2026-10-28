@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Transjit Express ERP</string>
+    <string name="title_activity_main">Transjit Express ERP</string>
+    <string name="package_name">in.transjitexpresserp.mobile</string>
+    <string name="custom_url_scheme">in.transjitexpresserp.mobile</string>
+    <string name="default_notification_channel_id">transjit_erp_alerts_v1</string>
+    <string name="shortcut_controls">App controls</string>
+    <string name="shortcut_title">Floating ERP shortcut</string>
+    <string name="shortcut_explanation">Show a movable shortcut over other apps. Tap it to return to ERP.</string>
+    <string name="shortcut_state_on">On. The shortcut appears when you leave ERP.</string>
+    <string name="shortcut_state_off">Off.</string>
+    <string name="shortcut_state_used_before">Off. You previously turned it on. Tap Start to use it again.</string>
+    <string name="shortcut_start">Start</string>
+    <string name="shortcut_disable">Turn off</string>
+    <string name="shortcut_close">Close</string>
+    <string name="shortcut_permission_title">Allow display over other apps</string>
+    <string name="shortcut_permission_explanation">Allow ERP to appear over other apps in Android Settings. Then return here and tap Start.</string>
+    <string name="shortcut_open_settings">Open Settings</string>
+    <string name="shortcut_start_failed">Shortcut could not start. Check overlay access and try again while ERP is visible.</string>
+    <string name="shortcut_settings_failed">Overlay settings are unavailable on this device.</string>
+    <string name="shortcut_notifications_off">Shortcut notifications are blocked. You can still disable the shortcut in App controls or Android Active apps.</string>
+    <string name="shortcut_channel_name">Floating ERP shortcut</string>
+    <string name="shortcut_channel_description">User-enabled launcher above other apps. Stop it at any time.</string>
+    <string name="shortcut_notification_title">ERP shortcut running</string>
+    <string name="shortcut_notification_text">Tap to resume ERP. Use Stop to disable the shortcut.</string>
+    <string name="shortcut_open_erp">Open ERP</string>
+    <string name="shortcut_stop">Stop</string>
+    <string name="shortcut_accessibility">Open ERP. Drag to move shortcut.</string>
+</resources>

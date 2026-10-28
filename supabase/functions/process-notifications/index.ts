@@ -22,6 +22,21 @@ import webpush from "npm:web-push@3.6.7";
 
 const APP_ID = "in.transjitexpresserp.app";
 const PLATFORM = "android";
+// Android notification channels (created by the app; a channel's sound is fixed).
+const DEFAULT_ANDROID_CHANNEL = { id: "transjit_erp_alerts_v1", sound: "transjit_koyal_notification" };
+// PO usage alarms use the Urgent beeps tone. Must match MainActivity.PO_ALERTS_CHANNEL_ID
+// (app versionCode 8+). Older apps without this channel show the alert with the phone's default sound.
+const PO_ALERTS_ANDROID_CHANNEL = { id: "transjit_po_alerts_v1", sound: "transjit_po_urgent_beeps" };
+// New Delivery Challan uses the Bubble pop tone (MainActivity.DC_CREATED_CHANNEL_ID, app versionCode 8+).
+const DC_CREATED_ANDROID_CHANNEL = { id: "transjit_dc_created_v1", sound: "transjit_dc_bubble_pop" };
+// New POD uses the same Bubble pop tone on its own channel (MainActivity.POD_CREATED_CHANNEL_ID).
+const POD_CREATED_ANDROID_CHANNEL = { id: "transjit_pod_created_v1", sound: "transjit_dc_bubble_pop" };
+
+function androidChannelForRule(ruleKey: string): { id: string; sound: string } {
+  if (ruleKey === "dc.created") return DC_CREATED_ANDROID_CHANNEL;
+  if (ruleKey === "pod.created") return POD_CREATED_ANDROID_CHANNEL;
+  return DEFAULT_ANDROID_CHANNEL;
+}
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const EXACT_EVENT_NAVIGATION_RULES = new Set([
@@ -210,7 +225,7 @@ Deno.serve(async (req) => {
       // only users who already own a browser push subscription are eligible.
       // It is best-effort and never affects generic browser/inbox event status.
       if (EXACT_EVENT_NAVIGATION_RULES.has(ruleKey) && userIds.length > 0) {
-        await deliverNativeAndroid(admin, group[0], userIds);
+        await deliverNativeAndroid(admin, group[0], userIds, androidChannelForRule(ruleKey));
       }
 
       const payload = JSON.stringify({ title, body: bodyText, href });
@@ -394,7 +409,7 @@ async function deliverPoUsageAlert(
     }
   }
 
-  await deliverNativeAndroid(admin, event, userIds);
+  await deliverNativeAndroid(admin, event, userIds, PO_ALERTS_ANDROID_CHANNEL);
 
   const emails = Array.from(new Set(
     audience.map((u) => String(u.email ?? "").trim()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
@@ -429,7 +444,8 @@ async function sendPoUsageEmails(to: string[], subject: string, text: string): P
 async function deliverNativeAndroid(
   admin: ReturnType<typeof createClient<any, "public", any>>,
   event: Record<string, unknown>,
-  userIds: string[]
+  userIds: string[],
+  channel: { id: string; sound: string } = DEFAULT_ANDROID_CHANNEL
 ): Promise<void> {
   const serviceAccount = getServiceAccount();
   if (!serviceAccount) {
@@ -479,8 +495,8 @@ async function deliverNativeAndroid(
               android: {
                 priority: "high",
                 notification: {
-                  channel_id: "transjit_erp_alerts_v1",
-                  sound: "transjit_koyal_notification",
+                  channel_id: channel.id,
+                  sound: channel.sound,
                   default_vibrate_timings: true,
                 },
               },

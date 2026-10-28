@@ -35,7 +35,7 @@ test("sender delivers every PO level separately to all staff channels", () => {
   for (const level of [80, 90, 95, 100]) assert.match(sender, new RegExp(`"po\\.usage_${level}"`));
   assert.match(sender, /PO_USAGE_RULES\.has\(ruleKey\)\s*\n?\s*\? `\$\{ruleKey\}:\$\{String\(event\.id\)\}`/);
   assert.match(sender, /from\("notification_inbox"\)\.insert\(\s*userIds\.map/);
-  assert.match(sender, /await deliverNativeAndroid\(admin, event, userIds\)/);
+  assert.match(sender, /await deliverNativeAndroid\(admin, event, userIds, PO_ALERTS_ANDROID_CHANNEL\)/);
   assert.match(sender, /api\.resend\.com\/emails\/batch/);
 });
 
@@ -49,4 +49,32 @@ test("PO alert path never deletes subscriptions or tokens", () => {
 test("PO Master lands sorted by usage %, highest first", () => {
   assert.match(poPage, /\.sort\(\(a, b\) => usagePercent\(b\) - usagePercent\(a\)/);
   assert.match(poPage, /key: "usage", header: "Usage", sortable: true, sortAccessor: usagePercent/);
+});
+
+test("PO alerts use the Urgent beeps Android channel; others keep koyal", () => {
+  assert.match(sender, /PO_ALERTS_ANDROID_CHANNEL = \{ id: "transjit_po_alerts_v1", sound: "transjit_po_urgent_beeps" \}/);
+  assert.match(sender, /DEFAULT_ANDROID_CHANNEL = \{ id: "transjit_erp_alerts_v1", sound: "transjit_koyal_notification" \}/);
+  assert.match(sender, /deliverNativeAndroid\(admin, event, userIds, PO_ALERTS_ANDROID_CHANNEL\)/);
+  assert.match(sender, /deliverNativeAndroid\(admin, group\[0\], userIds, androidChannelForRule\(ruleKey\)\)/);
+  assert.match(sender, /channel: \{ id: string; sound: string \} = DEFAULT_ANDROID_CHANNEL/);
+});
+
+test("Android app creates the PO channel with the bundled sound (version 8)", () => {
+  const activity = read("android/app/src/main/java/in/transjitexpresserp/mobile/MainActivity.java");
+  const gradle = read("android/app/build.gradle");
+  assert.match(activity, /PO_ALERTS_CHANNEL_ID = "transjit_po_alerts_v1"/);
+  assert.match(activity, /R\.raw\.transjit_po_urgent_beeps/);
+  assert.match(gradle, /versionCode 8\b/);
+  assert.ok(readFileSync(new URL("../android/app/src/main/res/raw/transjit_po_urgent_beeps.wav", import.meta.url)).length > 1000);
+});
+
+test("DC created and POD created use Bubble pop; DC and POD updated keep koyal", () => {
+  const activity = read("android/app/src/main/java/in/transjitexpresserp/mobile/MainActivity.java");
+  assert.match(sender, /DC_CREATED_ANDROID_CHANNEL = \{ id: "transjit_dc_created_v1", sound: "transjit_dc_bubble_pop" \}/);
+  assert.match(sender, /if \(ruleKey === "dc\.created"\) return DC_CREATED_ANDROID_CHANNEL;\s*if \(ruleKey === "pod\.created"\) return POD_CREATED_ANDROID_CHANNEL;\s*return DEFAULT_ANDROID_CHANNEL;/);
+  assert.match(sender, /POD_CREATED_ANDROID_CHANNEL = \{ id: "transjit_pod_created_v1", sound: "transjit_dc_bubble_pop" \}/);
+  assert.match(activity, /POD_CREATED_CHANNEL_ID = "transjit_pod_created_v1"/);
+  assert.match(activity, /DC_CREATED_CHANNEL_ID = "transjit_dc_created_v1"/);
+  assert.match(activity, /R\.raw\.transjit_dc_bubble_pop/);
+  assert.ok(readFileSync(new URL("../android/app/src/main/res/raw/transjit_dc_bubble_pop.wav", import.meta.url)).length > 1000);
 });
