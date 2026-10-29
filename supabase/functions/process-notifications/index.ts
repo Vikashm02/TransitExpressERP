@@ -45,14 +45,16 @@ const EXACT_EVENT_NAVIGATION_RULES = new Set([
   "pod.created",
   "pod.updated",
 ]);
-// PO usage alarms (80/90/95/100%, migrations 074 + 117). Each event is sent on
-// its own to every approved staff member through the bell inbox, browser push,
-// Android push and email — not only to users with a browser push subscription.
+// PO alarms: usage 80/90/95/100% (migrations 074 + 117) and the daily
+// "Permanent PO pending" reminder for Temporary POs (migration 118). Each event
+// is sent on its own to every approved staff member through the bell inbox,
+// browser push, Android push and email — not only to browser-push subscribers.
 const PO_USAGE_RULES = new Set([
   "po.usage_80",
   "po.usage_90",
   "po.usage_95",
   "po.usage_100",
+  "po.temporary_pending",
 ]);
 
 type ServiceAccount = { project_id: string; client_email: string; private_key: string };
