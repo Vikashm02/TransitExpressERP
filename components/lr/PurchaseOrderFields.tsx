@@ -7,7 +7,7 @@ import FormSelect from "@/components/ui/FormSelect";
 import FormDatePicker from "@/components/ui/FormDatePicker";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getActiveLrPurchaseOrders } from "@/components/services/purchaseOrder.service";
+import { getActiveLrPurchaseOrders, getPurchaseOrderIsTemporary } from "@/components/services/purchaseOrder.service";
 import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
 import { supabase } from "@/lib/supabase";
 import type { LR } from "./lr.schema";
@@ -111,6 +111,19 @@ export default function PurchaseOrderFields({
   // Actual current PO status, not inferred from absence in Active matching options.
   // Bind status to the PO ID it was fetched for to avoid stale Inactive from PO 8 being applied to PO 21.
   const [statusResult, setStatusResult] = useState<{ purchaseOrderId: number; status: string | null } | null>(null);
+  // Temporary PO flag (migration 118), read separately so the status lookup
+  // above never depends on it. Bound to the PO id it was fetched for.
+  const [temporaryFor, setTemporaryFor] = useState<number | null>(null);
+  useEffect(() => {
+    const pid = lr.purchaseOrderId;
+    if (!pid) return;
+    let cancelled = false;
+    void getPurchaseOrderIsTemporary(pid).then((isTemporary) => {
+      if (!cancelled) setTemporaryFor(isTemporary ? pid : null);
+    });
+    return () => { cancelled = true; };
+  }, [lr.purchaseOrderId]);
+  const isCurrentPOTemporary = Boolean(lr.purchaseOrderId) && temporaryFor === lr.purchaseOrderId;
   useEffect(() => {
     if (!lr.purchaseOrderId) {
       setStatusResult(null);
@@ -198,6 +211,11 @@ export default function PurchaseOrderFields({
             {lr.poNumber ? `${lr.poNumber}` : "—"}
             {lr.poDate ? ` · ${lr.poDate}` : ""}
             {currentPOStatus ? ` — ${currentPOStatus}` : ""}
+            {isCurrentPOTemporary ? (
+              <span className="ml-2 inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/40">
+                Temporary PO · number will be updated when the permanent PO comes
+              </span>
+            ) : null}
           </span>
           {!changeMode && options.length > 0 ? (
             <Button type="button" variant="outline" size="sm" onClick={() => setChangeMode(true)} disabled={loading}>

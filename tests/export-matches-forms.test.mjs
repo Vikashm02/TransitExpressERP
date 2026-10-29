@@ -23,7 +23,9 @@ const MODULES = [
   { name: "Debit Notes", forms: ["components/debitNote/DebitNoteDialog.tsx"], page: "components/debitNote/DebitNoteListPage.tsx", alias: { GST: "GST (%)" } },
   { name: "Delivery Challans", forms: ["components/deliveryChallan/DeliveryChallanDialog.tsx"], page: "components/deliveryChallan/DeliveryChallanListPage.tsx" },
   { name: "Bills", forms: ["components/billing/BillDialog.tsx"], page: "components/billing/BillingListPage.tsx", alias: { "Next Bill Number": "Bill Number" } },
-  { name: "PO Master", forms: ["components/purchaseOrder/PurchaseOrderListPage.tsx"], page: "components/purchaseOrder/PurchaseOrderListPage.tsx" },
+  { name: "PO Master", forms: ["components/purchaseOrder/PurchaseOrderListPage.tsx"], page: "components/purchaseOrder/PurchaseOrderListPage.tsx",
+    // Make Permanent dialog inputs, not stored PO fields.
+    skip: ["Permanent PO Number", "Permanent PO Date"] },
   { name: "Financials", forms: ["components/lorryExpense/LorryExpenseDialog.tsx"], page: "components/lorryExpense/LorryExpenseListPage.tsx", alias: { TDS: "TDS (%)" } },
   { name: "Bids", forms: ["components/bid/BidForm.tsx"], page: "components/bid/BidListPage.tsx",
     // Calculated read-only figures on the form are not stored data.

@@ -9,6 +9,8 @@ export const purchaseOrderSchema = z.object({
   issueDate: z.iso.date("Select a valid issue date."),
   allottedWeight: z.number().finite().nonnegative("Allotted weight cannot be negative."),
   status: z.enum(["Active", "Inactive"]),
+  /** Temporary PO: number will be replaced by the permanent one later (Make Permanent). */
+  isTemporary: z.boolean().optional(),
 });
 
 export type PurchaseOrder = z.infer<typeof purchaseOrderSchema>;
