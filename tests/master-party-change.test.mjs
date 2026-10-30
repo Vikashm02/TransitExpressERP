@@ -43,7 +43,7 @@ test("every approved update keeps each old value, and Undo restores the master f
   assert.match(undo, /raise exception 'Unexpected undo item\.'/);
   assert.match(undo, /if auth\.uid\(\) is null or not public\.is_creator\(\) then\s+raise exception 'Only the Creator can undo/);
   assert.match(undo, /where update_id = p_update_id and \(p_scope = 'all' or table_name = 'bills'\)/);
-  assert.match(undo, /if p_scope = 'all' then\s+-- Master first/);
+  assert.match(undo, /if p_scope = 'all' then\s+if v_update\.party_type = 'customer' then\s+update public\.customers set/);
   assert.match(sql, /if coalesce\(current_setting\('app\.system_snapshot_refresh', true\), 'off'\) = 'on' then\s+return null;/);
 });
 
