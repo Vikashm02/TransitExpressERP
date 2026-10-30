@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { previewMasterPartyChange, applyMasterPartyChange, type MasterPartyChangePreview } from "@/components/services/masterPartyChange.service";
+import MasterPartyChangeDialog from "@/components/common/MasterPartyChangeDialog";
 import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
@@ -55,6 +57,8 @@ export default function CustomerListPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
+  /** Older-records decision after a master detail change (migration 119). */
+  const [partyChange, setPartyChange] = useState<{ id: number; preview: MasterPartyChangePreview } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<CustomerRecord | null>(null);
@@ -137,7 +141,18 @@ export default function CustomerListPage() {
           toast.error("You do not have permission to edit finalized customers.");
           return;
         }
-        await updateCustomer(editingCustomer.id, { ...values, entryStatus: "final" });
+        const wasFinal = editingCustomer.entryStatus !== "draft";
+        const partyId = editingCustomer.id;
+        await updateCustomer(partyId, { ...values, entryStatus: "final" });
+        if (wasFinal) {
+          // Name / GST / address change on a final record: ask about older records.
+          const preview = await previewMasterPartyChange("customer", partyId);
+          if (preview) {
+            const used = preview.lrs + preview.deliveryChallans + preview.purchaseOrders + preview.bids + preview.conversations + preview.bills;
+            if (used > 0) setPartyChange({ id: partyId, preview });
+            else await applyMasterPartyChange("customer", partyId, "apply").catch(() => undefined);
+          }
+        }
         toast.success("Customer updated successfully.");
       } else {
         await createCustomer({ ...values, entryStatus: "final" });
@@ -283,6 +298,12 @@ export default function CustomerListPage() {
         variant="destructive"
         loading={deleting}
         onConfirm={handleConfirmDelete}
+      />
+
+      <MasterPartyChangeDialog
+        partyId={partyChange?.id ?? null}
+        preview={partyChange?.preview ?? null}
+        onClose={() => setPartyChange(null)}
       />
     </div>
   );

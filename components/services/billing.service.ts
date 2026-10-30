@@ -56,6 +56,11 @@ interface BillRow {
   total_freight: number;
   grand_total: number;
   created_at?: string;
+  /** Billing party details as on the bill (migration 119); null on older databases. */
+  party_name?: string | null;
+  party_address?: string | null;
+  party_city?: string | null;
+  party_gst?: string | null;
   billing_parties?: { name: string } | { name: string }[] | null;
   bill_lrs?: { count: number }[] | null;
 }
@@ -113,11 +118,25 @@ export async function getBill(id: number): Promise<BillDetail> {
 
   const bill = fromRow(billRow as unknown as BillRow);
 
-  const [linesResult, billingParty, lrs] = await Promise.all([
+  const [linesResult, masterParty, lrs] = await Promise.all([
     supabase.from(BILL_LRS_TABLE).select("*").eq("bill_id", id),
     getBillingParty(bill.billingPartyId).catch(() => null),
     getLRs(),
   ]);
+
+  // An issued bill prints the billing party details stored on the bill, so a
+  // later master rename does not silently change it (unless approved, mig. 119).
+  const snapshot = billRow as unknown as BillRow;
+  const billingParty: BillingPartyRecord | null =
+    masterParty && snapshot.party_name != null
+      ? {
+          ...masterParty,
+          name: snapshot.party_name ?? masterParty.name,
+          address: snapshot.party_address ?? masterParty.address,
+          city: snapshot.party_city ?? masterParty.city,
+          gst: snapshot.party_gst ?? masterParty.gst,
+        }
+      : masterParty;
 
   if (linesResult.error) throw linesResult.error;
 

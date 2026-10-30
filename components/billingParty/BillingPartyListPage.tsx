@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { previewMasterPartyChange, applyMasterPartyChange, type MasterPartyChangePreview } from "@/components/services/masterPartyChange.service";
+import MasterPartyChangeDialog from "@/components/common/MasterPartyChangeDialog";
 import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColumns";
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
@@ -60,6 +62,8 @@ export default function BillingPartyListPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBillingParty, setEditingBillingParty] = useState<BillingPartyRecord | null>(null);
+  /** Older-records decision after a master detail change (migration 119). */
+  const [partyChange, setPartyChange] = useState<{ id: number; preview: MasterPartyChangePreview } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<BillingPartyRecord | null>(null);
@@ -142,7 +146,18 @@ export default function BillingPartyListPage() {
           toast.error("You do not have permission to edit finalized billing parties.");
           return;
         }
-        await updateBillingParty(editingBillingParty.id, { ...values, entryStatus: "final" });
+        const wasFinal = editingBillingParty.entryStatus !== "draft";
+        const partyId = editingBillingParty.id;
+        await updateBillingParty(partyId, { ...values, entryStatus: "final" });
+        if (wasFinal) {
+          // Name / GST / address change on a final record: ask about older records.
+          const preview = await previewMasterPartyChange("billing_party", partyId);
+          if (preview) {
+            const used = preview.lrs + preview.deliveryChallans + preview.purchaseOrders + preview.bids + preview.conversations + preview.bills;
+            if (used > 0) setPartyChange({ id: partyId, preview });
+            else await applyMasterPartyChange("billing_party", partyId, "apply").catch(() => undefined);
+          }
+        }
         toast.success("Billing party updated successfully.");
       } else {
         await createBillingParty({ ...values, entryStatus: "final" });
@@ -288,6 +303,12 @@ export default function BillingPartyListPage() {
         variant="destructive"
         loading={deleting}
         onConfirm={handleConfirmDelete}
+      />
+
+      <MasterPartyChangeDialog
+        partyId={partyChange?.id ?? null}
+        preview={partyChange?.preview ?? null}
+        onClose={() => setPartyChange(null)}
       />
     </div>
   );
