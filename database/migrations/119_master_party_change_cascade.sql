@@ -23,8 +23,9 @@
 --        'skip'             → leaves older records as they are
 --      Older LRs linked only by name are matched by the old name, but only
 --      when no other master record has that name.
---   E. master_party_undo(update_id): puts the master back first, then every
---      changed value, only where nothing was changed again since.
+--   E. master_party_undo(update_id, 'all' | 'bills') — CREATOR ONLY: puts the
+--      master back first, then every changed value ('all'), or only the bills
+--      ('bills'), only where nothing was changed again since.
 --      master_party_history lists updates (with Undo) for the master pages.
 --   D. A "system update" switch (app.system_snapshot_refresh) used only by C
 --      and by Make Permanent (migration 118). While on, these existing rules
@@ -622,7 +623,9 @@ create table if not exists public.master_party_updates (
   applied_at timestamptz not null default now(),
   undone_by uuid,
   undone_at timestamptz,
-  undo_result jsonb
+  undo_result jsonb,
+  bills_undone_by uuid,
+  bills_undone_at timestamptz
 );
 alter table public.master_party_updates enable row level security;
 revoke all on public.master_party_updates from anon, authenticated;
@@ -868,7 +871,7 @@ grant execute on function public.master_party_change(text, bigint, text) to auth
 -- ---------- E. Undo an approved update ----------
 -- Puts back the exact old values, record by record, plus the master's old
 -- details. A value that was changed again since is left alone and reported.
-create or replace function public.master_party_undo(p_update_id bigint)
+create or replace function public.master_party_undo(p_update_id bigint, p_scope text default 'all')
 returns jsonb
 language plpgsql
 security definer
@@ -876,7 +879,6 @@ set search_path = ''
 as $$
 declare
   v_update public.master_party_updates;
-  v_perm text;
   v_item record;
   v_restored integer := 0;
   v_skipped integer := 0;
@@ -884,43 +886,53 @@ declare
   v_master_restored boolean := false;
   v_result jsonb;
 begin
+  -- Undo is reserved for the Creator (owner). Staff can see the history only.
+  if auth.uid() is null or not public.is_creator() then
+    raise exception 'Only the Creator can undo master updates. Please ask the owner.';
+  end if;
+  if p_scope not in ('all', 'bills') then
+    raise exception 'Unknown undo request.';
+  end if;
   select * into v_update from public.master_party_updates where id = p_update_id for update;
   if not found then raise exception 'This update was not found. Refresh and try again.'; end if;
-  v_perm := case v_update.party_type when 'customer' then 'customers' else 'billing_parties' end;
-  if auth.uid() is null or not public.has_module_action(v_perm, 'edit') then
-    raise exception 'You do not have permission to edit this master.';
-  end if;
   if v_update.undone_at is not null then
     raise exception 'This update was already undone.';
+  end if;
+  if p_scope = 'bills' and (not v_update.include_bills or v_update.bills_undone_at is not null) then
+    raise exception 'There are no bill changes to undo in this update.';
   end if;
 
   perform set_config('app.suppress_lr_updated_notifications', 'on', true);
   perform set_config('app.system_snapshot_refresh', 'on', true);
 
-  -- Master first: linked LRs are checked against the master's current name.
-  if v_update.party_type = 'customer' then
-    update public.customers set
-      name = v_update.master_old->>'name', gst = v_update.master_old->>'gst',
-      address = v_update.master_old->>'address', city = v_update.master_old->>'city'
-    where id = v_update.party_id
-      and (name, gst, address, city) is not distinct from
-          (v_update.master_new->>'name', v_update.master_new->>'gst', v_update.master_new->>'address', v_update.master_new->>'city');
-  else
-    update public.billing_parties set
-      name = v_update.master_old->>'name', gst = v_update.master_old->>'gst',
-      address = v_update.master_old->>'address', city = v_update.master_old->>'city'
-    where id = v_update.party_id
-      and (name, gst, address, city) is not distinct from
-          (v_update.master_new->>'name', v_update.master_new->>'gst', v_update.master_new->>'address', v_update.master_new->>'city');
-  end if;
-  get diagnostics v_rows = row_count;
-  v_master_restored := v_rows > 0;
-  if not v_master_restored then
-    raise exception 'This party''s details were changed again after this update. Undo the later update first (or edit the master back by hand).';
+  if p_scope = 'all' then
+    -- Master first: linked LRs are checked against the master's current name.
+    if v_update.party_type = 'customer' then
+      update public.customers set
+        name = v_update.master_old->>'name', gst = v_update.master_old->>'gst',
+        address = v_update.master_old->>'address', city = v_update.master_old->>'city'
+      where id = v_update.party_id
+        and (name, gst, address, city) is not distinct from
+            (v_update.master_new->>'name', v_update.master_new->>'gst', v_update.master_new->>'address', v_update.master_new->>'city');
+    else
+      update public.billing_parties set
+        name = v_update.master_old->>'name', gst = v_update.master_old->>'gst',
+        address = v_update.master_old->>'address', city = v_update.master_old->>'city'
+      where id = v_update.party_id
+        and (name, gst, address, city) is not distinct from
+            (v_update.master_new->>'name', v_update.master_new->>'gst', v_update.master_new->>'address', v_update.master_new->>'city');
+    end if;
+    get diagnostics v_rows = row_count;
+    v_master_restored := v_rows > 0;
+    if not v_master_restored then
+      raise exception 'This party''s details were changed again after this update. Undo the later update first (or edit the master back by hand).';
+    end if;
   end if;
 
   for v_item in
-    select * from public.master_party_update_items where update_id = p_update_id order by id desc
+    select * from public.master_party_update_items
+    where update_id = p_update_id and (p_scope = 'all' or table_name = 'bills')
+    order by id desc
   loop
     if (v_item.table_name, v_item.column_name) not in (
       ('lrs', 'consignor'), ('lrs', 'consignor_gst'), ('lrs', 'consignor_address'),
@@ -940,17 +952,20 @@ begin
     if v_rows > 0 then v_restored := v_restored + 1; else v_skipped := v_skipped + 1; end if;
   end loop;
 
-
   perform set_config('app.suppress_lr_updated_notifications', 'off', true);
   perform set_config('app.system_snapshot_refresh', 'off', true);
 
-  v_result := jsonb_build_object('valuesRestored', v_restored, 'changedSinceAndKept', v_skipped, 'masterRestored', v_master_restored);
-  update public.master_party_updates set undone_by = auth.uid(), undone_at = now(), undo_result = v_result where id = p_update_id;
+  v_result := jsonb_build_object('scope', p_scope, 'valuesRestored', v_restored, 'changedSinceAndKept', v_skipped, 'masterRestored', v_master_restored);
+  if p_scope = 'bills' then
+    update public.master_party_updates set bills_undone_by = auth.uid(), bills_undone_at = now() where id = p_update_id;
+  else
+    update public.master_party_updates set undone_by = auth.uid(), undone_at = now(), undo_result = v_result where id = p_update_id;
+  end if;
   return v_result;
 end;
 $$;
-revoke all on function public.master_party_undo(bigint) from public, anon;
-grant execute on function public.master_party_undo(bigint) to authenticated;
+revoke all on function public.master_party_undo(bigint, text) from public, anon;
+grant execute on function public.master_party_undo(bigint, text) to authenticated;
 
 -- ---------- F. History for the master pages ----------
 create or replace function public.master_party_history(p_party_type text)
@@ -973,10 +988,12 @@ begin
       select u.id, u.party_id, u.master_old, u.master_new, u.include_bills, u.summary, u.applied_at,
         coalesce(ab.display_name, ab.email) as applied_by_name,
         u.undone_at, coalesce(ub.display_name, ub.email) as undone_by_name, u.undo_result,
+        u.bills_undone_at, coalesce(bb.display_name, bb.email) as bills_undone_by_name,
         (select count(*) from public.master_party_update_items i where i.update_id = u.id) as values_changed
       from public.master_party_updates u
       left join public.app_users ab on ab.id = u.applied_by
       left join public.app_users ub on ub.id = u.undone_by
+      left join public.app_users bb on bb.id = u.bills_undone_by
       where u.party_type = p_party_type
       order by u.applied_at desc
       limit 100

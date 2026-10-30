@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { formatCreatedOn } from "@/lib/exportColumns";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   getMasterPartyHistory,
   undoMasterPartyUpdate,
@@ -46,11 +47,12 @@ function usageLine(entry: MasterPartyHistoryEntry) {
   return parts.length ? `Updated ${parts.join(", ")}` : "No older records needed updating";
 }
 
-/** Approved master updates with Undo (migration 119). */
+/** Approved master updates; Undo is Creator-only (migration 119). */
 export default function MasterPartyHistoryDialog({ partyType, open, onOpenChange, onUndone }: MasterPartyHistoryDialogProps) {
+  const { isCreator } = useAuth();
   const [entries, setEntries] = useState<MasterPartyHistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [undoTarget, setUndoTarget] = useState<MasterPartyHistoryEntry | null>(null);
+  const [undoTarget, setUndoTarget] = useState<{ entry: MasterPartyHistoryEntry; scope: "all" | "bills" } | null>(null);
   const [undoing, setUndoing] = useState(false);
 
   useEffect(() => {
@@ -67,9 +69,9 @@ export default function MasterPartyHistoryDialog({ partyType, open, onOpenChange
     if (!undoTarget) return;
     setUndoing(true);
     try {
-      const result = await undoMasterPartyUpdate(undoTarget.id);
+      const result = await undoMasterPartyUpdate(undoTarget.entry.id, undoTarget.scope);
       toast.success(
-        `Undone. ${result.valuesRestored} values put back.` +
+        `${undoTarget.scope === "bills" ? "Bill changes undone" : "Undone"}. ${result.valuesRestored} values put back.` +
           (result.changedSinceAndKept > 0
             ? ` ${result.changedSinceAndKept} values were changed again since, so they were kept.`
             : "")
@@ -90,7 +92,9 @@ export default function MasterPartyHistoryDialog({ partyType, open, onOpenChange
         open={open}
         onOpenChange={onOpenChange}
         title="Change history"
-        description="Name, GST and address changes that were applied to older records. Undo puts everything back."
+        description={isCreator
+          ? "Name, GST and address changes that were applied to older records. You can undo any of them."
+          : "Name, GST and address changes that were applied to older records. Only the owner (Creator) can undo; ask them if something needs reverting."}
         loading={loading}
       >
         <div className="space-y-3 text-sm">
@@ -108,17 +112,30 @@ export default function MasterPartyHistoryDialog({ partyType, open, onOpenChange
                   <p className="text-xs text-muted-foreground">
                     By {entry.appliedByName || "Unknown user"} on {formatCreatedOn(entry.appliedAt)}
                   </p>
+                  {entry.billsUndoneAt && !entry.undoneAt ? (
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                      Bill changes undone by {entry.billsUndoneByName || "Unknown user"} on {formatCreatedOn(entry.billsUndoneAt)}
+                    </p>
+                  ) : null}
                   {entry.undoneAt ? (
                     <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
                       Undone by {entry.undoneByName || "Unknown user"} on {formatCreatedOn(entry.undoneAt)}
                     </p>
                   ) : null}
                 </div>
-                {!entry.undoneAt ? (
-                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setUndoTarget(entry)}>
-                    <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                    Undo
-                  </Button>
+                {isCreator && !entry.undoneAt ? (
+                  <div className="flex flex-wrap gap-2">
+                    {entry.includeBills && !entry.billsUndoneAt ? (
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setUndoTarget({ entry, scope: "bills" })}>
+                        <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                        Undo bills only
+                      </Button>
+                    ) : null}
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setUndoTarget({ entry, scope: "all" })}>
+                      <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                      Undo everything
+                    </Button>
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -129,13 +146,15 @@ export default function MasterPartyHistoryDialog({ partyType, open, onOpenChange
       <ConfirmDialog
         open={undoTarget !== null}
         onOpenChange={(o) => { if (!o && !undoing) setUndoTarget(null); }}
-        title="Undo this update?"
+        title={undoTarget?.scope === "bills" ? "Undo the bill changes?" : "Undo this update?"}
         description={
-          undoTarget
-            ? `This puts back the previous details (${changeLines(undoTarget).join("; ")}) on the master and on the ${undoTarget.valuesChanged} values that were updated` +
-              (undoTarget.includeBills ? ", including the bills" : "") +
-              ". Anything changed again since is kept as it is."
-            : undefined
+          !undoTarget
+            ? undefined
+            : undoTarget.scope === "bills"
+              ? "The bills go back to the billing party details printed on them before this update. LRs, DCs and POs keep the new details."
+              : `This puts back the previous details (${changeLines(undoTarget.entry).join("; ")}) on the master and on all ${undoTarget.entry.valuesChanged} values that were updated` +
+                (undoTarget.entry.includeBills && !undoTarget.entry.billsUndoneAt ? ", including the bills" : "") +
+                ". Anything changed again since is kept as it is."
         }
         confirmLabel="Undo"
         loading={undoing}

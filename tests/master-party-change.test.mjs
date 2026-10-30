@@ -41,7 +41,9 @@ test("every approved update keeps each old value, and Undo restores the master f
   assert.match(undo, /changed again after this update/);
   assert.match(undo, /%I is not distinct from \$3/);
   assert.match(undo, /raise exception 'Unexpected undo item\.'/);
-  assert.match(undo, /has_module_action\(v_perm, 'edit'\)/);
+  assert.match(undo, /if auth\.uid\(\) is null or not public\.is_creator\(\) then\s+raise exception 'Only the Creator can undo/);
+  assert.match(undo, /where update_id = p_update_id and \(p_scope = 'all' or table_name = 'bills'\)/);
+  assert.match(undo, /if p_scope = 'all' then\s+-- Master first/);
   assert.match(sql, /if coalesce\(current_setting\('app\.system_snapshot_refresh', true\), 'off'\) = 'on' then\s+return null;/);
 });
 
@@ -99,4 +101,11 @@ test("both masters ask after saving a final record", () => {
     assert.match(src, /previewMasterPartyChange\("(customer|billing_party)", partyId\)/, p);
     assert.match(src, /<MasterPartyChangeDialog/, p);
   }
+});
+
+test("Undo buttons are shown to the Creator only, with an Undo bills only choice", () => {
+  const hist = read("components/common/MasterPartyHistoryDialog.tsx");
+  assert.match(hist, /\{isCreator && !entry\.undoneAt \? \(/);
+  assert.match(hist, /Undo bills only/);
+  assert.match(hist, /Only the owner \(Creator\) can undo/);
 });

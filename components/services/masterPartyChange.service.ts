@@ -90,6 +90,8 @@ export interface MasterPartyHistoryEntry {
   appliedByName: string;
   undoneAt: string | null;
   undoneByName: string;
+  billsUndoneAt: string | null;
+  billsUndoneByName: string;
   valuesChanged: number;
 }
 
@@ -108,6 +110,8 @@ export async function getMasterPartyHistory(partyType: MasterPartyType): Promise
     appliedByName: String(r.applied_by_name ?? ""),
     undoneAt: typeof r.undone_at === "string" ? r.undone_at : null,
     undoneByName: String(r.undone_by_name ?? ""),
+    billsUndoneAt: typeof r.bills_undone_at === "string" ? r.bills_undone_at : null,
+    billsUndoneByName: String(r.bills_undone_by_name ?? ""),
     valuesChanged: Number(r.values_changed ?? 0) || 0,
   }));
 }
@@ -117,9 +121,12 @@ export interface MasterPartyUndoResult {
   changedSinceAndKept: number;
 }
 
-/** Put back the master and every value an update changed (where unchanged since). */
-export async function undoMasterPartyUpdate(updateId: number): Promise<MasterPartyUndoResult> {
-  const { data, error } = await supabase.rpc("master_party_undo", { p_update_id: updateId });
+/**
+ * Creator only. "all": put back the master and every value the update changed;
+ * "bills": put back only the bills (where unchanged since).
+ */
+export async function undoMasterPartyUpdate(updateId: number, scope: "all" | "bills"): Promise<MasterPartyUndoResult> {
+  const { data, error } = await supabase.rpc("master_party_undo", { p_update_id: updateId, p_scope: scope });
   if (error) throw error;
   const d = (data ?? {}) as Record<string, unknown>;
   return {
