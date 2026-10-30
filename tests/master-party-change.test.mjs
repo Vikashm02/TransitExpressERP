@@ -24,10 +24,33 @@ test("simple guarded rules are the exact live definition plus one switch line", 
   }
 });
 
-test("frozen-name rules only relax under the system switch", () => {
-  assert.match(fn(mig, "transport_bid_before_write"), new RegExp(`if ${FLAG.replace(/[()'.]/g, "\\$&")} then\\s+select name into new\\.billing_party_name`));
-  assert.match(fn(mig, "purchase_order_before_write"), /elsif coalesce\(current_setting\('app\.system_snapshot_refresh', true\), 'off'\) = 'on' and new\.consignee_id is not null then\s+new\.consignee := v_consignee;/);
-  assert.match(fn(mig, "set_consignee_conversations_audit"), /if not \(coalesce\(current_setting\('app\.system_snapshot_refresh', true\), 'off'\) = 'on'\) then\s+new\.customer_name := old\.customer_name;/);
+test("frozen-name rules keep the name a system update sets (so Undo can restore it)", () => {
+  const keep = (col) => new RegExp(`if not \\(coalesce\\(current_setting\\('app\\.system_snapshot_refresh', true\\), 'off'\\) = 'on'\\) then\\s+new\\.${col} := old\\.${col};`);
+  const bid = fn(mig, "transport_bid_before_write");
+  for (const col of ["billing_party_name", "consignor_name", "consignee_name"]) assert.match(bid, keep(col), col);
+  assert.match(fn(mig, "set_consignee_conversations_audit"), keep("customer_name"));
+  assert.match(fn(mig, "purchase_order_before_write"), /elsif not \(coalesce\(current_setting\('app\.system_snapshot_refresh', true\), 'off'\) = 'on'\) then\s+new\.consignee := old\.consignee;/);
+});
+
+test("every approved update keeps each old value, and Undo restores the master first", () => {
+  const body = sql.slice(sql.indexOf("function public.master_party_change("));
+  const capture = body.indexOf("insert into public.master_party_update_items");
+  assert.ok(capture > 0 && capture < body.indexOf("update public.lrs set"));
+  const undo = sql.slice(sql.indexOf("function public.master_party_undo("));
+  assert.ok(undo.indexOf("update public.customers set") < undo.indexOf("for v_item in"));
+  assert.match(undo, /changed again after this update/);
+  assert.match(undo, /%I is not distinct from \$3/);
+  assert.match(undo, /raise exception 'Unexpected undo item\.'/);
+  assert.match(undo, /has_module_action\(v_perm, 'edit'\)/);
+  assert.match(sql, /if coalesce\(current_setting\('app\.system_snapshot_refresh', true\), 'off'\) = 'on' then\s+return null;/);
+});
+
+test("history with Undo is offered in both masters to editors", () => {
+  for (const p of ["components/customer/CustomerListPage.tsx", "components/billingParty/BillingPartyListPage.tsx"]) {
+    const src = read(p);
+    assert.match(src, /\.\.\.\(canEdit\s+\? \[\{ key: "change-history", label: "Change history"/, p);
+    assert.match(src, /<MasterPartyHistoryDialog/, p);
+  }
 });
 
 test("Make Permanent no longer counts as staff edits", () => {

@@ -7,7 +7,8 @@ import { createdOnColumn, exportCsv, type ExportColumn } from "@/lib/exportColum
 import { matchesListSearch } from "@/lib/listSearch";
 import { toast } from "sonner";
 import { getUserFacingError } from "@/lib/errors/getUserFacingError";
-import { FileDown, Upload } from "lucide-react";
+import { FileDown, History, Upload } from "lucide-react";
+import MasterPartyHistoryDialog from "@/components/common/MasterPartyHistoryDialog";
 
 import PageHeader from "@/components/ui/PageHeader";
 import SearchToolbar from "@/components/common/SearchToolbar";
@@ -57,6 +58,7 @@ export default function CustomerListPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   /** Older-records decision after a master detail change (migration 119). */
   const [partyChange, setPartyChange] = useState<{ id: number; preview: MasterPartyChangePreview } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -229,6 +231,9 @@ export default function CustomerListPage() {
         onRefresh={loadCustomers}
         onExport={handleExport}
         actions={[
+          ...(canEdit
+            ? [{ key: "change-history", label: "Change history", icon: History, onClick: () => setHistoryOpen(true) }]
+            : []),
           {
             key: "download-template",
             label: "Download Template",
@@ -298,6 +303,13 @@ export default function CustomerListPage() {
         variant="destructive"
         loading={deleting}
         onConfirm={handleConfirmDelete}
+      />
+
+      <MasterPartyHistoryDialog
+        partyType="customer"
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        onUndone={() => void loadCustomers()}
       />
 
       <MasterPartyChangeDialog

@@ -78,3 +78,52 @@ export async function applyMasterPartyChange(
   });
   if (error) throw error;
 }
+
+export interface MasterPartyHistoryEntry {
+  id: number;
+  partyId: number;
+  oldValues: MasterPartyDetails;
+  newValues: MasterPartyDetails;
+  includeBills: boolean;
+  summary: Record<string, unknown> | null;
+  appliedAt: string;
+  appliedByName: string;
+  undoneAt: string | null;
+  undoneByName: string;
+  valuesChanged: number;
+}
+
+/** Approved master updates, newest first ([] before migration 119). */
+export async function getMasterPartyHistory(partyType: MasterPartyType): Promise<MasterPartyHistoryEntry[]> {
+  const { data, error } = await supabase.rpc("master_party_history", { p_party_type: partyType });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id: Number(r.id),
+    partyId: Number(r.party_id),
+    oldValues: details(r.master_old),
+    newValues: details(r.master_new),
+    includeBills: r.include_bills === true,
+    summary: (r.summary as Record<string, unknown> | null) ?? null,
+    appliedAt: String(r.applied_at ?? ""),
+    appliedByName: String(r.applied_by_name ?? ""),
+    undoneAt: typeof r.undone_at === "string" ? r.undone_at : null,
+    undoneByName: String(r.undone_by_name ?? ""),
+    valuesChanged: Number(r.values_changed ?? 0) || 0,
+  }));
+}
+
+export interface MasterPartyUndoResult {
+  valuesRestored: number;
+  changedSinceAndKept: number;
+}
+
+/** Put back the master and every value an update changed (where unchanged since). */
+export async function undoMasterPartyUpdate(updateId: number): Promise<MasterPartyUndoResult> {
+  const { data, error } = await supabase.rpc("master_party_undo", { p_update_id: updateId });
+  if (error) throw error;
+  const d = (data ?? {}) as Record<string, unknown>;
+  return {
+    valuesRestored: Number(d.valuesRestored ?? 0) || 0,
+    changedSinceAndKept: Number(d.changedSinceAndKept ?? 0) || 0,
+  };
+}

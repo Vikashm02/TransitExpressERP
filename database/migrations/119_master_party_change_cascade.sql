@@ -12,7 +12,9 @@
 --      nothing visible changes. New bills copy the details when created.
 --   B. Every saved change to a final customer or billing party's name, GST,
 --      address or city is recorded in master_party_changes (old → new).
---   C. master_party_change(type, id, action):
+--   C. master_party_change(type, id, action) — every approved update keeps
+--      the exact old value of each field it changes (master_party_updates /
+--      master_party_update_items), so it can be undone:
 --        'preview'          → counts of LRs, DCs, POs, Bids, conversations and
 --                             bills that use the party (no change)
 --        'apply'            → updates those older records (not bills)
@@ -21,12 +23,15 @@
 --        'skip'             → leaves older records as they are
 --      Older LRs linked only by name are matched by the old name, but only
 --      when no other master record has that name.
+--   E. master_party_undo(update_id): puts the master back first, then every
+--      changed value, only where nothing was changed again since.
+--      master_party_history lists updates (with Undo) for the master pages.
 --   D. A "system update" switch (app.system_snapshot_refresh) used only by C
 --      and by Make Permanent (migration 118). While on, these existing rules
 --      do not act: LR edit history (staff accuracy), PO auto-create from LR,
 --      route defaults, LR PO re-validation for the same PO; and the frozen
 --      name copies on Bids, POs (consignee) and consignee conversations are
---      allowed to take the master's current name. Normal saves are unchanged.
+--      allowed to keep the name the update sets. Normal saves are unchanged.
 --      Each rule below is the exact live definition plus that one check.
 --
 -- Data safety:
@@ -47,7 +52,7 @@ CREATE OR REPLACE FUNCTION public.record_lr_edit_event()
  SET search_path TO 'public'
 AS $function$
 begin
-  -- System snapshot refresh (master rename / Make Permanent) is not a staff edit.
+  -- System snapshot refresh (master rename / undo / Make Permanent) is not a staff edit.
   if coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on' then return new; end if;
   -- Preserve migration 038 qualification exactly: final -> final and a
   -- quality business-content change. Draft saves, finalization, status-only
@@ -248,9 +253,8 @@ begin
     select name into new.billing_party_name
     from public.billing_parties where id = new.billing_party_id;
   else
-    if coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on' then
-      select name into new.billing_party_name from public.billing_parties where id = new.billing_party_id;
-    else
+    -- System update (master change / undo) sets this copy itself.
+    if not (coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on') then
       new.billing_party_name := old.billing_party_name;
     end if;
   end if;
@@ -262,9 +266,8 @@ begin
       from public.customers where id = new.consignor_id;
     end if;
   else
-    if coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on' and new.consignor_id is not null then
-      select name into new.consignor_name from public.customers where id = new.consignor_id;
-    else
+    -- System update (master change / undo) sets this copy itself.
+    if not (coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on') then
       new.consignor_name := old.consignor_name;
     end if;
   end if;
@@ -276,9 +279,8 @@ begin
       from public.customers where id = new.consignee_id;
     end if;
   else
-    if coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on' and new.consignee_id is not null then
-      select name into new.consignee_name from public.customers where id = new.consignee_id;
-    else
+    -- System update (master change / undo) sets this copy itself.
+    if not (coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on') then
       new.consignee_name := old.consignee_name;
     end if;
   end if;
@@ -370,9 +372,7 @@ begin
     new.created_at := old.created_at;
     if new.consignee_id is distinct from old.consignee_id then
       new.consignee := v_consignee;
-    elsif coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on' and new.consignee_id is not null then
-      new.consignee := v_consignee;
-    else
+    elsif not (coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on') then
       new.consignee := old.consignee;
     end if;
   end if;
@@ -418,6 +418,7 @@ begin
     new.original_remark := old.original_remark;
     new.input_type := old.input_type;
     new.customer_id := old.customer_id;
+    -- System update (master change / undo) sets this copy itself.
     if not (coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on') then
       new.customer_name := old.customer_name;
     end if;
@@ -575,6 +576,10 @@ security definer
 set search_path = ''
 as $$
 begin
+  -- Undo restoring the master is not a new change.
+  if coalesce(current_setting('app.system_snapshot_refresh', true), 'off') = 'on' then
+    return null;
+  end if;
   if coalesce(old.entry_status, 'final') <> 'final' or coalesce(new.entry_status, 'final') <> 'final' then
     return null;
   end if;
@@ -602,7 +607,40 @@ create trigger record_master_party_change
   after update on public.billing_parties
   for each row execute function public.record_master_party_change();
 
--- ---------- C. Preview / apply the change to older records ----------
+
+-- ---------- C. Approved updates are kept with every old value (for Undo) ----------
+create table if not exists public.master_party_updates (
+  id bigint generated always as identity primary key,
+  party_type text not null check (party_type in ('customer', 'billing_party')),
+  party_id bigint not null,
+  change_ids bigint[] not null,
+  master_old jsonb not null,
+  master_new jsonb not null,
+  include_bills boolean not null default false,
+  summary jsonb,
+  applied_by uuid,
+  applied_at timestamptz not null default now(),
+  undone_by uuid,
+  undone_at timestamptz,
+  undo_result jsonb
+);
+alter table public.master_party_updates enable row level security;
+revoke all on public.master_party_updates from anon, authenticated;
+
+create table if not exists public.master_party_update_items (
+  id bigint generated always as identity primary key,
+  update_id bigint not null references public.master_party_updates(id) on delete restrict,
+  table_name text not null check (table_name in ('lrs', 'purchase_orders', 'transport_bids', 'consignee_conversations', 'bills')),
+  record_id text not null,
+  column_name text not null,
+  old_value text,
+  new_value text
+);
+create index if not exists master_party_update_items_update on public.master_party_update_items (update_id);
+alter table public.master_party_update_items enable row level security;
+revoke all on public.master_party_update_items from anon, authenticated;
+
+-- ---------- D. Preview / apply / skip ----------
 -- p_action: 'preview' (counts only, no change) | 'apply' | 'apply_with_bills' | 'skip'
 create or replace function public.master_party_change(
   p_party_type text,
@@ -622,17 +660,17 @@ declare
   v_old_names text[];
   v_safe_names text[];
   v_unsafe_names text[];
-  v_lr_a bigint[] := '{}';   -- customer: LRs where it is consignor; billing party: LRs billed to it
-  v_lr_b bigint[] := '{}';   -- customer: LRs where it is consignee
-  v_po_a bigint[] := '{}';   -- customer: POs with it as consignor (text)
-  v_po_b bigint[] := '{}';   -- customer: POs with it as consignee
+  v_po_a bigint[] := '{}';
+  v_po_b bigint[] := '{}';
   v_bids bigint[] := '{}';
   v_convs bigint[] := '{}';
   v_bills bigint[] := '{}';
+  v_lr_a_ids uuid[] := '{}';   -- customer: LRs where it is consignor; billing party: LRs billed to it
+  v_lr_b_ids uuid[] := '{}';   -- customer: LRs where it is consignee
   v_skipped integer := 0;
   v_dcs integer := 0;
   v_result jsonb;
-  v_n integer;
+  v_update_id bigint;
 begin
   if v_perm is null or p_action not in ('preview', 'apply', 'apply_with_bills', 'skip') then
     raise exception 'Unknown master change request.';
@@ -655,7 +693,6 @@ begin
     return jsonb_build_object('skipped', true);
   end if;
 
-  -- Current master values (the new details) and what changed since the first pending change.
   if p_party_type = 'customer' then
     select name, gst, address, city into v_name, v_gst, v_address, v_city from public.customers where id = p_party_id;
   else
@@ -684,9 +721,9 @@ begin
   select coalesce(array_agg(n), '{}') into v_unsafe_names from unnest(v_old_names) n where not (n = any(v_safe_names));
 
   if p_party_type = 'customer' then
-    select coalesce(array_agg(id), '{}') into v_lr_a from public.lrs
+    select coalesce(array_agg(id), '{}') into v_lr_a_ids from public.lrs
       where consignor_id = p_party_id or (consignor_id is null and upper(trim(consignor)) = any(v_safe_names));
-    select coalesce(array_agg(id), '{}') into v_lr_b from public.lrs
+    select coalesce(array_agg(id), '{}') into v_lr_b_ids from public.lrs
       where consignee_id = p_party_id or (consignee_id is null and upper(trim(consignee)) = any(v_safe_names));
     select count(*) into v_skipped from public.lrs
       where (consignor_id is null and upper(trim(consignor)) = any(v_unsafe_names))
@@ -699,7 +736,7 @@ begin
     end if;
   else
     if v_name_changed then
-      select coalesce(array_agg(id), '{}') into v_lr_a from public.lrs
+      select coalesce(array_agg(id), '{}') into v_lr_a_ids from public.lrs
         where billing_party_id = p_party_id or (billing_party_id is null and upper(trim(customer)) = any(v_safe_names));
       select count(*) into v_skipped from public.lrs
         where billing_party_id is null and upper(trim(customer)) = any(v_unsafe_names);
@@ -709,14 +746,14 @@ begin
   end if;
 
   select count(*) into v_dcs from public.delivery_challans d
-    where d.lr_number in (select lr_number from public.lrs where id = any(v_lr_a || v_lr_b));
+    where d.lr_number in (select lr_number from public.lrs where id = any(v_lr_a_ids || v_lr_b_ids));
 
   v_result := jsonb_build_object(
     'partyType', p_party_type,
     'oldValues', v_first,
     'newValues', jsonb_build_object('name', v_name, 'gst', v_gst, 'address', v_address, 'city', v_city),
     'changed', jsonb_build_object('name', v_name_changed, 'gst', v_gst_changed, 'address', v_address_changed),
-    'lrs', (select count(distinct x) from unnest(v_lr_a || v_lr_b) x),
+    'lrs', (select count(distinct x) from unnest(v_lr_a_ids || v_lr_b_ids) x),
     'deliveryChallans', v_dcs,
     'purchaseOrders', (select count(distinct x) from unnest(v_po_a || v_po_b) x),
     'bids', cardinality(v_bids),
@@ -729,7 +766,62 @@ begin
     return v_result;
   end if;
 
-  -- Apply. System refresh: no per-LR "LR updated" alerts, not counted as staff
+  insert into public.master_party_updates (party_type, party_id, change_ids, master_old, master_new, include_bills, applied_by)
+  values (p_party_type, p_party_id, v_change_ids, v_first, v_result->'newValues', p_action = 'apply_with_bills', auth.uid())
+  returning id into v_update_id;
+
+  -- Keep every value that is about to change (exactly what Undo puts back).
+  if p_party_type = 'customer' then
+    insert into public.master_party_update_items (update_id, table_name, record_id, column_name, old_value, new_value)
+    select v_update_id, 'lrs', l.id::text, x.col, x.old, x.new
+    from public.lrs l
+    cross join lateral (values
+      ('consignor', l.consignor, v_name, v_name_changed and l.id = any(v_lr_a_ids)),
+      ('consignor_gst', l.consignor_gst, v_gst, v_gst_changed and l.id = any(v_lr_a_ids)),
+      ('consignor_address', l.consignor_address, v_address, v_address_changed and l.id = any(v_lr_a_ids)),
+      ('consignee', l.consignee, v_name, v_name_changed and l.id = any(v_lr_b_ids)),
+      ('consignee_gst', l.consignee_gst, v_gst, v_gst_changed and l.id = any(v_lr_b_ids)),
+      ('consignee_address', l.consignee_address, v_address, v_address_changed and l.id = any(v_lr_b_ids))
+    ) as x(col, old, new, applies)
+    where l.id = any(v_lr_a_ids || v_lr_b_ids) and x.applies and x.old is distinct from x.new;
+
+    insert into public.master_party_update_items (update_id, table_name, record_id, column_name, old_value, new_value)
+    select v_update_id, 'purchase_orders', id::text, 'consignor', consignor, v_name from public.purchase_orders
+      where id = any(v_po_a) and consignor is distinct from v_name
+    union all
+    select v_update_id, 'purchase_orders', id::text, 'consignee', consignee, v_name from public.purchase_orders
+      where id = any(v_po_b) and consignee is distinct from v_name
+    union all
+    select v_update_id, 'transport_bids', id::text, 'consignor_name', consignor_name, v_name from public.transport_bids
+      where id = any(v_bids) and consignor_id = p_party_id and consignor_name is distinct from v_name
+    union all
+    select v_update_id, 'transport_bids', id::text, 'consignee_name', consignee_name, v_name from public.transport_bids
+      where id = any(v_bids) and consignee_id = p_party_id and consignee_name is distinct from v_name
+    union all
+    select v_update_id, 'consignee_conversations', id::text, 'customer_name', customer_name, v_name from public.consignee_conversations
+      where id = any(v_convs) and customer_name is distinct from v_name;
+  else
+    insert into public.master_party_update_items (update_id, table_name, record_id, column_name, old_value, new_value)
+    select v_update_id, 'lrs', id::text, 'customer', customer, v_name from public.lrs
+      where id = any(v_lr_a_ids) and customer is distinct from v_name
+    union all
+    select v_update_id, 'transport_bids', id::text, 'billing_party_name', billing_party_name, v_name from public.transport_bids
+      where id = any(v_bids) and billing_party_name is distinct from v_name;
+    if p_action = 'apply_with_bills' then
+      insert into public.master_party_update_items (update_id, table_name, record_id, column_name, old_value, new_value)
+      select v_update_id, 'bills', b.id::text, x.col, x.old, x.new
+      from public.bills b
+      cross join lateral (values
+        ('party_name', b.party_name, v_name),
+        ('party_address', b.party_address, v_address),
+        ('party_city', b.party_city, v_city),
+        ('party_gst', b.party_gst, v_gst)
+      ) as x(col, old, new)
+      where b.id = any(v_bills) and x.old is distinct from x.new;
+    end if;
+  end if;
+
+  -- Apply. System update: no per-LR "LR updated" alerts, not counted as staff
   -- edits, routes/POs untouched; DCs follow their LRs through the existing sync.
   perform set_config('app.suppress_lr_updated_notifications', 'on', true);
   perform set_config('app.system_snapshot_refresh', 'on', true);
@@ -739,19 +831,20 @@ begin
       consignor = case when v_name_changed then v_name else consignor end,
       consignor_gst = case when v_gst_changed then v_gst else consignor_gst end,
       consignor_address = case when v_address_changed then v_address else consignor_address end
-    where id = any(v_lr_a);
+    where id = any(v_lr_a_ids);
     update public.lrs set
       consignee = case when v_name_changed then v_name else consignee end,
       consignee_gst = case when v_gst_changed then v_gst else consignee_gst end,
       consignee_address = case when v_address_changed then v_address else consignee_address end
-    where id = any(v_lr_b);
+    where id = any(v_lr_b_ids);
     update public.purchase_orders set consignor = v_name where id = any(v_po_a);
     update public.purchase_orders set consignee = v_name where id = any(v_po_b);
-    update public.transport_bids set updated_at = now() where id = any(v_bids);        -- names refreshed by the bid trigger
+    update public.transport_bids set consignor_name = v_name where id = any(v_bids) and consignor_id = p_party_id;
+    update public.transport_bids set consignee_name = v_name where id = any(v_bids) and consignee_id = p_party_id;
     update public.consignee_conversations set customer_name = v_name where id = any(v_convs);
   else
-    update public.lrs set customer = v_name where id = any(v_lr_a);
-    update public.transport_bids set updated_at = now() where id = any(v_bids);        -- name refreshed by the bid trigger
+    update public.lrs set customer = v_name where id = any(v_lr_a_ids);
+    update public.transport_bids set billing_party_name = v_name where id = any(v_bids);
     if p_action = 'apply_with_bills' then
       update public.bills set party_name = v_name, party_address = v_address, party_city = v_city, party_gst = v_gst
       where id = any(v_bills);
@@ -761,7 +854,8 @@ begin
   perform set_config('app.suppress_lr_updated_notifications', 'off', true);
   perform set_config('app.system_snapshot_refresh', 'off', true);
 
-  v_result := v_result || jsonb_build_object('billsUpdated', p_action = 'apply_with_bills' and cardinality(v_bills) > 0);
+  v_result := v_result || jsonb_build_object('billsUpdated', p_action = 'apply_with_bills' and cardinality(v_bills) > 0, 'updateId', v_update_id);
+  update public.master_party_updates set summary = v_result where id = v_update_id;
   update public.master_party_changes
   set status = 'applied', applied_by = auth.uid(), applied_at = now(), result = v_result
   where id = any(v_change_ids);
@@ -770,5 +864,127 @@ end;
 $$;
 revoke all on function public.master_party_change(text, bigint, text) from public, anon;
 grant execute on function public.master_party_change(text, bigint, text) to authenticated;
+
+-- ---------- E. Undo an approved update ----------
+-- Puts back the exact old values, record by record, plus the master's old
+-- details. A value that was changed again since is left alone and reported.
+create or replace function public.master_party_undo(p_update_id bigint)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_update public.master_party_updates;
+  v_perm text;
+  v_item record;
+  v_restored integer := 0;
+  v_skipped integer := 0;
+  v_rows integer;
+  v_master_restored boolean := false;
+  v_result jsonb;
+begin
+  select * into v_update from public.master_party_updates where id = p_update_id for update;
+  if not found then raise exception 'This update was not found. Refresh and try again.'; end if;
+  v_perm := case v_update.party_type when 'customer' then 'customers' else 'billing_parties' end;
+  if auth.uid() is null or not public.has_module_action(v_perm, 'edit') then
+    raise exception 'You do not have permission to edit this master.';
+  end if;
+  if v_update.undone_at is not null then
+    raise exception 'This update was already undone.';
+  end if;
+
+  perform set_config('app.suppress_lr_updated_notifications', 'on', true);
+  perform set_config('app.system_snapshot_refresh', 'on', true);
+
+  -- Master first: linked LRs are checked against the master's current name.
+  if v_update.party_type = 'customer' then
+    update public.customers set
+      name = v_update.master_old->>'name', gst = v_update.master_old->>'gst',
+      address = v_update.master_old->>'address', city = v_update.master_old->>'city'
+    where id = v_update.party_id
+      and (name, gst, address, city) is not distinct from
+          (v_update.master_new->>'name', v_update.master_new->>'gst', v_update.master_new->>'address', v_update.master_new->>'city');
+  else
+    update public.billing_parties set
+      name = v_update.master_old->>'name', gst = v_update.master_old->>'gst',
+      address = v_update.master_old->>'address', city = v_update.master_old->>'city'
+    where id = v_update.party_id
+      and (name, gst, address, city) is not distinct from
+          (v_update.master_new->>'name', v_update.master_new->>'gst', v_update.master_new->>'address', v_update.master_new->>'city');
+  end if;
+  get diagnostics v_rows = row_count;
+  v_master_restored := v_rows > 0;
+  if not v_master_restored then
+    raise exception 'This party''s details were changed again after this update. Undo the later update first (or edit the master back by hand).';
+  end if;
+
+  for v_item in
+    select * from public.master_party_update_items where update_id = p_update_id order by id desc
+  loop
+    if (v_item.table_name, v_item.column_name) not in (
+      ('lrs', 'consignor'), ('lrs', 'consignor_gst'), ('lrs', 'consignor_address'),
+      ('lrs', 'consignee'), ('lrs', 'consignee_gst'), ('lrs', 'consignee_address'), ('lrs', 'customer'),
+      ('purchase_orders', 'consignor'), ('purchase_orders', 'consignee'),
+      ('transport_bids', 'consignor_name'), ('transport_bids', 'consignee_name'), ('transport_bids', 'billing_party_name'),
+      ('consignee_conversations', 'customer_name'),
+      ('bills', 'party_name'), ('bills', 'party_address'), ('bills', 'party_city'), ('bills', 'party_gst')
+    ) then
+      raise exception 'Unexpected undo item.';
+    end if;
+    execute format(
+      'update public.%I set %I = $1 where id::text = $2 and %I is not distinct from $3',
+      v_item.table_name, v_item.column_name, v_item.column_name
+    ) using v_item.old_value, v_item.record_id, v_item.new_value;
+    get diagnostics v_rows = row_count;
+    if v_rows > 0 then v_restored := v_restored + 1; else v_skipped := v_skipped + 1; end if;
+  end loop;
+
+
+  perform set_config('app.suppress_lr_updated_notifications', 'off', true);
+  perform set_config('app.system_snapshot_refresh', 'off', true);
+
+  v_result := jsonb_build_object('valuesRestored', v_restored, 'changedSinceAndKept', v_skipped, 'masterRestored', v_master_restored);
+  update public.master_party_updates set undone_by = auth.uid(), undone_at = now(), undo_result = v_result where id = p_update_id;
+  return v_result;
+end;
+$$;
+revoke all on function public.master_party_undo(bigint) from public, anon;
+grant execute on function public.master_party_undo(bigint) to authenticated;
+
+-- ---------- F. History for the master pages ----------
+create or replace function public.master_party_history(p_party_type text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_perm text := case p_party_type when 'customer' then 'customers' when 'billing_party' then 'billing_parties' end;
+begin
+  if v_perm is null then raise exception 'Unknown master.'; end if;
+  if auth.uid() is null or not public.has_module_action(v_perm, 'edit') then
+    raise exception 'You do not have permission to view this history.';
+  end if;
+  return (
+    select coalesce(jsonb_agg(row_to_json(h)::jsonb order by h.applied_at desc), '[]'::jsonb)
+    from (
+      select u.id, u.party_id, u.master_old, u.master_new, u.include_bills, u.summary, u.applied_at,
+        coalesce(ab.display_name, ab.email) as applied_by_name,
+        u.undone_at, coalesce(ub.display_name, ub.email) as undone_by_name, u.undo_result,
+        (select count(*) from public.master_party_update_items i where i.update_id = u.id) as values_changed
+      from public.master_party_updates u
+      left join public.app_users ab on ab.id = u.applied_by
+      left join public.app_users ub on ub.id = u.undone_by
+      where u.party_type = p_party_type
+      order by u.applied_at desc
+      limit 100
+    ) h
+  );
+end;
+$$;
+revoke all on function public.master_party_history(text) from public, anon;
+grant execute on function public.master_party_history(text) to authenticated;
 
 commit;
