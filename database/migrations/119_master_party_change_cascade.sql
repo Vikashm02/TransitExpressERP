@@ -665,7 +665,7 @@ declare
   v_unsafe_names text[];
   v_po_a bigint[] := '{}';
   v_po_b bigint[] := '{}';
-  v_bids bigint[] := '{}';
+  v_bids uuid[] := '{}';
   v_convs bigint[] := '{}';
   v_bills bigint[] := '{}';
   v_lr_a_ids uuid[] := '{}';   -- customer: LRs where it is consignor; billing party: LRs billed to it
