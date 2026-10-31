@@ -32,6 +32,7 @@ const emptyBillingParty: BillingPartyMaster = {
   entryStatus: "final",
   poNumber: "",
   concernPerson: "",
+  vendorCode: "",
   shortCode: "",
   paymentCycleDays: 0,
 };
