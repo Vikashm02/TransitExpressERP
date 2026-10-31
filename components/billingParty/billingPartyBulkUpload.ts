@@ -247,6 +247,7 @@ export async function parseAndValidateBillingPartyUpload(
       entryStatus: "final",
       poNumber,
       concernPerson,
+      vendorCode: "",
       shortCode,
       paymentCycleDays,
     };

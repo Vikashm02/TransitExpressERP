@@ -80,9 +80,19 @@ export default function ShareBillDialog({ open, onOpenChange, billId }: ShareBil
       setGenerating(true);
 
       const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(captureRef.current, {
+      const root = captureRef.current;
+      // Logo / signature / stamp live on Supabase Storage (another origin):
+      // wait for them, and let html2canvas read them via CORS, or they are
+      // left out of the image.
+      await Promise.all(
+        Array.from(root.querySelectorAll("img")).map((img) =>
+          img.complete ? null : new Promise((resolve) => { img.onload = img.onerror = resolve; })
+        )
+      );
+      const capture = (element: HTMLElement) => html2canvas(element, {
         scale: 2,
         backgroundColor: "#ffffff",
+        useCORS: true,
         // See components/lr/ShareLRDialog.tsx for the full explanation:
         // the app's global theme defines every color token via `oklch()`,
         // which html2canvas's color parser can't read. Overriding the
@@ -144,63 +154,67 @@ export default function ShareBillDialog({ open, onOpenChange, billId }: ShareBil
       let file: File;
 
       if (format === "jpg") {
+        const canvas = await capture(root);
         const blob: Blob = await new Promise((resolve, reject) =>
           canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Unable to generate JPG."))), "image/jpeg", 0.95)
         );
         file = new File([blob], fileName, { type: "image/jpeg" });
       } else {
         const { jsPDF } = await import("jspdf");
-        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
 
-        // A Bill's captured height varies with its LR count, so it's
-        // sliced into one PDF page per A4-page-worth of canvas pixels
-        // (at the canvas's own px-per-mm ratio) rather than squeezing
-        // the whole tall capture onto a single page.
-        const pageHeightPx = (canvas.width * pageHeight) / pageWidth;
-
-        let renderedPx = 0;
+        // Each bill page ([data-bill-sheet]) starts a new PDF page; a sheet
+        // taller than one A4 page (a long LR list) is sliced at the
+        // canvas's own px-per-mm ratio rather than squeezed onto one page.
+        const sheets = Array.from(root.querySelectorAll<HTMLElement>("[data-bill-sheet]"));
         let pageIndex = 0;
 
-        while (renderedPx < canvas.height) {
-          const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
+        for (const sheet of sheets.length ? sheets : [root]) {
+          const canvas = await capture(sheet);
+          const pageHeightPx = (canvas.width * pageHeight) / pageWidth;
+          let renderedPx = 0;
 
-          const pageCanvas = document.createElement("canvas");
-          pageCanvas.width = canvas.width;
-          pageCanvas.height = sliceHeightPx;
+          while (renderedPx < canvas.height) {
+            const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
 
-          const ctx = pageCanvas.getContext("2d");
-          if (!ctx) break;
+            const pageCanvas = document.createElement("canvas");
+            pageCanvas.width = canvas.width;
+            pageCanvas.height = sliceHeightPx;
 
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-          ctx.drawImage(
-            canvas,
-            0,
-            renderedPx,
-            canvas.width,
-            sliceHeightPx,
-            0,
-            0,
-            canvas.width,
-            sliceHeightPx
-          );
+            const ctx = pageCanvas.getContext("2d");
+            if (!ctx) break;
 
-          const sliceHeightMm = (sliceHeightPx * pageWidth) / canvas.width;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+            ctx.drawImage(
+              canvas,
+              0,
+              renderedPx,
+              canvas.width,
+              sliceHeightPx,
+              0,
+              0,
+              canvas.width,
+              sliceHeightPx
+            );
 
-          if (pageIndex > 0) pdf.addPage();
-          pdf.addImage(
-            pageCanvas.toDataURL("image/jpeg", 0.95),
-            "JPEG",
-            0,
-            0,
-            pageWidth,
-            sliceHeightMm
-          );
+            const sliceHeightMm = (sliceHeightPx * pageWidth) / canvas.width;
 
-          renderedPx += sliceHeightPx;
-          pageIndex += 1;
+            if (pageIndex > 0) pdf.addPage();
+            pdf.addImage(
+              pageCanvas.toDataURL("image/jpeg", 0.95),
+              "JPEG",
+              0,
+              0,
+              pageWidth,
+              sliceHeightMm
+            );
+
+            renderedPx += sliceHeightPx;
+            pageIndex += 1;
+          }
         }
 
         const blob = pdf.output("blob");

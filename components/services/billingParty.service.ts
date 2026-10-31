@@ -21,6 +21,7 @@ function fromRow(row: Record<string, unknown>): BillingPartyRecord {
     created_at: created_at as string | undefined,
     ...mapped,
     entryStatus: mapped.entryStatus === "draft" ? "draft" : "final",
+    vendorCode: typeof mapped.vendorCode === "string" ? mapped.vendorCode : "",
   };
 }
 

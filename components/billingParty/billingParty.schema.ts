@@ -43,6 +43,8 @@ export const billingPartySchema = z.object({
   // Billing Party is selected (see components/billing).
   poNumber: z.string().trim(),
   concernPerson: z.string().trim(),
+  // Vendor code this party has given us; printed on the bill (migration 120).
+  vendorCode: z.string().trim(),
   // Manually-entered prefix (e.g. "ACC", "ZIGMA") used to build Credit
   // Note / Debit Note numbers ({shortCode}-CN-001, {shortCode}-DN-001).
   // Deliberately never auto-derived from `name` — kept separate from the

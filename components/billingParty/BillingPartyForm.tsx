@@ -119,6 +119,20 @@ export default function BillingPartyForm({
       </FormField>
 
       <FormField
+        label="Vendor Code"
+        htmlFor="billing-party-vendor-code"
+        error={errors.vendorCode}
+        hint="Printed on this party's bills. Leave empty if they have not given one."
+      >
+        <Input
+          id="billing-party-vendor-code"
+          placeholder="e.g. 916003610"
+          value={billingParty.vendorCode}
+          onChange={(e) => update("vendorCode", e.target.value)}
+        />
+      </FormField>
+
+      <FormField
         label="Short Code"
         htmlFor="billing-party-short-code"
         error={errors.shortCode}

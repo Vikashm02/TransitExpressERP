@@ -38,6 +38,7 @@ const BILLING_PARTY_EXPORT_COLUMNS: ExportColumn<BillingPartyRecord>[] = [
   { header: "City", value: (r) => r.city },
   { header: "PO Number", value: (r) => r.poNumber },
   { header: "Concern Person", value: (r) => r.concernPerson },
+  { header: "Vendor Code", value: (r) => r.vendorCode },
   { header: "Short Code", value: (r) => r.shortCode },
   { header: "Payment Cycle (Days)", value: (r) => r.paymentCycleDays },
   { header: "Status", value: (r) => r.status },
