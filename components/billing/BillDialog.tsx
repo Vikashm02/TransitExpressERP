@@ -104,17 +104,26 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
     };
   }, [open]);
 
-  /** Every currently-unbilled LR, with its billable Weight/Rate/Freight
-   * (or `ready: false` for a "Per Ton (Unloading)" LR with no POD yet). */
+  /** Every currently-unbilled LR of the selected Billing Party (all of them
+   * until one is selected), with its billable Weight/Rate/Freight
+   * (or `ready: false` for a "Per Ton (Unloading)" LR with no POD yet).
+   * Older LRs have no `billingPartyId`, so they match on the exact name. */
   const selectableRows: SelectableRow[] = useMemo(() => {
+    const partyName = billingParty?.name.trim().toUpperCase() ?? "";
     return lrs
       .filter((lr) => lr.status !== "Billed")
+      .filter((lr) =>
+        !billingParty ||
+        (lr.billingPartyId != null
+          ? lr.billingPartyId === billingParty.id
+          : (lr.customer ?? "").trim().toUpperCase() === partyName)
+      )
       .map((lr) => {
         const pod = pods.find((record) => record.lrNumber === lr.lrNumber);
         const line = computeBillingLine(lr, pod);
         return { lr, ...line };
       });
-  }, [lrs, pods]);
+  }, [lrs, pods, billingParty]);
 
   const selectedRows = useMemo(
     () => selectableRows.filter((row) => selectedLrIds.has(String(row.lr.id))),
@@ -130,6 +139,8 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
   function handleBillingPartySelect(record: BillingPartyRecord) {
     setBillingParty(record);
     setPoNumber(record.poNumber);
+    // LRs ticked for another party are no longer listed; never bill them.
+    if (record.id !== billingParty?.id) setSelectedLrIds(new Set());
   }
 
   function toggleRow(row: SelectableRow) {
@@ -203,6 +214,7 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
     },
     { key: "lrNumber", header: "LR No.", render: (row) => row.lr.lrNumber },
     { key: "lrDate", header: "LR Date", render: (row) => row.lr.lrDate },
+    { key: "billingParty", header: "Billing Party", render: (row) => row.lr.customer || "—" },
     { key: "consignee", header: "Consignee", render: (row) => row.lr.consignee },
     {
       key: "route",
@@ -327,7 +339,7 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
 
           <div className="space-y-3">
             <h3 className="text-base font-medium">
-              Unbilled LRs
+              {billingParty ? `Unbilled LRs of ${billingParty.name}` : "Unbilled LRs"}
             </h3>
 
             <DataTable
@@ -336,7 +348,9 @@ export default function BillDialog({ open, onOpenChange, loading = false, onSubm
               rowKey={(row) => row.lr.id}
               loading={dataLoading}
               emptyTitle="No unbilled LRs"
-              emptyDescription="Every LR has already been billed."
+              emptyDescription={billingParty
+                ? "Every LR of this billing party has already been billed."
+                : "Every LR has already been billed."}
               maxHeight="360px"
             />
           </div>
