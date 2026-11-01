@@ -87,65 +87,92 @@ export default function LedgerExportDialog({
     }
 
     const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(captureRef.current, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      // Same fix as ShareLRDialog.tsx / ShareBillDialog.tsx: the app's
-      // global theme defines every color token via `oklch()`, which
-      // html2canvas's color parser can't read. Overriding the root
-      // custom properties on the *cloned* document (never the live
-      // page) with plain hex equivalents keeps every derived color
-      // parseable.
-      onclone: (clonedDoc) => {
-        const fallbackTokens: Record<string, string> = {
-          "--brand": "#14406b",
-          "--brand-foreground": "#fafafa",
-          "--background": "#ffffff",
-          "--foreground": "#262626",
-          "--card": "#ffffff",
-          "--card-foreground": "#262626",
-          "--popover": "#ffffff",
-          "--popover-foreground": "#262626",
-          "--primary": "#14406b",
-          "--primary-foreground": "#fafafa",
-          "--secondary": "#f5f5f5",
-          "--secondary-foreground": "#262626",
-          "--muted": "#f5f5f5",
-          "--muted-foreground": "#737373",
-          "--accent": "#f5f5f5",
-          "--accent-foreground": "#262626",
-          "--destructive": "#dc2626",
-          "--border": "#e5e5e5",
-          "--input": "#e5e5e5",
-          "--ring": "#3b82f6",
-          "--chart-1": "#dcdcdc",
-          "--chart-2": "#8c8c8c",
-          "--chart-3": "#6b6b6b",
-          "--chart-4": "#545454",
-          "--chart-5": "#363636",
-          "--success": "#16a34a",
-          "--success-foreground": "#fafafa",
-          "--warning": "#d97706",
-          "--warning-foreground": "#262626",
-          "--info": "#2563eb",
-          "--info-foreground": "#fafafa",
-          "--violet": "#7c3aed",
-          "--violet-foreground": "#fafafa",
-          "--sidebar": "#14406b",
-          "--sidebar-foreground": "#fafafa",
-          "--sidebar-primary": "#fafafa",
-          "--sidebar-primary-foreground": "#14406b",
-          "--sidebar-accent": "#1c4f82",
-          "--sidebar-accent-foreground": "#fafafa",
-          "--sidebar-border": "rgba(255,255,255,0.12)",
-          "--sidebar-ring": "#3b82f6",
-        };
+    const root = captureRef.current;
 
-        for (const [token, value] of Object.entries(fallbackTokens)) {
-          clonedDoc.documentElement.style.setProperty(token, value);
-        }
-      },
-    });
+    // The company logo lives on Supabase Storage (another origin): wait
+    // for it and let html2canvas read it via CORS (`useCORS` below), or
+    // it is left out of the PDF — same as ShareBillDialog.tsx.
+    await Promise.all(
+      Array.from(root.querySelectorAll("img")).map((img) =>
+        img.complete ? null : new Promise((resolve) => { img.onload = img.onerror = resolve; })
+      )
+    );
+
+    // html2canvas measures each font's baseline with a hidden <div> +
+    // 1x1 GIF <img> appended to the *live* <body>. Tailwind's preflight
+    // `img { display: block }` breaks that measurement and every line of
+    // text is drawn too low (table headers sink to the cell bottom).
+    // Restore inline layout for that probe image only, during capture.
+    const baselineFix = document.createElement("style");
+    baselineFix.textContent =
+      'body > div[style*="visibility: hidden"] > img[src^="data:image/gif"] { display: inline !important; }';
+    document.head.appendChild(baselineFix);
+
+    let canvas: HTMLCanvasElement;
+    try {
+      canvas = await html2canvas(root, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        // Same fix as ShareLRDialog.tsx / ShareBillDialog.tsx: the app's
+        // global theme defines every color token via `oklch()`, which
+        // html2canvas's color parser can't read. Overriding the root
+        // custom properties on the *cloned* document (never the live
+        // page) with plain hex equivalents keeps every derived color
+        // parseable.
+        onclone: (clonedDoc) => {
+          const fallbackTokens: Record<string, string> = {
+            "--brand": "#14406b",
+            "--brand-foreground": "#fafafa",
+            "--background": "#ffffff",
+            "--foreground": "#262626",
+            "--card": "#ffffff",
+            "--card-foreground": "#262626",
+            "--popover": "#ffffff",
+            "--popover-foreground": "#262626",
+            "--primary": "#14406b",
+            "--primary-foreground": "#fafafa",
+            "--secondary": "#f5f5f5",
+            "--secondary-foreground": "#262626",
+            "--muted": "#f5f5f5",
+            "--muted-foreground": "#737373",
+            "--accent": "#f5f5f5",
+            "--accent-foreground": "#262626",
+            "--destructive": "#dc2626",
+            "--border": "#e5e5e5",
+            "--input": "#e5e5e5",
+            "--ring": "#3b82f6",
+            "--chart-1": "#dcdcdc",
+            "--chart-2": "#8c8c8c",
+            "--chart-3": "#6b6b6b",
+            "--chart-4": "#545454",
+            "--chart-5": "#363636",
+            "--success": "#16a34a",
+            "--success-foreground": "#fafafa",
+            "--warning": "#d97706",
+            "--warning-foreground": "#262626",
+            "--info": "#2563eb",
+            "--info-foreground": "#fafafa",
+            "--violet": "#7c3aed",
+            "--violet-foreground": "#fafafa",
+            "--sidebar": "#14406b",
+            "--sidebar-foreground": "#fafafa",
+            "--sidebar-primary": "#fafafa",
+            "--sidebar-primary-foreground": "#14406b",
+            "--sidebar-accent": "#1c4f82",
+            "--sidebar-accent-foreground": "#fafafa",
+            "--sidebar-border": "rgba(255,255,255,0.12)",
+            "--sidebar-ring": "#3b82f6",
+          };
+
+          for (const [token, value] of Object.entries(fallbackTokens)) {
+            clonedDoc.documentElement.style.setProperty(token, value);
+          }
+        },
+      });
+    } finally {
+      baselineFix.remove();
+    }
 
     const { jsPDF } = await import("jspdf");
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -158,11 +185,16 @@ export default function LedgerExportDialog({
     // whole tall capture onto a single page — same technique as
     // ShareBillDialog.tsx.
     const pageHeightPx = (canvas.width * pageHeight) / pageWidth;
+    // The statement is laid out exactly one A4 page tall, so sub-pixel
+    // rounding can leave a sliver of blank bottom padding — don't give
+    // that its own empty page. Real content never ends within ~2mm of
+    // the page edge (the statement has 14mm bottom padding).
+    const minSlicePx = (canvas.width * 2) / pageWidth;
 
     let renderedPx = 0;
     let pageIndex = 0;
 
-    while (renderedPx < canvas.height) {
+    while (canvas.height - renderedPx > (pageIndex === 0 ? 0 : minSlicePx)) {
       const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx);
 
       const pageCanvas = document.createElement("canvas");
