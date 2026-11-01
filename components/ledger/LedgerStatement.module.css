@@ -1,151 +1,330 @@
 /* ==========================================================
-   Ledger Statement — a plain, professional accounting-statement
-   layout. Deliberately NOT a copy of the Billing Tax Invoice design
-   (components/billing/BillPrint.module.css) — no brand color accents,
-   no invoice-style boxed header, just a clean statement.
+   Ledger Statement — modern statement-of-account layout.
+   Also captured by html2canvas for the PDF export
+   (LedgerExportDialog.tsx), whose color parser can't read
+   `oklch()` — so every color here is a plain hex value.
 ========================================================== */
 
 .page {
   width: 210mm;
   min-height: 297mm;
   margin: 0 auto;
-  padding: 14mm 12mm;
-  background: #fff;
-  color: #1a1a1a;
-  font-family: Arial, Helvetica, sans-serif;
+  padding: 0 12mm 14mm;
+  background: #ffffff;
+  color: #1e293b;
+  font-family: "Inter", "Segoe UI", Arial, Helvetica, sans-serif;
   font-size: 10px;
-  line-height: 1.4;
+  line-height: 1.45;
   box-sizing: border-box;
+  border-radius: 6px;
+  overflow: hidden;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
 .page * {
   box-sizing: border-box;
 }
 
+.accentBar {
+  height: 6px;
+  margin: 0 -12mm;
+  background: linear-gradient(90deg, #14406b 0%, #1f6fb2 60%, #38bdf8 100%);
+}
+
+/* ---------------- HEADER ---------------- */
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 0 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 62%;
+}
+
+.logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 3px;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
 .companyName {
-  text-align: center;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 800;
+  color: #14406b;
+  letter-spacing: 0.01em;
 }
 
 .companyLine {
-  text-align: center;
-  font-size: 9px;
-  color: #444;
+  font-size: 8.5px;
+  color: #64748b;
   margin-top: 2px;
 }
 
-.statementHeading {
-  text-align: center;
-  font-size: 12px;
+.titleBlock {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.eyebrow {
+  font-size: 8px;
+  font-weight: 700;
+  color: #1f6fb2;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.periodPill {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #14406b;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+/* ---------------- PARTY + CLOSING ---------------- */
+
+.partyRow {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.partyCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.cardLabel {
+  font-size: 7.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.partyName {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 3px;
+}
+
+.partyDetails {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 2px 8px;
+  margin: 7px 0 0;
+  font-size: 9px;
+}
+
+.partyDetails dt {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.partyDetails dd {
+  margin: 0;
+  color: #334155;
+  white-space: pre-line;
+}
+
+.closingCard {
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #14406b 0%, #1f6fb2 100%);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.closingLabel {
+  font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-top: 10px;
-  border-top: 1px solid #1a1a1a;
-  border-bottom: 1px solid #1a1a1a;
-  padding: 4px 0;
+  letter-spacing: 0.14em;
+  color: #bfdbfe;
 }
 
-.metaGrid {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 0 16px;
-  margin-top: 10px;
+.closingValue {
+  font-size: 20px;
+  font-weight: 800;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
-.metaGrid > div + div {
+.closingSub {
+  font-size: 8.5px;
+  color: #dbeafe;
   margin-top: 2px;
 }
 
-.label {
-  font-weight: 700;
-  display: inline-block;
-  min-width: 90px;
+/* ---------------- SUMMARY ---------------- */
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.accountOf {
+.summaryCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #ffffff;
+}
+
+.summaryValue {
   font-size: 12px;
   font-weight: 700;
+  color: #0f172a;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
-.periodBlock {
-  text-align: right;
-}
-
-.openingBalanceRow {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 700;
-  margin-top: 12px;
-  padding: 4px 0;
-  border-bottom: 1px solid #ccc;
-}
+/* ---------------- TABLE ---------------- */
 
 .table {
   width: 100%;
-  border-collapse: collapse;
-  margin-top: 8px;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .table th,
 .table td {
-  border: 1px solid #999;
-  padding: 4px 6px;
+  padding: 6px 8px;
   font-size: 9.5px;
   vertical-align: top;
+  text-align: left;
 }
 
 .table th {
-  background: #f2f2f2;
+  background: #14406b;
+  color: #ffffff;
+  font-size: 8px;
   font-weight: 700;
-  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.table tbody td {
+  border-top: 1px solid #eef2f6;
+}
+
+.table tbody tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.colDate {
+  width: 72px;
 }
 
 .right {
-  text-align: right;
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
 }
 
-.center {
+.particulars {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.reference {
+  color: #475569;
+}
+
+.debit {
+  color: #b42318;
+}
+
+.credit {
+  color: #067647;
+}
+
+.muted {
+  color: #cbd5e1;
+}
+
+.balance {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.table tbody tr.balanceRow td {
+  background: #eff6ff;
+  color: #14406b;
+  font-weight: 700;
+}
+
+.table tbody tr.emptyRow td {
   text-align: center;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 18px 8px;
+  background: #ffffff;
 }
 
-.emptyRow td {
-  text-align: center;
-  color: #777;
-  padding: 12px;
-}
-
-.totalsBlock {
-  margin-top: 10px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.totalsTable {
-  min-width: 260px;
-  border-collapse: collapse;
-}
-
-.totalsTable td {
-  padding: 3px 6px;
+.table tfoot td {
+  background: #f1f5f9;
+  border-top: 2px solid #14406b;
+  font-weight: 800;
+  color: #0f172a;
   font-size: 10px;
 }
 
-.totalsTable .totalsLabel {
-  font-weight: 700;
-}
+/* ---------------- FOOTER ---------------- */
 
-.totalsTable .closingRow td {
-  border-top: 1px solid #1a1a1a;
-  font-weight: 700;
-  padding-top: 5px;
-}
-
-.footerNote {
+.footer {
   margin-top: 16px;
-  font-size: 8.5px;
-  color: #555;
+  padding-top: 10px;
+  border-top: 1px dashed #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 8px;
+  color: #64748b;
+}
+
+.footer p {
+  margin: 0;
+}
+
+.generatedOn {
+  flex-shrink: 0;
+  font-weight: 600;
 }
 
 /* ---------------- SCREEN-ONLY CONTROLS ---------------- */
@@ -178,11 +357,20 @@
     width: 100%;
     min-height: 0;
     margin: 0;
-    padding: 0;
+    padding: 0 0 4mm;
+    border-radius: 0;
+  }
+
+  .accentBar {
+    margin: 0;
   }
 
   .table {
     page-break-inside: auto;
+  }
+
+  .table thead {
+    display: table-header-group;
   }
 
   .table tr {
