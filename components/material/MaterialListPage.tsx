@@ -25,7 +25,7 @@ import {
 } from "@/components/services/material.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
-import { countMaterialLrs } from "@/lib/masterLrCounts";
+import { countMaterialLrs, sortByLrCount } from "@/lib/masterLrCounts";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
 const MATERIAL_EXPORT_COLUMNS: ExportColumn<MaterialRecord>[] = [
@@ -55,6 +55,7 @@ export default function MaterialListPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<MaterialRecord | null>(null);
@@ -194,6 +195,16 @@ export default function MaterialListPage() {
           },
         ]}
         filters={[
+          ...(lrCounts
+            ? [{
+                key: "sort",
+                label: "Sort",
+                value: sortBy,
+                placeholder: "Default order",
+                options: [{ label: "Most LRs first", value: "lrs" }],
+                onChange: setSortBy,
+              }]
+            : []),
           {
             key: "status",
             label: "Status",
@@ -209,13 +220,18 @@ export default function MaterialListPage() {
       />
 
       <MaterialTable
-        materials={filteredMaterials}
+        materials={
+          sortBy === "lrs" && lrCounts
+            ? sortByLrCount(filteredMaterials, (row) => lrCounts.get(row.id) ?? 0)
+            : filteredMaterials
+        }
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
         canDelete={canDelete}
         lrCounts={lrCounts}
+        sortByLrs={sortBy === "lrs" && Boolean(lrCounts)}
       />
 
       <MaterialDialog

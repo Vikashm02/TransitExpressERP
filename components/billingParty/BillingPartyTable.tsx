@@ -2,6 +2,7 @@
 
 import { Banknote, Pencil, Trash2 } from "lucide-react";
 
+import LrCountBadges from "@/components/common/LrCountBadges";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -23,8 +24,10 @@ interface BillingPartyTableProps {
   canEdit?: boolean;
   canContinueDraft?: boolean;
   canDelete?: boolean;
-  /** Saved LRs per record; column hidden when undefined (see useLrUsageRows). */
+  /** Saved LRs per record, shown as a badge in the action strip; hidden when undefined (see useLrUsageRows). */
   lrCounts?: Map<number, number>;
+  /** Rows arrive already sorted by LR count (most first); skip the default sort. */
+  sortByLrs?: boolean;
 }
 
 export default function BillingPartyTable({
@@ -38,6 +41,7 @@ export default function BillingPartyTable({
   canContinueDraft = true,
   canDelete = true,
   lrCounts,
+  sortByLrs = false,
 }: BillingPartyTableProps) {
   const columns: DataTableColumn<BillingPartyRecord>[] = [
     { key: "code", header: "Code", sortable: true, width: "10%" },
@@ -65,18 +69,6 @@ export default function BillingPartyTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
-    ...(lrCounts
-      ? [
-          {
-            key: "lrCount",
-            header: "LRs",
-            align: "right" as const,
-            sortable: true,
-            sortAccessor: (row: BillingPartyRecord) => lrCounts.get(row.id) ?? 0,
-            render: (row: BillingPartyRecord) => lrCounts.get(row.id) ?? 0,
-          },
-        ]
-      : []),
   ];
 
   function handleRowClick(row: BillingPartyRecord) {
@@ -89,6 +81,7 @@ export default function BillingPartyTable({
 
   return (
     <DataTable
+      key={sortByLrs ? "lr-sort" : "default-sort"}
       columns={columns}
       data={billingParties}
       rowKey={(row) => row.id}
@@ -97,10 +90,15 @@ export default function BillingPartyTable({
       emptyDescription="Add your first billing party to get started."
       emptyIcon={Banknote}
       sortable
-      defaultSort={{ key: "name", direction: "asc" }}
+      defaultSort={sortByLrs ? undefined : { key: "name", direction: "asc" }}
       pageSize={pageSize}
       getRowClassName={(row) => draftRowClassName(row.entryStatus)}
       onRowClick={handleRowClick}
+      actionsAside={
+        lrCounts
+          ? (row) => <LrCountBadges items={[{ label: "LRs", count: lrCounts.get(row.id) ?? 0 }]} />
+          : undefined
+      }
       actions={[
         {
           label: "Continue",

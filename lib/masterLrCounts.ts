@@ -84,3 +84,11 @@ export function countVehicleLrs(rows: LrUsageRow[]): Map<string, number> {
   }
   return counts;
 }
+
+/** Most LRs first; records with equal counts keep their order. */
+export function sortByLrCount<T>(records: T[], count: (record: T) => number): T[] {
+  return records
+    .map((record, index) => ({ record, index, n: count(record) }))
+    .sort((a, b) => b.n - a.n || a.index - b.index)
+    .map((entry) => entry.record);
+}
