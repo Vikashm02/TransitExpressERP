@@ -25,7 +25,7 @@ import {
 } from "@/components/services/vehicle.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
-import { countVehicleLrs } from "@/lib/masterLrCounts";
+import { countVehicleLrs, sortByLrCount, vehicleKey } from "@/lib/masterLrCounts";
 import { vehicleNumberMatchesQuery } from "@/lib/vehicleNumber";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
@@ -76,6 +76,7 @@ export default function VehicleListPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<VehicleRecord | null>(null);
@@ -230,6 +231,16 @@ export default function VehicleListPage() {
           },
         ]}
         filters={[
+          ...(lrCounts
+            ? [{
+                key: "sort",
+                label: "Sort",
+                value: sortBy,
+                placeholder: "Default order",
+                options: [{ label: "Most LRs first", value: "lrs" }],
+                onChange: setSortBy,
+              }]
+            : []),
           {
             key: "status",
             label: "Status",
@@ -245,7 +256,11 @@ export default function VehicleListPage() {
       />
 
       <VehicleTable
-        vehicles={filteredVehicles}
+        vehicles={
+          sortBy === "lrs" && lrCounts
+            ? sortByLrCount(filteredVehicles, (row) => lrCounts.get(vehicleKey(row.vehicleNumber)) ?? 0)
+            : filteredVehicles
+        }
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
@@ -253,6 +268,7 @@ export default function VehicleListPage() {
         canEdit={canEdit}
         canDelete={canDelete}
         lrCounts={lrCounts}
+        sortByLrs={sortBy === "lrs" && Boolean(lrCounts)}
       />
 
       <VehicleDialog

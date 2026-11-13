@@ -47,3 +47,16 @@ test("counts are read-only, final LRs only, and hidden without LR view permissio
   }
   assert.match(read("components/customer/CustomerTable.tsx"), /LRs as Consignor[\s\S]*LRs as Consignee/);
 });
+
+test("counts show as badges in the Edit/Delete strip (no extra columns) with a Most LRs first sort", async () => {
+  const { sortByLrCount } = await import("../lib/masterLrCounts.ts");
+  assert.deepEqual(sortByLrCount(["a", "b", "c", "d"], (x) => ({ a: 1, b: 5, c: 1, d: 0 })[x]), ["b", "a", "c", "d"]);
+  for (const p of ["components/customer/CustomerTable.tsx", "components/billingParty/BillingPartyTable.tsx", "components/vehicle/VehicleTable.tsx", "components/material/MaterialTable.tsx"]) {
+    const src = read(p);
+    assert.match(src, /actionsAside=\{\s+lrCounts\s+\? \(row\) => <LrCountBadges/, p);
+    assert.doesNotMatch(src, /key: "lrCount"|key: "lrsAsConsign/, p);
+  }
+  for (const p of ["components/customer/CustomerListPage.tsx", "components/billingParty/BillingPartyListPage.tsx", "components/vehicle/VehicleListPage.tsx", "components/material/MaterialListPage.tsx"]) {
+    assert.match(read(p), /label: "Most LRs first", value: "lrs"/, p);
+  }
+});

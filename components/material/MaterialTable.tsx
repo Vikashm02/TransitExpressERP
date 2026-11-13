@@ -2,6 +2,7 @@
 
 import { Package, Pencil, Trash2 } from "lucide-react";
 
+import LrCountBadges from "@/components/common/LrCountBadges";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import type { MaterialRecord } from "@/components/services/material.service";
@@ -14,8 +15,10 @@ interface MaterialTableProps {
   onDelete: (material: MaterialRecord) => void;
   /** Delete is Creator-only (migrations 047/048). */
   canDelete?: boolean;
-  /** Saved LRs per record; column hidden when undefined (see useLrUsageRows). */
+  /** Saved LRs per record, shown as a badge in the action strip; hidden when undefined (see useLrUsageRows). */
   lrCounts?: Map<number, number>;
+  /** Rows arrive already sorted by LR count (most first); skip the default sort. */
+  sortByLrs?: boolean;
 }
 
 export default function MaterialTable({
@@ -26,6 +29,7 @@ export default function MaterialTable({
   onDelete,
   canDelete = false,
   lrCounts,
+  sortByLrs = false,
 }: MaterialTableProps) {
   const columns: DataTableColumn<MaterialRecord>[] = [
     { key: "code", header: "Material Code", sortable: true, width: "12%" },
@@ -40,22 +44,11 @@ export default function MaterialTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
-    ...(lrCounts
-      ? [
-          {
-            key: "lrCount",
-            header: "LRs",
-            align: "right" as const,
-            sortable: true,
-            sortAccessor: (row: MaterialRecord) => lrCounts.get(row.id) ?? 0,
-            render: (row: MaterialRecord) => lrCounts.get(row.id) ?? 0,
-          },
-        ]
-      : []),
   ];
 
   return (
     <DataTable
+      key={sortByLrs ? "lr-sort" : "default-sort"}
       columns={columns}
       data={materials}
       rowKey={(row) => row.id}
@@ -64,8 +57,13 @@ export default function MaterialTable({
       emptyDescription="Add your first material to get started."
       emptyIcon={Package}
       sortable
-      defaultSort={{ key: "materialName", direction: "asc" }}
+      defaultSort={sortByLrs ? undefined : { key: "materialName", direction: "asc" }}
       pageSize={pageSize}
+      actionsAside={
+        lrCounts
+          ? (row) => <LrCountBadges items={[{ label: "LRs", count: lrCounts.get(row.id) ?? 0 }]} />
+          : undefined
+      }
       actions={[
         {
           label: "Edit",

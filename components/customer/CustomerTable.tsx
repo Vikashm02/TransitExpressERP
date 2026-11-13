@@ -2,6 +2,7 @@
 
 import { Pencil, Trash2, Users } from "lucide-react";
 
+import LrCountBadges from "@/components/common/LrCountBadges";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -23,8 +24,10 @@ interface CustomerTableProps {
   canEdit?: boolean;
   canContinueDraft?: boolean;
   canDelete?: boolean;
-  /** Saved LRs per customer; columns hidden when undefined (see useLrUsageRows). */
+  /** Saved LRs per customer, shown as badges in the action strip; hidden when undefined (see useLrUsageRows). */
   lrCounts?: { asConsignor: Map<number, number>; asConsignee: Map<number, number> };
+  /** Rows arrive already sorted by LR count (most first); skip the default sort. */
+  sortByLrs?: boolean;
 }
 
 export default function CustomerTable({
@@ -38,6 +41,7 @@ export default function CustomerTable({
   canContinueDraft = true,
   canDelete = true,
   lrCounts,
+  sortByLrs = false,
 }: CustomerTableProps) {
   const columns: DataTableColumn<CustomerRecord>[] = [
     { key: "code", header: "Code", sortable: true, width: "10%" },
@@ -65,26 +69,6 @@ export default function CustomerTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
-    ...(lrCounts
-      ? [
-          {
-            key: "lrsAsConsignor",
-            header: "LRs as Consignor",
-            align: "right" as const,
-            sortable: true,
-            sortAccessor: (row: CustomerRecord) => lrCounts.asConsignor.get(row.id) ?? 0,
-            render: (row: CustomerRecord) => lrCounts.asConsignor.get(row.id) ?? 0,
-          },
-          {
-            key: "lrsAsConsignee",
-            header: "LRs as Consignee",
-            align: "right" as const,
-            sortable: true,
-            sortAccessor: (row: CustomerRecord) => lrCounts.asConsignee.get(row.id) ?? 0,
-            render: (row: CustomerRecord) => lrCounts.asConsignee.get(row.id) ?? 0,
-          },
-        ]
-      : []),
   ];
 
   function handleRowClick(row: CustomerRecord) {
@@ -97,6 +81,7 @@ export default function CustomerTable({
 
   return (
     <DataTable
+      key={sortByLrs ? "lr-sort" : "default-sort"}
       columns={columns}
       data={customers}
       rowKey={(row) => row.id}
@@ -105,10 +90,18 @@ export default function CustomerTable({
       emptyDescription="Add your first customer to get started."
       emptyIcon={Users}
       sortable
-      defaultSort={{ key: "name", direction: "asc" }}
+      defaultSort={sortByLrs ? undefined : { key: "name", direction: "asc" }}
       pageSize={pageSize}
       getRowClassName={(row) => draftRowClassName(row.entryStatus)}
       onRowClick={handleRowClick}
+      actionsAside={
+        lrCounts
+          ? (row) => <LrCountBadges items={[
+                { label: "LRs as Consignor", count: lrCounts.asConsignor.get(row.id) ?? 0 },
+                { label: "LRs as Consignee", count: lrCounts.asConsignee.get(row.id) ?? 0 },
+              ]} />
+          : undefined
+      }
       actions={[
         {
           label: "Continue",

@@ -28,7 +28,7 @@ import {
 } from "@/components/services/customer.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
-import { countCustomerLrs } from "@/lib/masterLrCounts";
+import { countCustomerLrs, sortByLrCount } from "@/lib/masterLrCounts";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
 const CUSTOMER_EXPORT_COLUMNS: ExportColumn<CustomerRecord>[] = [
@@ -62,6 +62,7 @@ export default function CustomerListPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(null);
@@ -255,6 +256,16 @@ export default function CustomerListPage() {
           },
         ]}
         filters={[
+          ...(lrCounts
+            ? [{
+                key: "sort",
+                label: "Sort",
+                value: sortBy,
+                placeholder: "Default order",
+                options: [{ label: "Most LRs first", value: "lrs" }],
+                onChange: setSortBy,
+              }]
+            : []),
           {
             key: "status",
             label: "Status",
@@ -270,7 +281,11 @@ export default function CustomerListPage() {
       />
 
       <CustomerTable
-        customers={filteredCustomers}
+        customers={
+          sortBy === "lrs" && lrCounts
+            ? sortByLrCount(filteredCustomers, (row) => (lrCounts.asConsignor.get(row.id) ?? 0) + (lrCounts.asConsignee.get(row.id) ?? 0))
+            : filteredCustomers
+        }
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
@@ -280,6 +295,7 @@ export default function CustomerListPage() {
         canContinueDraft={canContinueDraft}
         canDelete={canDelete}
         lrCounts={lrCounts}
+        sortByLrs={sortBy === "lrs" && Boolean(lrCounts)}
       />
 
       <CustomerDialog

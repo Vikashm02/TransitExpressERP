@@ -28,7 +28,7 @@ import {
 } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
-import { countBillingPartyLrs } from "@/lib/masterLrCounts";
+import { countBillingPartyLrs, sortByLrCount } from "@/lib/masterLrCounts";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
 const BILLING_PARTY_EXPORT_COLUMNS: ExportColumn<BillingPartyRecord>[] = [
@@ -68,6 +68,7 @@ export default function BillingPartyListPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBillingParty, setEditingBillingParty] = useState<BillingPartyRecord | null>(null);
@@ -261,6 +262,16 @@ export default function BillingPartyListPage() {
           },
         ]}
         filters={[
+          ...(lrCounts
+            ? [{
+                key: "sort",
+                label: "Sort",
+                value: sortBy,
+                placeholder: "Default order",
+                options: [{ label: "Most LRs first", value: "lrs" }],
+                onChange: setSortBy,
+              }]
+            : []),
           {
             key: "status",
             label: "Status",
@@ -276,7 +287,11 @@ export default function BillingPartyListPage() {
       />
 
       <BillingPartyTable
-        billingParties={filteredBillingParties}
+        billingParties={
+          sortBy === "lrs" && lrCounts
+            ? sortByLrCount(filteredBillingParties, (row) => lrCounts.get(row.id) ?? 0)
+            : filteredBillingParties
+        }
         loading={loading}
         pageSize={PAGE_SIZE}
         onEdit={handleEdit}
@@ -286,6 +301,7 @@ export default function BillingPartyListPage() {
         canContinueDraft={canContinueDraft}
         canDelete={canDelete}
         lrCounts={lrCounts}
+        sortByLrs={sortBy === "lrs" && Boolean(lrCounts)}
       />
 
       <BillingPartyDialog

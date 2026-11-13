@@ -3,6 +3,7 @@
 import { Pencil, Trash2, Truck } from "lucide-react";
 
 import { vehicleKey } from "@/lib/masterLrCounts";
+import LrCountBadges from "@/components/common/LrCountBadges";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -19,8 +20,10 @@ interface VehicleTableProps {
   canEdit?: boolean;
   /** Delete is Creator-only (migrations 047/048). */
   canDelete?: boolean;
-  /** Saved LRs per record; column hidden when undefined (see useLrUsageRows). */
+  /** Saved LRs per record, shown as a badge in the action strip; hidden when undefined (see useLrUsageRows). */
   lrCounts?: Map<string, number>;
+  /** Rows arrive already sorted by LR count (most first); skip the default sort. */
+  sortByLrs?: boolean;
 }
 
 export default function VehicleTable({
@@ -32,6 +35,7 @@ export default function VehicleTable({
   canEdit = true,
   canDelete = false,
   lrCounts,
+  sortByLrs = false,
 }: VehicleTableProps) {
   const columns: DataTableColumn<VehicleRecord>[] = [
     { key: "vehicleNumber", header: "Vehicle Number", sortable: true, className: "font-medium" },
@@ -62,22 +66,11 @@ export default function VehicleTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
-    ...(lrCounts
-      ? [
-          {
-            key: "lrCount",
-            header: "LRs",
-            align: "right" as const,
-            sortable: true,
-            sortAccessor: (row: VehicleRecord) => lrCounts.get(vehicleKey(row.vehicleNumber)) ?? 0,
-            render: (row: VehicleRecord) => lrCounts.get(vehicleKey(row.vehicleNumber)) ?? 0,
-          },
-        ]
-      : []),
   ];
 
   return (
     <DataTable
+      key={sortByLrs ? "lr-sort" : "default-sort"}
       columns={columns}
       data={vehicles}
       rowKey={(row) => row.id}
@@ -86,8 +79,13 @@ export default function VehicleTable({
       emptyDescription="Add your first vehicle to get started."
       emptyIcon={Truck}
       sortable
-      defaultSort={{ key: "vehicleNumber", direction: "asc" }}
+      defaultSort={sortByLrs ? undefined : { key: "vehicleNumber", direction: "asc" }}
       pageSize={pageSize}
+      actionsAside={
+        lrCounts
+          ? (row) => <LrCountBadges items={[{ label: "LRs", count: lrCounts.get(vehicleKey(row.vehicleNumber)) ?? 0 }]} />
+          : undefined
+      }
       actions={[
         {
           label: "Edit",

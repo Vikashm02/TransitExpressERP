@@ -86,6 +86,8 @@ interface DataTableProps<T> {
   /** Per-row action buttons (Edit / Delete / etc). On desktop they render
    * directly under the record; on mobile they stay under the card. */
   actions?: DataTableAction<T>[];
+  /** Extra info shown at the right end of the action strip (e.g. LR count badges). */
+  actionsAside?: (row: T) => React.ReactNode;
 
   /** Clicking the row (desktop table or mobile card) selects/opens it. */
   onRowClick?: (row: T) => void;
@@ -263,6 +265,7 @@ export default function DataTable<T extends Record<string, any>>({
   emptyDescription,
   emptyIcon: EmptyIcon = Inbox,
   actions,
+  actionsAside,
   onRowClick,
   getRowClassName,
   selectedRowKey = null,
@@ -411,6 +414,11 @@ export default function DataTable<T extends Record<string, any>>({
     return actions.filter((action) => !action.hidden?.(row));
   }
 
+  function renderActionsAside(row: T) {
+    const aside = actionsAside?.(row);
+    return aside ? <div className="ml-auto flex flex-wrap items-center gap-2">{aside}</div> : null;
+  }
+
   function renderActionButtons(row: T) {
     return visibleActionsFor(row).map((action) => {
       const ActionIcon = action.icon;
@@ -535,6 +543,7 @@ export default function DataTable<T extends Record<string, any>>({
                 const key = rowKey ? rowKey(row, index) : index;
                 const selected = selectedRowKey != null && selectedRowKey === key;
                 const rowActions = visibleActionsFor(row);
+                const showStrip = rowActions.length > 0 || Boolean(actionsAside?.(row));
                 const rowClassName = cn(
                   onRowClick && "cursor-pointer hover:bg-muted/60",
                   selected && "bg-primary/8 ring-1 ring-inset ring-primary/25",
@@ -545,7 +554,7 @@ export default function DataTable<T extends Record<string, any>>({
                 <TableRow
                   className={cn(
                     rowClassName,
-                    rowActions.length > 0 && "border-b-0 hover:bg-muted/60"
+                    showStrip && "border-b-0 hover:bg-muted/60"
                   )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   onKeyDown={
@@ -577,7 +586,7 @@ export default function DataTable<T extends Record<string, any>>({
                     </TableCell>
                   ))}
                 </TableRow>
-                {rowActions.length > 0 && (
+                {showStrip && (
                   <TableRow
                     className={cn(
                       "border-b hover:bg-transparent",
@@ -598,6 +607,7 @@ export default function DataTable<T extends Record<string, any>>({
                         )}
                       >
                         {renderActionButtons(row)}
+                        {renderActionsAside(row)}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -747,7 +757,7 @@ export default function DataTable<T extends Record<string, any>>({
                 </div>
               )}
 
-              {(hasActions || actionColumns.length > 0) && (
+              {(hasActions || actionColumns.length > 0 || Boolean(actionsAside?.(row))) && (
                 <div
                   className={cn(
                     ACTION_STRIP_CLASS,
@@ -761,6 +771,7 @@ export default function DataTable<T extends Record<string, any>>({
                       {renderCellValue(column, row, index)}
                     </span>
                   ))}
+                  {renderActionsAside(row)}
                 </div>
               )}
             </div>
