@@ -27,6 +27,8 @@ import {
   type CustomerRecord,
 } from "@/components/services/customer.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
+import { countCustomerLrs } from "@/lib/masterLrCounts";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
 const CUSTOMER_EXPORT_COLUMNS: ExportColumn<CustomerRecord>[] = [
@@ -51,6 +53,11 @@ export default function CustomerListPage() {
   const canDelete = isCreator;
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+  const lrUsageRows = useLrUsageRows();
+  const lrCounts = useMemo(
+    () => (lrUsageRows ? countCustomerLrs(lrUsageRows, customers) : undefined),
+    [lrUsageRows, customers]
+  );
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -272,6 +279,7 @@ export default function CustomerListPage() {
         canEdit={canEdit}
         canContinueDraft={canContinueDraft}
         canDelete={canDelete}
+        lrCounts={lrCounts}
       />
 
       <CustomerDialog

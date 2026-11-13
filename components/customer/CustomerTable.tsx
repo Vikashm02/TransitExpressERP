@@ -23,6 +23,8 @@ interface CustomerTableProps {
   canEdit?: boolean;
   canContinueDraft?: boolean;
   canDelete?: boolean;
+  /** Saved LRs per customer; columns hidden when undefined (see useLrUsageRows). */
+  lrCounts?: { asConsignor: Map<number, number>; asConsignee: Map<number, number> };
 }
 
 export default function CustomerTable({
@@ -35,6 +37,7 @@ export default function CustomerTable({
   canEdit = true,
   canContinueDraft = true,
   canDelete = true,
+  lrCounts,
 }: CustomerTableProps) {
   const columns: DataTableColumn<CustomerRecord>[] = [
     { key: "code", header: "Code", sortable: true, width: "10%" },
@@ -62,6 +65,26 @@ export default function CustomerTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
+    ...(lrCounts
+      ? [
+          {
+            key: "lrsAsConsignor",
+            header: "LRs as Consignor",
+            align: "right" as const,
+            sortable: true,
+            sortAccessor: (row: CustomerRecord) => lrCounts.asConsignor.get(row.id) ?? 0,
+            render: (row: CustomerRecord) => lrCounts.asConsignor.get(row.id) ?? 0,
+          },
+          {
+            key: "lrsAsConsignee",
+            header: "LRs as Consignee",
+            align: "right" as const,
+            sortable: true,
+            sortAccessor: (row: CustomerRecord) => lrCounts.asConsignee.get(row.id) ?? 0,
+            render: (row: CustomerRecord) => lrCounts.asConsignee.get(row.id) ?? 0,
+          },
+        ]
+      : []),
   ];
 
   function handleRowClick(row: CustomerRecord) {

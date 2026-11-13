@@ -27,6 +27,8 @@ import {
   type BillingPartyRecord,
 } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
+import { countBillingPartyLrs } from "@/lib/masterLrCounts";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
 const BILLING_PARTY_EXPORT_COLUMNS: ExportColumn<BillingPartyRecord>[] = [
@@ -57,6 +59,11 @@ export default function BillingPartyListPage() {
   const canDelete = isCreator;
 
   const [billingParties, setBillingParties] = useState<BillingPartyRecord[]>([]);
+  const lrUsageRows = useLrUsageRows();
+  const lrCounts = useMemo(
+    () => (lrUsageRows ? countBillingPartyLrs(lrUsageRows, billingParties) : undefined),
+    [lrUsageRows, billingParties]
+  );
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -278,6 +285,7 @@ export default function BillingPartyListPage() {
         canEdit={canEdit}
         canContinueDraft={canContinueDraft}
         canDelete={canDelete}
+        lrCounts={lrCounts}
       />
 
       <BillingPartyDialog

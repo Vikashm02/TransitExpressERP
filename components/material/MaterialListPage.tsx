@@ -24,6 +24,8 @@ import {
   type MaterialRecord,
 } from "@/components/services/material.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
+import { countMaterialLrs } from "@/lib/masterLrCounts";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
 const MATERIAL_EXPORT_COLUMNS: ExportColumn<MaterialRecord>[] = [
@@ -44,6 +46,11 @@ export default function MaterialListPage() {
   const { isCreator } = useAuth();
   const canDelete = isCreator;
   const [materials, setMaterials] = useState<MaterialRecord[]>([]);
+  const lrUsageRows = useLrUsageRows();
+  const lrCounts = useMemo(
+    () => (lrUsageRows ? countMaterialLrs(lrUsageRows, materials.map((m) => ({ id: m.id, name: m.materialName }))) : undefined),
+    [lrUsageRows, materials]
+  );
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -208,6 +215,7 @@ export default function MaterialListPage() {
         onEdit={handleEdit}
         onDelete={setDeleteTarget}
         canDelete={canDelete}
+        lrCounts={lrCounts}
       />
 
       <MaterialDialog

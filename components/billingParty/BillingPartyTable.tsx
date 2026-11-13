@@ -23,6 +23,8 @@ interface BillingPartyTableProps {
   canEdit?: boolean;
   canContinueDraft?: boolean;
   canDelete?: boolean;
+  /** Saved LRs per record; column hidden when undefined (see useLrUsageRows). */
+  lrCounts?: Map<number, number>;
 }
 
 export default function BillingPartyTable({
@@ -35,6 +37,7 @@ export default function BillingPartyTable({
   canEdit = true,
   canContinueDraft = true,
   canDelete = true,
+  lrCounts,
 }: BillingPartyTableProps) {
   const columns: DataTableColumn<BillingPartyRecord>[] = [
     { key: "code", header: "Code", sortable: true, width: "10%" },
@@ -62,6 +65,18 @@ export default function BillingPartyTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
+    ...(lrCounts
+      ? [
+          {
+            key: "lrCount",
+            header: "LRs",
+            align: "right" as const,
+            sortable: true,
+            sortAccessor: (row: BillingPartyRecord) => lrCounts.get(row.id) ?? 0,
+            render: (row: BillingPartyRecord) => lrCounts.get(row.id) ?? 0,
+          },
+        ]
+      : []),
   ];
 
   function handleRowClick(row: BillingPartyRecord) {
