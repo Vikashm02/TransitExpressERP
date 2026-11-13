@@ -24,6 +24,8 @@ import {
   type VehicleRecord,
 } from "@/components/services/vehicle.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
+import { countVehicleLrs } from "@/lib/masterLrCounts";
 import { vehicleNumberMatchesQuery } from "@/lib/vehicleNumber";
 
 /** Export = Add/Edit form fields in form order (keep in sync with the form). */
@@ -65,6 +67,11 @@ export default function VehicleListPage() {
   const canDelete = isCreator;
 
   const [vehicles, setVehicles] = useState<VehicleRecord[]>([]);
+  const lrUsageRows = useLrUsageRows();
+  const lrCounts = useMemo(
+    () => (lrUsageRows ? countVehicleLrs(lrUsageRows) : undefined),
+    [lrUsageRows, vehicles]
+  );
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -245,6 +252,7 @@ export default function VehicleListPage() {
         onDelete={setDeleteTarget}
         canEdit={canEdit}
         canDelete={canDelete}
+        lrCounts={lrCounts}
       />
 
       <VehicleDialog

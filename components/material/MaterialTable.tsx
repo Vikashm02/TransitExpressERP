@@ -14,6 +14,8 @@ interface MaterialTableProps {
   onDelete: (material: MaterialRecord) => void;
   /** Delete is Creator-only (migrations 047/048). */
   canDelete?: boolean;
+  /** Saved LRs per record; column hidden when undefined (see useLrUsageRows). */
+  lrCounts?: Map<number, number>;
 }
 
 export default function MaterialTable({
@@ -23,6 +25,7 @@ export default function MaterialTable({
   onEdit,
   onDelete,
   canDelete = false,
+  lrCounts,
 }: MaterialTableProps) {
   const columns: DataTableColumn<MaterialRecord>[] = [
     { key: "code", header: "Material Code", sortable: true, width: "12%" },
@@ -37,6 +40,18 @@ export default function MaterialTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
+    ...(lrCounts
+      ? [
+          {
+            key: "lrCount",
+            header: "LRs",
+            align: "right" as const,
+            sortable: true,
+            sortAccessor: (row: MaterialRecord) => lrCounts.get(row.id) ?? 0,
+            render: (row: MaterialRecord) => lrCounts.get(row.id) ?? 0,
+          },
+        ]
+      : []),
   ];
 
   return (

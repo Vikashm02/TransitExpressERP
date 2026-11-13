@@ -2,6 +2,7 @@
 
 import { Pencil, Trash2, Truck } from "lucide-react";
 
+import { vehicleKey } from "@/lib/masterLrCounts";
 import DataTable, { type DataTableColumn } from "@/components/common/DataTable";
 import RelativeCreatedTime from "@/components/common/RelativeCreatedTime";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -18,6 +19,8 @@ interface VehicleTableProps {
   canEdit?: boolean;
   /** Delete is Creator-only (migrations 047/048). */
   canDelete?: boolean;
+  /** Saved LRs per record; column hidden when undefined (see useLrUsageRows). */
+  lrCounts?: Map<string, number>;
 }
 
 export default function VehicleTable({
@@ -28,6 +31,7 @@ export default function VehicleTable({
   onDelete,
   canEdit = true,
   canDelete = false,
+  lrCounts,
 }: VehicleTableProps) {
   const columns: DataTableColumn<VehicleRecord>[] = [
     { key: "vehicleNumber", header: "Vehicle Number", sortable: true, className: "font-medium" },
@@ -58,6 +62,18 @@ export default function VehicleTable({
       sortAccessor: (row) => row.created_at ?? "",
       render: (row) => <RelativeCreatedTime value={row.created_at} />,
     },
+    ...(lrCounts
+      ? [
+          {
+            key: "lrCount",
+            header: "LRs",
+            align: "right" as const,
+            sortable: true,
+            sortAccessor: (row: VehicleRecord) => lrCounts.get(vehicleKey(row.vehicleNumber)) ?? 0,
+            render: (row: VehicleRecord) => lrCounts.get(vehicleKey(row.vehicleNumber)) ?? 0,
+          },
+        ]
+      : []),
   ];
 
   return (
