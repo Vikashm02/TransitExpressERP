@@ -27,6 +27,7 @@ import {
   type BillingPartyRecord,
 } from "@/components/services/billingParty.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { isDraftEntry } from "@/lib/entryStatus";
 import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
 import { countBillingPartyLrs, sortByLrCount } from "@/lib/masterLrCounts";
 
@@ -310,7 +311,13 @@ export default function BillingPartyListPage() {
         billingParty={editingBillingParty}
         loading={saving}
         onSubmit={handleSubmit}
-        onAutosave={canContinueDraft ? handleAutosave : undefined}
+        // Autosave only for a new billing party or a draft — never for an
+        // existing final one, or opening Edit would turn it back into a draft.
+        onAutosave={
+          canContinueDraft && (!editingBillingParty || isDraftEntry(editingBillingParty.entryStatus))
+            ? handleAutosave
+            : undefined
+        }
       />
 
       <BillingPartyBulkUploadDialog

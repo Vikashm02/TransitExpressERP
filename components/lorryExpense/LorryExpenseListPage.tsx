@@ -612,7 +612,13 @@ export default function LorryExpenseListPage() {
         lr={editingLR}
         loading={saving}
         onSubmit={handleSubmit}
-        onAutosave={canContinueDraft ? handleAutosave : undefined}
+        // Autosave only for new Financials or a draft — never for an existing
+        // final entry, or opening Edit would turn it back into a draft.
+        onAutosave={
+          canContinueDraft && (!editingExpense || isDraftEntry(editingExpense.entryStatus))
+            ? handleAutosave
+            : undefined
+        }
       />
 
       <LorryExpenseBulkUploadDialog
