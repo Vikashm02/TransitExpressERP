@@ -4,6 +4,7 @@ import type { BillingPartyRecord } from "@/components/services/billingParty.serv
 import type { LRRecord } from "@/components/services/lr.service";
 import type { PodRecord } from "@/components/services/pod.service";
 import { computeBillingLine } from "@/lib/calculations/billingCalculations";
+import { formatInvoiceNumber } from "@/lib/invoiceNumber";
 import {
   normalizeLrBulkNumberInput,
   type LrBulkNumberFormatConfig,
@@ -32,6 +33,7 @@ import {
  */
 export const BILLING_TEMPLATE_HEADERS = [
   "Bill Group",
+  "Bill Number",
   "Bill Date",
   "Billing Party Code",
   "PO Number",
@@ -42,6 +44,7 @@ type TemplateHeader = (typeof BILLING_TEMPLATE_HEADERS)[number];
 
 const SAMPLE_ROW: Record<TemplateHeader, string> = {
   "Bill Group": "BILL-1",
+  "Bill Number": "2475",
   "Bill Date": "2026-08-05",
   "Billing Party Code": "BP001",
   "PO Number": "PO-2026-001",
@@ -158,6 +161,12 @@ export async function downloadBillingUploadTemplate(): Promise<void> {
  *  - An LR Number may appear on only one row in the whole file — the
  *    database's own `bill_lrs.lr_id` UNIQUE constraint (migration 014)
  *    already guarantees an LR can belong to at most one Bill, ever.
+ *  - "Bill Number" (for uploading old bills with their real numbers):
+ *    digits, optionally written as TEL/2475. Stored in the company invoice
+ *    format (prefix + padding, like the running series). Every row of a
+ *    Bill Group must share it; it must be unique in the file and must not
+ *    already exist. Left blank for a whole group → the next running number
+ *    is given on import, as before.
  *
  * All-or-nothing: if any row fails, `groups` is returned empty so the
  * caller never imports a partial file.
@@ -168,6 +177,8 @@ export async function parseAndValidateBillingUpload(
   existingLRs: LRRecord[],
   existingPods: PodRecord[],
   lrNumberConfig: Pick<LrBulkNumberFormatConfig, "prefix" | "prefixLength">,
+  invoiceNumberConfig: { prefix: string; prefixLength: number },
+  existingBillNumbers: string[],
 ): Promise<BillingUploadParseResult> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -216,6 +227,7 @@ export async function parseAndValidateBillingUpload(
   interface ParsedRow {
     excelRow: number;
     billGroup: string;
+    billNumber: string;
     billDate: string;
     billingPartyCode: string;
     poNumber: string;
@@ -225,6 +237,7 @@ export async function parseAndValidateBillingUpload(
 
   const parsedRows: ParsedRow[] = [];
   const rowsByLrNumber = new Map<string, number[]>();
+  const existingBillNumbersLower = new Set(existingBillNumbers.map((value) => value.trim().toLowerCase()));
   const lrByNumberLower = new Map(
     existingLRs.map((lr) => [lr.lrNumber.trim().toLowerCase(), lr] as const),
   );
@@ -237,6 +250,7 @@ export async function parseAndValidateBillingUpload(
     if (isBlankRow) return;
 
     const billGroup = cellValue(row, "Bill Group");
+    const rawBillNumber = cellValue(row, "Bill Number");
     const billDate = cellValue(row, "Bill Date");
     const billingPartyCode = cellValue(row, "Billing Party Code");
     const poNumber = cellValue(row, "PO Number");
@@ -245,6 +259,19 @@ export async function parseAndValidateBillingUpload(
     const messages: string[] = [];
 
     if (!billGroup) messages.push("Bill Group is required.");
+
+    let billNumber = "";
+    if (rawBillNumber) {
+      const digits = rawBillNumber.trim().replace(new RegExp(`^(TEL/|${escapeRegExp(invoiceNumberConfig.prefix)})`, "i"), "");
+      if (!/^\d+$/.test(digits)) {
+        messages.push(`Bill Number "${rawBillNumber}" must be a number (for example 2475 or TEL/2475).`);
+      } else {
+        billNumber = formatInvoiceNumber(Number(digits), invoiceNumberConfig);
+        if (existingBillNumbersLower.has(billNumber.toLowerCase())) {
+          messages.push(`Bill Number "${billNumber}" already exists in Billing.`);
+        }
+      }
+    }
     if (!billDate) messages.push("Bill Date is required.");
     if (billDate && !/^\d{4}-\d{2}-\d{2}$/.test(billDate)) {
       messages.push("Bill Date must be a valid date (YYYY-MM-DD).");
@@ -302,6 +329,7 @@ export async function parseAndValidateBillingUpload(
     parsedRows.push({
       excelRow: rowNumber,
       billGroup,
+      billNumber,
       billDate,
       billingPartyCode,
       poNumber,
@@ -338,10 +366,28 @@ export async function parseAndValidateBillingUpload(
       for (const row of groupRows) row.messages.push(message);
     }
 
+    const distinctBillNumbers = new Set(groupRows.map((row) => row.billNumber));
+    if (distinctBillNumbers.size > 1) {
+      const message = `Bill Group "${billGroup}" has rows with different Bill Number values — every row in the same Bill Group must share one Bill Number (or all leave it blank).`;
+      for (const row of groupRows) row.messages.push(message);
+    }
+
     if (distinctPartyCodes.size > 1) {
       const message = `Bill Group "${billGroup}" has rows with different Billing Party Code values — every row in the same Bill Group must share one Billing Party Code.`;
       for (const row of groupRows) row.messages.push(message);
     }
+  }
+
+  // One Bill Number can only be one Bill.
+  const groupsByBillNumber = new Map<string, Set<string>>();
+  for (const row of parsedRows) {
+    if (!row.billNumber || !row.billGroup) continue;
+    groupsByBillNumber.set(row.billNumber, (groupsByBillNumber.get(row.billNumber) ?? new Set()).add(row.billGroup));
+  }
+  for (const [billNumber, billGroups] of groupsByBillNumber) {
+    if (billGroups.size <= 1) continue;
+    const message = `Bill Number "${billNumber}" is used by more than one Bill Group (${Array.from(billGroups).join(", ")}).`;
+    for (const row of parsedRows) if (row.billNumber === billNumber) row.messages.push(message);
   }
 
   const errors: BillingUploadRowError[] = parsedRows
@@ -377,7 +423,8 @@ export async function parseAndValidateBillingUpload(
     });
 
     const values: Bill = {
-      billNumber: "",
+      // Blank → the next running number is given at import (BillingBulkUploadDialog).
+      billNumber: groupRows[0].billNumber,
       billDate: groupRows[0].billDate,
       billingPartyId: billingParty?.id ?? 0,
       poNumber,
@@ -408,3 +455,8 @@ export async function parseAndValidateBillingUpload(
 
   return { groups, errors: [] };
 }
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+

@@ -19,6 +19,7 @@ export const BILLING_PARTY_TEMPLATE_HEADERS = [
   "Status",
   "PO Number",
   "Concern Person",
+  "Vendor Code",
   "Short Code",
   "Payment Cycle Days",
 ] as const;
@@ -40,6 +41,7 @@ const SAMPLE_ROW: Record<TemplateHeader, string> = {
   Status: "Active",
   "PO Number": "PO-2026-001",
   "Concern Person": "Rahul Sharma",
+  "Vendor Code": "916003610",
   "Short Code": "SAMP",
   "Payment Cycle Days": "30",
 };
@@ -207,6 +209,7 @@ export async function parseAndValidateBillingPartyUpload(
     const rawStatus = cellValue(row, "Status");
     const poNumber = cellValue(row, "PO Number");
     const concernPerson = cellValue(row, "Concern Person");
+    const vendorCode = cellValue(row, "Vendor Code");
     const shortCode = cellValue(row, "Short Code").toUpperCase();
     const rawPaymentCycleDays = cellValue(row, "Payment Cycle Days");
 
@@ -247,7 +250,7 @@ export async function parseAndValidateBillingPartyUpload(
       entryStatus: "final",
       poNumber,
       concernPerson,
-      vendorCode: "",
+      vendorCode,
       shortCode,
       paymentCycleDays,
     };

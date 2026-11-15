@@ -29,3 +29,9 @@ verify_jwt = false
 # inside the handler. Scheduler activation stays manual.
 [functions.process-bid-reminders]
 verify_jwt = false
+
+# Read-only Customer / Billing Party lists for the owner's Google Sheet.
+# Called by Google Apps Script with the x-sheet-token header (function
+# secret MASTERS_SHEET_TOKEN); authorization is enforced inside the handler.
+[functions.masters-for-sheet]
+verify_jwt = false

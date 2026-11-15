@@ -8,12 +8,13 @@ import { UploadCloud } from "lucide-react";
 import FormDialog from "@/components/ui/FormDialog";
 import { Button } from "@/components/ui/button";
 
+import { formatInvoiceNumber, invoiceNumberValue } from "@/lib/invoiceNumber";
 import {
   parseAndValidateBillingUpload,
   type BillingUploadGroup,
   type BillingUploadRowError,
 } from "./billingBulkUpload";
-import { createBill } from "@/components/services/billing.service";
+import { createBill, getBills } from "@/components/services/billing.service";
 import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
 import { getCompany, saveCompany } from "@/components/services/company.service";
 import { getBillingParties } from "@/components/services/billingParty.service";
@@ -79,10 +80,16 @@ export default function BillingBulkUploadDialog({
         return;
       }
 
-      const result = await parseAndValidateBillingUpload(file, billingParties, lrs, pods, {
-        prefix: company.lrPrefix || "LR",
-        prefixLength: company.lrPrefixLength || 4,
-      });
+      const existingBills = await getBills();
+      const result = await parseAndValidateBillingUpload(
+        file,
+        billingParties,
+        lrs,
+        pods,
+        { prefix: company.lrPrefix || "LR", prefixLength: company.lrPrefixLength || 4 },
+        { prefix: company.invoicePrefix ?? "", prefixLength: company.invoicePrefixLength || 4 },
+        existingBills.map((bill) => bill.billNumber),
+      );
       setGroups(result.groups);
       setErrors(result.errors);
       setHasParsed(true);
@@ -136,15 +143,23 @@ export default function BillingBulkUploadDialog({
 
       const createdIds: number[] = [];
       const priorStatuses = new Map<LRRecord["id"], LRRecord["status"]>();
-      let nextRunningNumber = company.invoiceRunningNumber ?? 0;
+      const invoiceFormat = { prefix: company.invoicePrefix ?? "", prefixLength: company.invoicePrefixLength || 4 };
+      // Old bills keep the Bill Number from the sheet. Bills left blank get
+      // the next running number, starting after the highest uploaded one so
+      // they can never clash; the running number ends past both.
+      const highestUploaded = Math.max(
+        0,
+        ...groups.map((group) => invoiceNumberValue(group.values.billNumber, invoiceFormat) ?? 0)
+      );
+      let nextRunningNumber = Math.max(company.invoiceRunningNumber ?? 0, highestUploaded);
 
       try {
         for (const group of groups) {
-          nextRunningNumber += 1;
-          const billNumber = `${company.invoicePrefix}${String(nextRunningNumber).padStart(
-            company.invoicePrefixLength || 4,
-            "0"
-          )}`;
+          let billNumber = group.values.billNumber;
+          if (!billNumber) {
+            nextRunningNumber += 1;
+            billNumber = formatInvoiceNumber(nextRunningNumber, invoiceFormat);
+          }
 
           const created = await createBill({ ...group.values, billNumber }, group.lines);
           createdIds.push(created.id);
