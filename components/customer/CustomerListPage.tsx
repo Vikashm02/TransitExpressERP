@@ -27,6 +27,7 @@ import {
   type CustomerRecord,
 } from "@/components/services/customer.service";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { isDraftEntry } from "@/lib/entryStatus";
 import { useLrUsageRows } from "@/components/services/masterLrUsage.service";
 import { countCustomerLrs, sortByLrCount } from "@/lib/masterLrCounts";
 
@@ -304,7 +305,13 @@ export default function CustomerListPage() {
         customer={editingCustomer}
         loading={saving}
         onSubmit={handleSubmit}
-        onAutosave={canContinueDraft ? handleAutosave : undefined}
+        // Autosave only for a new customer or a draft — never for an existing
+        // final one, or opening Edit would quietly turn it back into a draft.
+        onAutosave={
+          canContinueDraft && (!editingCustomer || isDraftEntry(editingCustomer.entryStatus))
+            ? handleAutosave
+            : undefined
+        }
       />
 
       <CustomerBulkUploadDialog
