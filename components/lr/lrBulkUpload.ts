@@ -28,7 +28,10 @@ import {
  *  - Bill Amount / Lorry Hire Amount / Profit — computed at save
  *  - Bill Rate / Bill Rate Type / Guaranteed Weight / Lorry Hire Rate /
  *    Lorry Hire Type / Lorry Hire Guaranteed Weight — entered only in
- *    Financials (CommercialSection keeps Freight Type only)
+ *    Financials (CommercialSection keeps Freight Type only); upload them
+ *    with the Financials template
+ *  - PO Date — a PO Date makes the database create the PO in PO Master,
+ *    which old (expired) POs must not do
  *  - Expense fields — Financials module
  * Combined DC/Invoice columns match DispatchDocumentsSection behavior.
  */
@@ -52,6 +55,7 @@ export const LR_TEMPLATE_HEADERS = [
   "From",
   "To",
   "Material",
+  "Material Description",
   "Package Type",
   "Packages",
   "Loading Weight",
@@ -89,6 +93,7 @@ const SAMPLE_ROW: Record<TemplateHeader, string> = {
   From: "Mumbai",
   To: "Bengaluru",
   Material: "TMT Steel Bars",
+  "Material Description": "12 mm bars",
   "Package Type": "TON",
   Packages: "10",
   "Loading Weight": "10",
@@ -317,6 +322,7 @@ export async function parseAndValidateLRUpload(
     const from = cellValue(row, "From");
     const to = cellValue(row, "To");
     const materialRaw = cellValue(row, "Material");
+    const materialDescription = cellValue(row, "Material Description");
     const packageType = cellValue(row, "Package Type");
     const rawPackages = cellValue(row, "Packages");
     const rawLoadingWeight = cellValue(row, "Loading Weight");
@@ -378,6 +384,7 @@ export async function parseAndValidateLRUpload(
 
     // Billing Party Master → stored on LR.customer (same as LRHeader).
     let customer = customerRaw;
+    let billingPartyId: number | null = null;
     if (customerRaw) {
       const resolved = resolveUniqueMasterByName(
         customerRaw,
@@ -392,11 +399,13 @@ export async function parseAndValidateLRUpload(
         );
       } else {
         customer = resolved.match.name;
+        billingPartyId = resolved.match.id;
       }
     }
 
     // Consignor / Consignee → Customer Master (same as PartySection).
     let consignor = consignorRaw;
+    let consignorId: number | null = null;
     if (consignorRaw) {
       const resolved = resolveUniqueMasterByName(consignorRaw, customers, (c) => c.name);
       if (!resolved.ok) {
@@ -407,10 +416,12 @@ export async function parseAndValidateLRUpload(
         );
       } else {
         consignor = resolved.match.name;
+        consignorId = resolved.match.id;
       }
     }
 
     let consignee = consigneeRaw;
+    let consigneeId: number | null = null;
     if (consigneeRaw) {
       const resolved = resolveUniqueMasterByName(consigneeRaw, customers, (c) => c.name);
       if (!resolved.ok) {
@@ -421,6 +432,7 @@ export async function parseAndValidateLRUpload(
         );
       } else {
         consignee = resolved.match.name;
+        consigneeId = resolved.match.id;
       }
     }
 
@@ -489,10 +501,12 @@ export async function parseAndValidateLRUpload(
       lrDate,
       bookingBranch,
       customer,
-      // Historical names validate display data; they do not establish stable identity.
-      billingPartyId: null,
-      consignorId: null,
-      consigneeId: null,
+      // The exact, unique master match is linked — the same as picking it on
+      // the LR form — so these LRs count in the masters, follow master
+      // renames, and can be checked against POs.
+      billingPartyId,
+      consignorId,
+      consigneeId,
       billingParty,
 
       consignor,
@@ -512,7 +526,7 @@ export async function parseAndValidateLRUpload(
       to,
 
       material,
-      materialDescription: "",
+      materialDescription,
       packageType,
       packages,
       loadingWeight,

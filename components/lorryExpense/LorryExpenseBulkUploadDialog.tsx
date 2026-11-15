@@ -18,6 +18,7 @@ import {
   type LorryExpenseRecord,
 } from "@/components/services/lorryExpense.service";
 import { rollbackUploadBatch } from "@/components/services/uploadRollback.service";
+import { updateLRFinancials } from "@/components/services/lr.service";
 import { getCompany } from "@/components/services/company.service";
 import type { LRRecord } from "@/components/services/lr.service";
 
@@ -103,11 +104,17 @@ export default function LorryExpenseBulkUploadDialog({
     if (rows.length === 0) return;
 
     const createdIds: number[] = [];
+    // Rows whose LR Bill Rate / Lorry Hire this upload already changed.
+    const ratesChanged: typeof rows = [];
 
     try {
       setImporting(true);
 
       for (const row of rows) {
+        // Same order as the Financials form: commercial fields on the LR
+        // first (update_lr_financials), then the Financials record.
+        await updateLRFinancials(row.values.lrId, row.commercial);
+        ratesChanged.push(row);
         const created = await createLorryExpense(row.values);
         createdIds.push(created.id);
       }
@@ -126,8 +133,14 @@ export default function LorryExpenseBulkUploadDialog({
       await rollbackUploadBatch("lorry_expenses", createdIds).catch((rollbackError) =>
         console.error(rollbackError)
       );
+      // Put back each LR's Bill Rate / Lorry Hire exactly as before the upload.
+      for (const row of ratesChanged) {
+        await updateLRFinancials(row.values.lrId, row.priorCommercial).catch((rollbackError) =>
+          console.error(rollbackError)
+        );
+      }
 
-      toast.error(getUserFacingError(error, "Import failed partway through and was rolled back. No Lorry Expenses were added. Please try again."));
+      toast.error(getUserFacingError(error, "Import failed partway through and was rolled back. No Financials were added and no LR rates were changed. Please try again."));
     } finally {
       setImporting(false);
     }

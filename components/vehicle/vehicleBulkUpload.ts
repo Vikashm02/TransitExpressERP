@@ -20,6 +20,9 @@ export const VEHICLE_TEMPLATE_HEADERS = [
   "RC Number",
   "Vehicle Type",
   "Owner Name",
+  "Transporter",
+  "Driver Name",
+  "Driver Mobile",
   "Owner Type",
   "Mobile",
   "Capacity",
@@ -56,6 +59,9 @@ const SAMPLE_ROW: Record<TemplateHeader, string> = {
   "RC Number": "RC-MH12AB1234",
   "Vehicle Type": "Truck",
   "Owner Name": "Ramesh Transport Co",
+  Transporter: "Ramesh Transport Co",
+  "Driver Name": "Suresh Kumar",
+  "Driver Mobile": "9876543210",
   "Owner Type": "Own Fleet",
   Mobile: "9876543210",
   Capacity: "10",
@@ -243,6 +249,9 @@ export async function parseAndValidateVehicleUpload(
     const rcNumber = cellValue(row, "RC Number");
     const rawVehicleType = cellValue(row, "Vehicle Type");
     const ownerName = cellValue(row, "Owner Name");
+    const transporter = cellValue(row, "Transporter");
+    const driverName = cellValue(row, "Driver Name");
+    const driverMobile = cellValue(row, "Driver Mobile");
     const rawOwnerType = cellValue(row, "Owner Type");
     const mobile = cellValue(row, "Mobile");
     const rawCapacity = cellValue(row, "Capacity");
@@ -363,9 +372,9 @@ export async function parseAndValidateVehicleUpload(
       ownerName,
       ownerType,
       mobile,
-      transporter: "",
-      driverName: "",
-      driverMobile: "",
+      transporter,
+      driverName,
+      driverMobile,
       capacity,
       capacityUnit,
       hireRate,

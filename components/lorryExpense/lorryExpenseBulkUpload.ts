@@ -1,5 +1,11 @@
-import { validateLorryExpense, type LorryExpense } from "./lorryExpense.schema";
-import type { LRRecord } from "@/components/services/lr.service";
+import {
+  validateLorryExpense,
+  LORRY_EXPENSE_STATUS_OPTIONS,
+  LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS,
+  type LorryExpense,
+} from "./lorryExpense.schema";
+import { BILL_RATE_TYPE_OPTIONS, LORRY_HIRE_TYPE_OPTIONS } from "@/components/lr/lr.schema";
+import type { LRFinancialsCommercialPatch, LRRecord } from "@/components/services/lr.service";
 import type { LorryExpenseRecord } from "@/components/services/lorryExpense.service";
 import {
   normalizeLrBulkNumberInput,
@@ -7,36 +13,82 @@ import {
 } from "@/lib/historicalLrBulkNumber";
 
 /**
- * The exact fields the existing Lorry Expenses form actually collects
- * (see LorryExpenseDialog.tsx). "LR Number": enter numeric portion only
- * (e.g. 19305); normalized to the company document format before LR lookup.
+ * Every field the Financials form collects (LorryExpenseDialog.tsx): the
+ * LR's commercial fields (Bill Rate / Lorry Hire — saved on the LR through
+ * update_lr_financials, exactly like the form) and the Financials record.
+ * "LR Number": enter numeric portion only (e.g. 19305); normalized to the
+ * company document format before LR lookup. Dates: YYYY-MM-DD.
  */
 export const LORRY_EXPENSE_TEMPLATE_HEADERS = [
   "LR Number",
-  "Driver Advance",
+  "Bill Rate Type",
+  "Bill Rate",
+  "Guaranteed Weight",
+  "Lorry Hire Type",
+  "Lorry Hire Rate",
+  "Lorry Hire Guaranteed Weight",
+  "Driver Advance 1",
+  "Driver Advance 1 Date",
+  "Driver Advance 2",
+  "Driver Advance 2 Date",
+  "Diesel Advance",
   "Loading Charges",
   "Unloading Charges",
+  "Detention Charges",
   "Hamali",
   "Commission",
   "Other Expense",
+  "Broker Name",
+  "Beneficiary Name",
+  "ST Chalan",
+  "TDS %",
+  "Other Deduction",
+  "Final Amount Paid",
+  "Balance Paid On",
+  "Expense Status",
+  "Remarks",
 ] as const;
 
 type TemplateHeader = (typeof LORRY_EXPENSE_TEMPLATE_HEADERS)[number];
 
 const SAMPLE_ROW: Record<TemplateHeader, string> = {
   "LR Number": "19305",
-  "Driver Advance": "2000",
+  "Bill Rate Type": "Per Ton (Loading)",
+  "Bill Rate": "1000",
+  "Guaranteed Weight": "",
+  "Lorry Hire Type": "Fixed",
+  "Lorry Hire Rate": "28000",
+  "Lorry Hire Guaranteed Weight": "",
+  "Driver Advance 1": "2000",
+  "Driver Advance 1 Date": "2026-08-01",
+  "Driver Advance 2": "",
+  "Driver Advance 2 Date": "",
+  "Diesel Advance": "5000",
   "Loading Charges": "500",
   "Unloading Charges": "500",
+  "Detention Charges": "",
   Hamali: "300",
   Commission: "200",
   "Other Expense": "0",
+  "Broker Name": "Ramesh Transport Co",
+  "Beneficiary Name": "Ramesh Kumar",
+  "ST Chalan": "",
+  "TDS %": "1",
+  "Other Deduction": "",
+  "Final Amount Paid": "",
+  "Balance Paid On": "",
+  "Expense Status": "completed",
+  Remarks: "",
 };
 
 export interface LorryExpenseUploadRow {
   /** 1-based row number as it appears in the Excel sheet (row 1 is the header). */
   excelRow: number;
   values: LorryExpense;
+  /** Bill Rate / Lorry Hire to save on the LR (update_lr_financials). */
+  commercial: LRFinancialsCommercialPatch;
+  /** The LR's commercial fields before this upload, to restore on rollback. */
+  priorCommercial: LRFinancialsCommercialPatch;
 }
 
 export interface LorryExpenseUploadRowError {
@@ -185,6 +237,8 @@ export async function parseAndValidateLorryExpenseUpload(
   interface ParsedRow {
     excelRow: number;
     values: LorryExpense;
+    commercial: LRFinancialsCommercialPatch;
+    priorCommercial: LRFinancialsCommercialPatch;
     messages: string[];
     lrNumber: string;
   }
@@ -203,13 +257,6 @@ export async function parseAndValidateLorryExpenseUpload(
     if (isBlankRow) return;
 
     const rawLrNumber = cellValue(row, "LR Number");
-    const rawDriverAdvance = cellValue(row, "Driver Advance");
-    const rawLoadingCharges = cellValue(row, "Loading Charges");
-    const rawUnloadingCharges = cellValue(row, "Unloading Charges");
-    const rawHamali = cellValue(row, "Hamali");
-    const rawCommission = cellValue(row, "Commission");
-    const rawOtherExpense = cellValue(row, "Other Expense");
-
     const messages: string[] = [];
     let lrNumber = "";
     let matchingLR: LRRecord | null = null;
@@ -233,53 +280,94 @@ export async function parseAndValidateLorryExpenseUpload(
       messages.push(`LR "${lrNumber}" already has a Financials record — exactly one is allowed per LR.`);
     }
 
-    function parseNumber(raw: string, label: string): number {
+    function parseNumber(header: TemplateHeader): number {
+      const raw = cellValue(row, header);
       if (!raw) return 0;
-      const parsed = Number(raw);
+      const parsed = Number(raw.replace(/,/g, ""));
       if (Number.isNaN(parsed)) {
-        messages.push(`${label} must be a number.`);
+        messages.push(`${header} must be a number.`);
         return 0;
       }
+      if (parsed < 0) messages.push(`${header} cannot be negative.`);
       return parsed;
     }
 
-    const driverAdvance = parseNumber(rawDriverAdvance, "Driver Advance");
-    const loadingCharges = parseNumber(rawLoadingCharges, "Loading Charges");
-    const unloadingCharges = parseNumber(rawUnloadingCharges, "Unloading Charges");
-    const hamali = parseNumber(rawHamali, "Hamali");
-    const commission = parseNumber(rawCommission, "Commission");
-    const otherExpense = parseNumber(rawOtherExpense, "Other Expense");
+    function parseDate(header: TemplateHeader): string {
+      const raw = cellValue(row, header);
+      if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        messages.push(`${header} must be a valid date (YYYY-MM-DD).`);
+      }
+      return raw;
+    }
+
+    function parseOption<T extends string>(header: TemplateHeader, options: readonly T[], fallback: T): T {
+      const raw = cellValue(row, header);
+      if (!raw) return fallback;
+      const match = options.find((option) => option.toLowerCase() === raw.toLowerCase());
+      if (!match) messages.push(`${header} must be one of: ${options.join(", ")}.`);
+      return match ?? fallback;
+    }
+
+    const commercial: LRFinancialsCommercialPatch = {
+      billRateType: parseOption("Bill Rate Type", BILL_RATE_TYPE_OPTIONS, "Fixed"),
+      billRate: parseNumber("Bill Rate"),
+      guaranteedWeight: parseNumber("Guaranteed Weight"),
+      lorryHireType: parseOption("Lorry Hire Type", LORRY_HIRE_TYPE_OPTIONS, "Fixed"),
+      lorryHireRate: parseNumber("Lorry Hire Rate"),
+      lorryHireGuaranteedWeight: parseNumber("Lorry Hire Guaranteed Weight"),
+    };
+    // Same rules as update_lr_financials (and the Financials form).
+    if (commercial.billRateType === "Guaranteed Weight" && commercial.guaranteedWeight <= 0) {
+      messages.push("Guaranteed Weight is required when Bill Rate Type is Guaranteed Weight.");
+    }
+    if (commercial.lorryHireType === "Guaranteed Weight" && commercial.lorryHireGuaranteedWeight <= 0) {
+      messages.push("Lorry Hire Guaranteed Weight is required when Lorry Hire Type is Guaranteed Weight.");
+    }
+
+    const tdsPercentage = parseNumber("TDS %");
+    if (!(LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS as readonly number[]).includes(tdsPercentage)) {
+      messages.push(`TDS % must be one of: ${LORRY_EXPENSE_TDS_PERCENTAGE_OPTIONS.join(", ")}.`);
+    }
 
     const candidate: LorryExpense = {
       lrId: matchingLR ? String(matchingLR.id) : "",
-      expenseStatus: "completed",
+      expenseStatus: parseOption("Expense Status", LORRY_EXPENSE_STATUS_OPTIONS, "completed"),
       entryStatus: "final",
-      driverAdvance,
-      driverAdvance1Date: "",
-      driverAdvance2: 0,
-      driverAdvance2Date: "",
-      dieselAdvance: 0,
-      loadingCharges,
-      unloadingCharges,
-      detentionCharges: 0,
-      hamali,
-      commission,
-      otherExpense,
-      brokerName: "",
-      beneficiaryName: "",
-      stChalan: 0,
-      tdsPercentage: 0,
-      otherDeduction: 0,
-      finalAmountPaid: 0,
-      balancePaidOn: "",
-      remarks: "",
+      driverAdvance: parseNumber("Driver Advance 1"),
+      driverAdvance1Date: parseDate("Driver Advance 1 Date"),
+      driverAdvance2: parseNumber("Driver Advance 2"),
+      driverAdvance2Date: parseDate("Driver Advance 2 Date"),
+      dieselAdvance: parseNumber("Diesel Advance"),
+      loadingCharges: parseNumber("Loading Charges"),
+      unloadingCharges: parseNumber("Unloading Charges"),
+      detentionCharges: parseNumber("Detention Charges"),
+      hamali: parseNumber("Hamali"),
+      commission: parseNumber("Commission"),
+      otherExpense: parseNumber("Other Expense"),
+      brokerName: cellValue(row, "Broker Name"),
+      beneficiaryName: cellValue(row, "Beneficiary Name"),
+      stChalan: parseNumber("ST Chalan"),
+      tdsPercentage,
+      otherDeduction: parseNumber("Other Deduction"),
+      finalAmountPaid: parseNumber("Final Amount Paid"),
+      balancePaidOn: parseDate("Balance Paid On"),
+      remarks: cellValue(row, "Remarks"),
+    };
+
+    const priorCommercial: LRFinancialsCommercialPatch = {
+      billRate: Number(matchingLR?.billRate ?? 0),
+      billRateType: (matchingLR?.billRateType ?? "Fixed") as LRFinancialsCommercialPatch["billRateType"],
+      guaranteedWeight: Number(matchingLR?.guaranteedWeight ?? 0),
+      lorryHireRate: Number(matchingLR?.lorryHireRate ?? 0),
+      lorryHireType: (matchingLR?.lorryHireType ?? "Fixed") as LRFinancialsCommercialPatch["lorryHireType"],
+      lorryHireGuaranteedWeight: Number(matchingLR?.lorryHireGuaranteedWeight ?? 0),
     };
 
     for (const message of Object.values(validateLorryExpense(candidate))) {
       if (message) messages.push(message);
     }
 
-    parsedRows.push({ excelRow: rowNumber, values: candidate, messages, lrNumber });
+    parsedRows.push({ excelRow: rowNumber, values: candidate, commercial, priorCommercial, messages, lrNumber });
   });
 
   // In-file duplicate LR numbers: every row sharing a non-blank LR number
@@ -301,7 +389,12 @@ export async function parseAndValidateLorryExpenseUpload(
   const rows: LorryExpenseUploadRow[] =
     errors.length > 0
       ? []
-      : parsedRows.map((row) => ({ excelRow: row.excelRow, values: row.values }));
+      : parsedRows.map((row) => ({
+          excelRow: row.excelRow,
+          values: row.values,
+          commercial: row.commercial,
+          priorCommercial: row.priorCommercial,
+        }));
 
   return { rows, errors };
 }
