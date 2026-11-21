@@ -66,7 +66,9 @@ function applyLrSnapshot(current: DeliveryChallan, lr: LRRecord): DeliveryChalla
     consignee: lr.consignee,
     consigneeAddress: lr.consigneeAddress,
     consigneeGst: lr.consigneeGST,
-    description: lr.material,
+    // LR Material Description; the Material name only when the LR has none
+    // (same rule as the LR → DC sync, migration 127).
+    description: lr.materialDescription?.trim() ? lr.materialDescription : lr.material,
     qty: lr.loadingWeight,
     vehicleNumber: lr.vehicleNumber,
     poNumber: lr.poNumber,
