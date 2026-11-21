@@ -40,7 +40,9 @@ test("48-hour rule: reserved draft open, then 48h from finalization; normal LRs 
 
 test("screen: Reserve button for LR creators, Reserved label, cancel action, series ignores numbers ahead", () => {
   const page = read("components/lr/LRListPage.tsx");
-  assert.match(page, /\.\.\.\(canCreate\s+\? \[\{ key: "reserve-lr", label: "Reserve LR number"/);
+  // Next to "Create LR" in the page header (not hidden in the toolbar menu).
+  assert.match(page, /extraActions=\{\s+canCreate \? \(\s+<Button[\s\S]*?Reserve LR number\s+<\/Button>/);
+  assert.doesNotMatch(page, /key: "reserve-lr"/);
   assert.match(page, /<LrSeriesStatus lrNumbers=\{seriesLrNumbers\} \/>/);
   const table = read("components/lr/LRTable.tsx");
   assert.match(table, /label: "Cancel reservation"/);

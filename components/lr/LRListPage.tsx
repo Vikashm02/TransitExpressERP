@@ -1082,6 +1082,22 @@ function LRListPageContent() {
         onAdd={handleAdd}
         showAddButton={canCreate}
         disabled={checkingDrafts}
+        extraActions={
+          canCreate ? (
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full min-h-10 sm:w-auto"
+              onClick={() => {
+                setReserveKey((k) => k + 1);
+                setReserveOpen(true);
+              }}
+            >
+              <BookmarkPlus className="mr-2 h-4 w-4" />
+              Reserve LR number
+            </Button>
+          ) : null
+        }
       />
 
       <LrSeriesStatus lrNumbers={seriesLrNumbers} />
@@ -1133,9 +1149,6 @@ function LRListPageContent() {
             icon: Upload,
             onClick: () => setBulkUploadOpen(true),
           },
-          ...(canCreate
-            ? [{ key: "reserve-lr", label: "Reserve LR number", icon: BookmarkPlus, onClick: () => { setReserveKey((k) => k + 1); setReserveOpen(true); } }]
-            : []),
         ]}
         filters={[
           {
