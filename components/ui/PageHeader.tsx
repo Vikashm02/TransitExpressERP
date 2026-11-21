@@ -14,6 +14,8 @@ interface PageHeaderProps {
    * matching the Sidebar's hide-not-disable convention. Defaults to
    * `true` so every existing call site keeps rendering the button. */
   showAddButton?: boolean;
+  /** Extra buttons shown just before the main button (e.g. LR "Reserve LR number"). */
+  extraActions?: React.ReactNode;
 }
 
 export default function PageHeader({
@@ -23,6 +25,7 @@ export default function PageHeader({
   disabled,
   subtitle,
   showAddButton = true,
+  extraActions,
 }: PageHeaderProps) {
   return (
     <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -38,16 +41,21 @@ export default function PageHeader({
         </p>
       </div>
 
-      {showAddButton && (
-        <Button
-          onClick={onAdd}
-          disabled={disabled}
-          size="lg"
-          className="w-full min-h-10 sm:w-auto"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          {buttonText}
-        </Button>
+      {(extraActions || showAddButton) && (
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          {extraActions}
+          {showAddButton && (
+            <Button
+              onClick={onAdd}
+              disabled={disabled}
+              size="lg"
+              className="w-full min-h-10 sm:w-auto"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              {buttonText}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
