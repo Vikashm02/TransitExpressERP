@@ -32,6 +32,10 @@ export interface LRRecord extends LR {
   assignedTo: string | null;
   /** Draft vs finalized entry (migration 034). Defaults to final. */
   entryStatus: "draft" | "final";
+  /** Set when this LR number was reserved ahead of the sequence (migration 128). */
+  reservedAt?: string | null;
+  reservedBy?: string | null;
+  finalizedAt?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -170,6 +174,11 @@ function toRow(values: LR) {
   } else {
     row.lr_number = values.lrNumber.trim();
   }
+
+  // The reserved mark is set only by reserve_lr_number() (the database also
+  // ignores it on save); never send it back.
+  delete row.reserved_at;
+  delete row.reserved_by;
 
   const calc = calculateLR(values);
   row.bill_amount = calc.billAmount;
@@ -650,4 +659,31 @@ export async function deleteLR(id: string): Promise<void> {
     href: "/lr",
     payload: { lrId: id },
   });
+}
+
+/* ==========================================================
+   RESERVE A FUTURE LR NUMBER (migration 128)
+   Saves the number as a draft LR; the running sequence does not move and
+   skips it when it gets there. Cancelling marks it Cancelled (never deleted).
+========================================================== */
+
+export async function reserveLrNumber(number: number, lrDate: string): Promise<LRRecord> {
+  const { data, error } = await supabase
+    .rpc("reserve_lr_number", { p_number: number, p_lr_date: lrDate })
+    .single();
+  if (error) throw error;
+  return fromRow(data as Record<string, unknown>);
+}
+
+export async function cancelReservedLr(lrId: string): Promise<LRRecord> {
+  const { data, error } = await supabase.rpc("cancel_reserved_lr", { p_lr_id: lrId }).single();
+  if (error) throw error;
+  return fromRow(data as Record<string, unknown>);
+}
+
+/** A reserved LR the sequence has not reached yet is not a gap-maker. */
+export function isReservedAheadOfSeries(lr: Pick<LRRecord, "reservedAt" | "lrNumber">, highestNormalNumeric: number): boolean {
+  if (!lr.reservedAt) return false;
+  const numeric = Number(String(lr.lrNumber ?? "").replace(/\D/g, "")) || 0;
+  return numeric > highestNormalNumeric;
 }

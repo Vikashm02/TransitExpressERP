@@ -18,6 +18,10 @@ export const STAFF_EDIT_WINDOW_EXPIRED_MESSAGE =
 type CreatedAtRecord = {
   created_at?: string | null;
   createdAt?: string | null;
+  /** Reserved future LR (migration 128): open while a draft, then 48h from finalization. */
+  reservedAt?: string | null;
+  entryStatus?: string | null;
+  finalizedAt?: string | null;
 } | null | undefined;
 
 function createdAtToTime(record: CreatedAtRecord): number | null {
@@ -33,6 +37,12 @@ export function isWithinEditWindow(
   record: CreatedAtRecord,
   nowMs: number = Date.now()
 ): boolean {
+  // Same rule as the database (staff_within_lr_edit_window, migration 128).
+  if (record?.reservedAt) {
+    if ((record.entryStatus ?? "final") === "draft") return true;
+    const finalized = record.finalizedAt ? new Date(record.finalizedAt).getTime() : NaN;
+    return Number.isFinite(finalized) && nowMs < finalized + STAFF_EDIT_WINDOW_MS;
+  }
   const createdTime = createdAtToTime(record);
   if (createdTime == null) return false;
   return nowMs < createdTime + STAFF_EDIT_WINDOW_MS;

@@ -6,6 +6,7 @@ import { matchesListSearch } from "@/lib/listSearch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
+  BookmarkPlus,
   ClipboardList,
   FileDown,
   FilePenLine,
@@ -43,10 +44,13 @@ import {
   finalizeLegacyLrDraft,
   getLRs,
   getOwnDraftLRs,
+  cancelReservedLr,
+  isReservedAheadOfSeries,
   reassignLR,
   updateLR,
   type LRRecord,
 } from "@/components/services/lr.service";
+import ReserveLrDialog from "./ReserveLrDialog";
 import { getLrBillingPartyLookup } from "@/components/services/billingParty.service";
 import {
   createPod,
@@ -185,6 +189,10 @@ function LRListPageContent() {
   const [reassigning, setReassigning] = useState(false);
 
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [reserveOpen, setReserveOpen] = useState(false);
+  const [reserveKey, setReserveKey] = useState(0);
+  const [cancelReserveTarget, setCancelReserveTarget] = useState<LRRecord | null>(null);
+  const [cancellingReserve, setCancellingReserve] = useState(false);
   const [pendingDraftsOpen, setPendingDraftsOpen] = useState(false);
   const [pendingDrafts, setPendingDrafts] = useState<LRRecord[]>([]);
   const [pendingDraftSelectedId, setPendingDraftSelectedId] = useState<LRRecord["id"] | null>(
@@ -1015,6 +1023,32 @@ function LRListPageContent() {
     }
   }
 
+  // A reserved number the sequence has not reached yet must not make the
+  // numbers before it look "missing" in the series banner.
+  const seriesLrNumbers = useMemo(() => {
+    const highestNormal = Math.max(
+      0,
+      ...lrs.filter((lr) => !lr.reservedAt).map((lr) => Number(String(lr.lrNumber ?? "").replace(/\D/g, "")) || 0)
+    );
+    return lrs.filter((lr) => !isReservedAheadOfSeries(lr, highestNormal)).map((lr) => lr.lrNumber);
+  }, [lrs]);
+
+  async function handleCancelReservation() {
+    if (!cancelReserveTarget) return;
+    try {
+      setCancellingReserve(true);
+      const cancelled = await cancelReservedLr(String(cancelReserveTarget.id));
+      toast.success(`${cancelled.lrNumber} marked Cancelled. The number stays used and is skipped by the sequence.`);
+      setCancelReserveTarget(null);
+      await loadLRs();
+    } catch (error) {
+      console.error(error);
+      toast.error(getUserFacingError(error, "Could not cancel this reserved LR. Nothing was changed."));
+    } finally {
+      setCancellingReserve(false);
+    }
+  }
+
   function handleExport() {
     exportCsv("lrs", [
       ...LR_EXPORT_COLUMNS,
@@ -1050,7 +1084,7 @@ function LRListPageContent() {
         disabled={checkingDrafts}
       />
 
-      <LrSeriesStatus lrNumbers={lrs.map((lr) => lr.lrNumber)} />
+      <LrSeriesStatus lrNumbers={seriesLrNumbers} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
@@ -1099,6 +1133,9 @@ function LRListPageContent() {
             icon: Upload,
             onClick: () => setBulkUploadOpen(true),
           },
+          ...(canCreate
+            ? [{ key: "reserve-lr", label: "Reserve LR number", icon: BookmarkPlus, onClick: () => { setReserveKey((k) => k + 1); setReserveOpen(true); } }]
+            : []),
         ]}
         filters={[
           {
@@ -1159,6 +1196,7 @@ function LRListPageContent() {
         onEdit={handleEdit}
         onContinueDraft={handleContinueDraft}
         onDelete={setDeleteTarget}
+        onCancelReservation={canContinueDraft ? setCancelReserveTarget : undefined}
         onPrint={handlePrint}
         onShare={handleShare}
         isAdmin={isAdmin}
@@ -1302,6 +1340,22 @@ function LRListPageContent() {
         open={bulkUploadOpen}
         onOpenChange={setBulkUploadOpen}
         onImported={loadLRs}
+      />
+
+      <ReserveLrDialog key={reserveKey} open={reserveOpen} onOpenChange={setReserveOpen} onReserved={loadLRs} />
+
+      <ConfirmDialog
+        open={Boolean(cancelReserveTarget)}
+        onOpenChange={(open) => !open && !cancellingReserve && setCancelReserveTarget(null)}
+        title="Cancel this reserved LR?"
+        description={
+          cancelReserveTarget
+            ? `${cancelReserveTarget.lrNumber} will be marked Cancelled. It is not deleted and the number stays used, so the LR sequence keeps skipping it.`
+            : undefined
+        }
+        confirmLabel="Mark Cancelled"
+        loading={cancellingReserve}
+        onConfirm={handleCancelReservation}
       />
 
       <FormDialog

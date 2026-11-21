@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Ban,
   ClipboardCheck,
   Eye,
   FileText,
@@ -34,6 +35,8 @@ interface LRTableProps {
   /** Resume incomplete draft — must NOT require Edit permission. */
   onContinueDraft: (lr: LRRecord) => void;
   onDelete: (lr: LRRecord) => void;
+  /** Mark a reserved future LR Cancelled (migration 128). */
+  onCancelReservation?: (lr: LRRecord) => void;
   onPrint: (lr: LRRecord) => void;
   onShare: (lr: LRRecord) => void;
   isAdmin?: boolean;
@@ -61,6 +64,26 @@ interface LRTableProps {
   onCreatePod?: (lr: LRRecord) => void;
   onViewPod?: (lr: LRRecord) => void;
   onEditPod?: (lr: LRRecord) => void;
+}
+
+/** A reserved future LR (migration 128) that has not been cancelled. */
+function isOpenReservation(row: LRRecord): boolean {
+  return Boolean(row.reservedAt) && isDraftEntry(row.entryStatus) && row.status !== "Cancelled";
+}
+
+function ReservedChip({ cancelled }: { cancelled: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-none ring-1",
+        cancelled
+          ? "bg-muted text-muted-foreground ring-border"
+          : "bg-info/15 text-info ring-info/30 dark:bg-info/25 dark:ring-info/45"
+      )}
+    >
+      {cancelled ? "Reserved · Cancelled" : "Reserved number"}
+    </span>
+  );
 }
 
 function displayLrNumber(row: LRRecord): string {
@@ -109,6 +132,7 @@ export default function LRTable({
   onEdit,
   onContinueDraft,
   onDelete,
+  onCancelReservation,
   onPrint,
   onShare,
   isAdmin = false,
@@ -141,7 +165,11 @@ export default function LRTable({
         return (
           <div className="flex min-h-[3.5rem] min-w-0 flex-col items-start justify-between gap-2 py-0.5">
             <span className="truncate font-medium leading-tight">{number}</span>
-            {podIdByLrNumber ? <PodStatusChip hasPod={hasPod} /> : null}
+            {row.reservedAt && isDraftEntry(row.entryStatus) ? (
+              <ReservedChip cancelled={row.status === "Cancelled"} />
+            ) : podIdByLrNumber ? (
+              <PodStatusChip hasPod={hasPod} />
+            ) : null}
           </div>
         );
       },
@@ -274,7 +302,15 @@ export default function LRTable({
           onClick: onContinueDraft,
           hidden: (row) =>
             !isDraftEntry(row.entryStatus) ||
+            (Boolean(row.reservedAt) && row.status === "Cancelled") ||
             !canContinueDraftRecord(canContinueDraft, canStaffEditRecord(isAdmin, canContinueDraft, row), row, currentUserId),
+        },
+        {
+          label: "Cancel reservation",
+          icon: Ban,
+          variant: "outline",
+          onClick: (row) => onCancelReservation?.(row),
+          hidden: (row) => !onCancelReservation || !isOpenReservation(row),
         },
         {
           label: "Edit",
